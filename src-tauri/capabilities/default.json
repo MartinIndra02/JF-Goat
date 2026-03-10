@@ -3,9 +3,5 @@
   "identifier": "main-capability",
   "description": "Capability for the main window",
   "windows": ["main"],
-  "permissions": [
-    "core:default",
-    "shell:allow-open",
-    "stronghold:default"
-  ]
+  "permissions": ["core:default", "shell:allow-open"]
 }

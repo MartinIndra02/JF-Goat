@@ -1,0 +1,107 @@
+﻿cargo :     Checking jf
+goat v0.1.0 (D:\Users\m
+arta\Documents\jfgoat\s
+rc-tauri)
+At line:1 char:1
++ cargo check --color n
+ever 2>&1 | Out-String 
+| Set-Content -Encoding
+ u ...
++ ~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~
+    + CategoryInfo     
+         : NotSpecified
+: (        Checking jf.
+..goat\sr    c-tauri):S
+tring) [], R    emoteEx
+ception
+    + FullyQualifiedErr
+orI    d : NativeComman
+dError
+ 
+warning: unused import:
+ `Manager`
+ --> src\commands\auth_
+commands.rs:1:13
+  |
+1 | use tauri::{Manager
+, State};
+  |             ^^^^^^^
+  |
+  = note: `#[warn(unuse
+d_imports)]` on by defa
+ult
+
+warning: unused variabl
+e: `app`
+  --> src\commands\auth
+_commands.rs:73:5
+   |
+73 |     app: tauri::Ap
+pHandle,
+   |     ^^^ help: if t
+his is intentional, pre
+fix it with an undersco
+re: `_app`
+   |
+   = note: `#[warn(unus
+ed_variables)]` on by d
+efault
+
+warning: unused variabl
+e: `app`
+   --> src\commands\aut
+h_commands.rs:110:5
+    |
+110 |     app: tauri::A
+ppHandle,
+    |     ^^^ help: if 
+this is intentional, pr
+efix it with an undersc
+ore: `_app`
+
+warning: unused variabl
+e: `app`
+   --> src\commands\aut
+h_commands.rs:176:5
+    |
+176 |     app: tauri::A
+ppHandle,
+    |     ^^^ help: if 
+this is intentional, pr
+efix it with an undersc
+ore: `_app`
+
+error[E0599]: no method
+ named `delete_password
+` found for struct `key
+ring::Entry` in the cur
+rent scope
+  --> src\commands\auth
+_commands.rs:35:17
+   |
+35 |     match entry.de
+lete_password() {
+   |                 ^^
+^^^^^^^^^^^^^
+   |
+help: there is a method
+ `get_password` with a 
+similar name
+   |
+35 -     match entry.de
+lete_password() {
+35 +     match entry.ge
+t_password() {
+   |
+
+For more information ab
+out this error, try `ru
+stc --explain E0599`.
+warning: `jfgoat` (lib)
+ generated 4 warnings
+error: could not compil
+e `jfgoat` (lib) due to
+ 1 previous error; 4 wa
+rnings emitted
+
