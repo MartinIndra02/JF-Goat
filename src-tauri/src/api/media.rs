@@ -232,6 +232,33 @@ pub async fn fetch_series_children(
     Ok(data)
 }
 
+/// Fetch the absolute total item count across the user's entire library.
+/// Uses Limit=1 so the response body is minimal; we only care about TotalRecordCount.
+pub async fn fetch_total_item_count(
+    client: &JellyfinClient,
+    user_id: &str,
+) -> Result<u32, JfgoatError> {
+    let path = format!(
+        "/Users/{}/Items?Limit=1&Recursive=true&EnableTotalRecordCount=true",
+        user_id
+    );
+
+    let resp = client.get(&path).await?;
+
+    if !resp.status().is_success() {
+        return Err(JfgoatError::Http(format!(
+            "Failed to fetch total item count: status {}",
+            resp.status()
+        )));
+    }
+
+    let data: JellyfinItemsResponse = resp.json().await.map_err(|e| {
+        JfgoatError::Http(format!("Failed to parse total item count response: {}", e))
+    })?;
+
+    Ok(data.total_record_count)
+}
+
 /// Search items directly on the remote Jellyfin server (fallback during INITIAL_SYNC).
 pub async fn search_remote(
     client: &JellyfinClient,

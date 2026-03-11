@@ -166,3 +166,71 @@ pub fn get_local_item_count(conn: &Connection) -> Result<u32, JfgoatError> {
     )?;
     Ok(count)
 }
+
+/// Checkpoint status for a library view.
+pub enum CheckpointStatus {
+    /// View has been fully synced.
+    Completed,
+    /// Sync is in progress; `last_index` is the resume offset.
+    InProgress(u32),
+    /// No checkpoint exists for this view.
+    NotFound,
+}
+
+/// Read the sync checkpoint for a specific view.
+pub fn get_checkpoint(conn: &Connection, view_id: &str) -> Result<CheckpointStatus, JfgoatError> {
+    let result = conn.query_row(
+        "SELECT status, last_index FROM sync_checkpoints WHERE view_id = ?1",
+        rusqlite::params![view_id],
+        |row| {
+            let status: String = row.get(0)?;
+            let last_index: u32 = row.get(1)?;
+            Ok((status, last_index))
+        },
+    );
+
+    match result {
+        Ok((status, last_index)) => {
+            if status == "COMPLETED" {
+                Ok(CheckpointStatus::Completed)
+            } else {
+                Ok(CheckpointStatus::InProgress(last_index))
+            }
+        }
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(CheckpointStatus::NotFound),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Create or reset a checkpoint for a view to IN_PROGRESS at index 0.
+pub fn init_checkpoint(conn: &Connection, view_id: &str) -> Result<(), JfgoatError> {
+    conn.execute(
+        "INSERT OR REPLACE INTO sync_checkpoints (view_id, status, last_index) VALUES (?1, 'IN_PROGRESS', 0)",
+        rusqlite::params![view_id],
+    )?;
+    Ok(())
+}
+
+/// Advance the checkpoint's last_index for a view.
+pub fn update_checkpoint_index(conn: &Connection, view_id: &str, last_index: u32) -> Result<(), JfgoatError> {
+    conn.execute(
+        "UPDATE sync_checkpoints SET last_index = ?1 WHERE view_id = ?2",
+        rusqlite::params![last_index, view_id],
+    )?;
+    Ok(())
+}
+
+/// Mark a view's checkpoint as COMPLETED.
+pub fn complete_checkpoint(conn: &Connection, view_id: &str) -> Result<(), JfgoatError> {
+    conn.execute(
+        "UPDATE sync_checkpoints SET status = 'COMPLETED' WHERE view_id = ?1",
+        rusqlite::params![view_id],
+    )?;
+    Ok(())
+}
+
+/// Clear all checkpoints (used when starting a fresh sync).
+pub fn clear_all_checkpoints(conn: &Connection) -> Result<(), JfgoatError> {
+    conn.execute("DELETE FROM sync_checkpoints", [])?;
+    Ok(())
+}

@@ -7,22 +7,207 @@ mod sync;
 
 use rusqlite::Connection;
 use std::fs;
+use std::path::PathBuf;
 use std::sync::{Mutex, RwLock};
 use tauri::Manager;
 
 use state::{AppState, SyncStatus};
 
+/// 1x1 transparent WebP (lossless) — returned on errors so <img> fails gracefully.
+const TRANSPARENT_PIXEL_WEBP: &[u8] = &[
+    0x52, 0x49, 0x46, 0x46, 0x24, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50,
+    0x56, 0x50, 0x38, 0x4C, 0x17, 0x00, 0x00, 0x00, 0x2F, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+];
+
+/// Parse a `jfimage://poster/{item_id}?tag={tag}` URI.
+/// Returns (image_type, item_id, tag) on success.
+fn parse_jfimage_uri(uri: &str) -> Option<(String, String, String)> {
+    // URI looks like: "jfimage://poster/abc123?tag=xyz" or "http://jfimage.localhost/poster/abc123?tag=xyz"
+    // Tauri may rewrite custom schemes to http://<scheme>.localhost/...
+    let path_and_query = if let Some(rest) = uri.strip_prefix("jfimage://") {
+        rest.to_string()
+    } else if let Some(pos) = uri.find("jfimage.localhost/") {
+        uri[pos + "jfimage.localhost/".len()..].to_string()
+    } else {
+        return None;
+    };
+
+    let (path, query) = match path_and_query.split_once('?') {
+        Some((p, q)) => (p, q),
+        None => return None,
+    };
+
+    // path = "poster/abc123" or "backdrop/abc123"
+    let (image_type, item_id) = path.split_once('/')?;
+    if item_id.is_empty() {
+        return None;
+    }
+
+    // query = "tag=xyz"
+    let tag = query
+        .split('&')
+        .find_map(|pair| pair.strip_prefix("tag="))?;
+    if tag.is_empty() {
+        return None;
+    }
+
+    Some((image_type.to_string(), item_id.to_string(), tag.to_string()))
+}
+
+/// Build the Jellyfin image API URL based on type.
+fn jellyfin_image_url(server_url: &str, image_type: &str, item_id: &str, tag: &str) -> String {
+    let (endpoint, max_width) = match image_type {
+        "backdrop" => ("Backdrop", 1280),
+        _ => ("Primary", 400), // poster and fallback
+    };
+    format!(
+        "{}/Items/{}/Images/{}?tag={}&maxWidth={}&format=webp",
+        server_url, item_id, endpoint, tag, max_width
+    )
+}
+
+/// Fetch an image from Jellyfin, save to cache, return bytes.
+fn fetch_and_cache_image(
+    http_client: &reqwest::Client,
+    server_url: &str,
+    token: &str,
+    image_type: &str,
+    item_id: &str,
+    tag: &str,
+    local_path: &PathBuf,
+) -> Result<Vec<u8>, String> {
+    let url = jellyfin_image_url(server_url, image_type, item_id, tag);
+
+    let bytes = tauri::async_runtime::block_on(async {
+        let resp = http_client
+            .get(&url)
+            .header("X-Emby-Token", token)
+            .send()
+            .await
+            .map_err(|e| format!("Image fetch failed: {}", e))?;
+
+        if !resp.status().is_success() {
+            return Err(format!("Jellyfin returned {}", resp.status()));
+        }
+
+        resp.bytes()
+            .await
+            .map(|b| b.to_vec())
+            .map_err(|e| format!("Failed to read image bytes: {}", e))
+    })?;
+
+    // Best-effort write to cache; don't fail the response if disk write fails
+    let _ = fs::write(local_path, &bytes);
+
+    Ok(bytes)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .register_uri_scheme_protocol("jfimage", |ctx, request| {
+            let uri = request.uri().to_string();
+
+            let (image_type, item_id, tag) = match parse_jfimage_uri(&uri) {
+                Some(parsed) => parsed,
+                None => {
+                    return tauri::http::Response::builder()
+                        .status(404)
+                        .header("Content-Type", "image/webp")
+                        .body(TRANSPARENT_PIXEL_WEBP.to_vec())
+                        .unwrap();
+                }
+            };
+
+            // Resolve cache directory
+            let cache_dir = match ctx.app_handle().path().app_cache_dir() {
+                Ok(dir) => dir.join("image_cache"),
+                Err(_) => {
+                    return tauri::http::Response::builder()
+                        .status(500)
+                        .header("Content-Type", "image/webp")
+                        .body(TRANSPARENT_PIXEL_WEBP.to_vec())
+                        .unwrap();
+                }
+            };
+            let _ = fs::create_dir_all(&cache_dir);
+
+            let local_path = cache_dir.join(format!("{}_{}.webp", item_id, tag));
+
+            // Cache hit — serve from disk
+            if local_path.exists() {
+                if let Ok(bytes) = fs::read(&local_path) {
+                    return tauri::http::Response::builder()
+                        .status(200)
+                        .header("Content-Type", "image/webp")
+                        .header("Cache-Control", "max-age=31536000, immutable")
+                        .body(bytes)
+                        .unwrap();
+                }
+            }
+
+            // Cache miss — need server_url, token, and http_client from AppState
+            let state = match ctx.app_handle().try_state::<AppState>() {
+                Some(s) => s,
+                None => {
+                    return tauri::http::Response::builder()
+                        .status(503)
+                        .header("Content-Type", "image/webp")
+                        .body(TRANSPARENT_PIXEL_WEBP.to_vec())
+                        .unwrap();
+                }
+            };
+
+            let server_url = state.server_url.read().ok().and_then(|v| v.clone());
+            let token = state.token.read().ok().and_then(|v| v.clone());
+
+            let (server_url, token) = match (server_url, token) {
+                (Some(u), Some(t)) => (u, t),
+                _ => {
+                    return tauri::http::Response::builder()
+                        .status(503)
+                        .header("Content-Type", "image/webp")
+                        .body(TRANSPARENT_PIXEL_WEBP.to_vec())
+                        .unwrap();
+                }
+            };
+
+            match fetch_and_cache_image(
+                &state.http_client,
+                &server_url,
+                &token,
+                &image_type,
+                &item_id,
+                &tag,
+                &local_path,
+            ) {
+                Ok(bytes) => tauri::http::Response::builder()
+                    .status(200)
+                    .header("Content-Type", "image/webp")
+                    .header("Cache-Control", "max-age=31536000, immutable")
+                    .body(bytes)
+                    .unwrap(),
+                Err(_) => tauri::http::Response::builder()
+                    .status(502)
+                    .header("Content-Type", "image/webp")
+                    .body(TRANSPARENT_PIXEL_WEBP.to_vec())
+                    .unwrap(),
+            }
+        })
         .setup(|app| {
             let app_data_dir = app.path().app_data_dir()?;
             fs::create_dir_all(&app_data_dir)?;
 
-            // Initialize SQLite
+            // Initialize SQLite with WAL for concurrent read/write
             let db_path = app_data_dir.join("jfgoat.db");
             let conn = Connection::open(&db_path)?;
+            // WAL: allows concurrent reads while the sync worker writes.
+            let _: String = conn.query_row("PRAGMA journal_mode = WAL", [], |r| r.get(0))?;
+            // busy_timeout: wait up to 5s instead of instant SQLITE_BUSY errors.
+            let _: i64 = conn.query_row("PRAGMA busy_timeout = 5000", [], |r| r.get(0))?;
             db::init_db(&conn)?;
             println!("Database initialized at: {:?}", db_path);
 

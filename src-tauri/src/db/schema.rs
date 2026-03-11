@@ -25,8 +25,12 @@ fn migrate(conn: &Connection) -> Result<(), JfgoatError> {
     if version == "1" {
         migrate_v1_to_v2(conn)?;
         migrate_v2_to_v3(conn)?;
+        migrate_v3_to_v4(conn)?;
     } else if version == "2" {
         migrate_v2_to_v3(conn)?;
+        migrate_v3_to_v4(conn)?;
+    } else if version == "3" {
+        migrate_v3_to_v4(conn)?;
     }
 
     Ok(())
@@ -119,5 +123,20 @@ fn migrate_v2_to_v3(conn: &Connection) -> Result<(), JfgoatError> {
     )?;
 
     println!("Database migrated to v3 (media_items + FTS5)");
+    Ok(())
+}
+
+fn migrate_v3_to_v4(conn: &Connection) -> Result<(), JfgoatError> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS sync_checkpoints (
+            view_id    TEXT PRIMARY KEY,
+            status     TEXT NOT NULL,
+            last_index INTEGER NOT NULL
+        );
+
+        UPDATE metadata SET value = '4' WHERE key = 'schema_version';",
+    )?;
+
+    println!("Database migrated to v4 (sync_checkpoints)");
     Ok(())
 }
