@@ -3,13 +3,14 @@ mod commands;
 mod db;
 mod error;
 mod state;
+mod sync;
 
 use rusqlite::Connection;
 use std::fs;
 use std::sync::{Mutex, RwLock};
 use tauri::Manager;
 
-use state::AppState;
+use state::{AppState, SyncStatus};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -25,8 +26,15 @@ pub fn run() {
             db::init_db(&conn)?;
             println!("Database initialized at: {:?}", db_path);
 
-            // Create HTTP client
-            let http_client = reqwest::Client::new();
+            // Create HTTP client with timeouts and pool tuning for large library sync
+            let http_client = reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(120))
+                .connect_timeout(std::time::Duration::from_secs(15))
+                .tcp_keepalive(std::time::Duration::from_secs(20))
+                .pool_idle_timeout(std::time::Duration::from_secs(30))
+                .pool_max_idle_per_host(1)
+                .build()
+                .expect("Failed to build HTTP client");
 
             // Create and manage AppState
             let app_state = AppState {
@@ -35,6 +43,7 @@ pub fn run() {
                 server_url: RwLock::new(None),
                 user_id: RwLock::new(None),
                 token: RwLock::new(None),
+                sync_status: RwLock::new(SyncStatus::Ready),
             };
             app.manage(app_state);
 
@@ -45,6 +54,9 @@ pub fn run() {
             commands::login,
             commands::check_auth,
             commands::logout,
+            commands::search_items,
+            commands::get_sync_status,
+            commands::start_sync,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

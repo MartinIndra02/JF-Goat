@@ -33,6 +33,13 @@ impl From<rusqlite::Error> for JfgoatError {
 
 impl From<reqwest::Error> for JfgoatError {
     fn from(err: reqwest::Error) -> Self {
-        JfgoatError::Http(err.to_string())
+        use std::error::Error;
+        let mut msg = err.to_string();
+        let mut source = err.source();
+        while let Some(cause) = source {
+            msg.push_str(&format!(" | caused by: {}", cause));
+            source = cause.source();
+        }
+        JfgoatError::Http(msg)
     }
 }
