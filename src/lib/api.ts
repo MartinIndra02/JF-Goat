@@ -36,3 +36,7 @@ export async function searchItems(query: string): Promise<SearchResult> {
 export async function getSyncStatus(): Promise<string> {
   return invoke("get_sync_status");
 }
+
+export async function forceResync(): Promise<void> {
+  return invoke("force_resync");
+}

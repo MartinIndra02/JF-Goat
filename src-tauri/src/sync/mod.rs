@@ -89,7 +89,18 @@ fn to_media_item(item: media::JellyfinItem, server_id: &str) -> MediaItem {
 }
 
 /// Spawn the background indexing worker. Call this after successful authentication.
-pub fn start_background_sync(app: AppHandle) {
+/// Returns false if a sync is already in progress.
+pub fn start_background_sync(app: AppHandle) -> bool {
+    // Guard: don't spawn a second sync if one is already running
+    if let Some(state) = app.try_state::<AppState>() {
+        if let Ok(status) = state.sync_status.read() {
+            if *status == SyncStatus::InitialSync {
+                println!("Sync already in progress, skipping duplicate start");
+                return false;
+            }
+        }
+    }
+
     tokio::spawn(async move {
         if let Err(e) = run_sync(&app).await {
             eprintln!("Background sync failed: {}", e);
@@ -108,6 +119,8 @@ pub fn start_background_sync(app: AppHandle) {
             });
         }
     });
+
+    true
 }
 
 async fn run_sync(app: &AppHandle) -> Result<(), String> {
@@ -348,17 +361,24 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
                                     global_failed_batches += 1;
                                     global_consecutive_failures += 1;
                                 } else {
-                                    let added = chunk_count;
-                                    let current = global_ingested.fetch_add(added, Ordering::SeqCst) + added;
                                     global_consecutive_failures = 0;
                                     series_items.extend(media);
 
-                                    let percentage = (current as f32 / grand_total as f32) * 100.0;
-                                    let _ = app.emit("sync-progress", SyncProgress {
-                                        current,
-                                        total: grand_total,
-                                        percentage,
-                                    });
+                                    // Only count series toward progress on fresh sync.
+                                    // On resume (start_index > 0), these are already in
+                                    // initial_count from the DB so counting them again
+                                    // would push progress above 100%.
+                                    if start_index == 0 {
+                                        let added = chunk_count;
+                                        let current = global_ingested.fetch_add(added, Ordering::SeqCst) + added;
+
+                                        let percentage = (current as f32 / grand_total as f32) * 100.0;
+                                        let _ = app.emit("sync-progress", SyncProgress {
+                                            current,
+                                            total: grand_total,
+                                            percentage,
+                                        });
+                                    }
                                 }
                             }
                             Err(e) => {
@@ -793,9 +813,8 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
         });
     } else {
         println!("Sync complete: {} items indexed across {} libraries", final_ingested, view_totals.len());
+        let _ = app.emit("sync-complete", ());
     }
-
-    let _ = app.emit("sync-complete", ());
 
     Ok(())
 }

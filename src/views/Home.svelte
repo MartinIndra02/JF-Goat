@@ -1,7 +1,7 @@
 <script lang="ts">
   import { logout as logoutApi, startSync, searchItems } from "../lib/api";
   import { getSession, setUnauthenticated } from "../lib/stores/auth.svelte";
-  import { initSyncListeners } from "../lib/stores/sync.svelte";
+  import { initSyncListeners, resetSyncStore } from "../lib/stores/sync.svelte";
   import Button from "../components/ui/Button.svelte";
   import TextInput from "../components/ui/TextInput.svelte";
   import SyncIndicator from "../components/layout/SyncIndicator.svelte";
@@ -52,6 +52,7 @@
     } catch {
       // Best effort
     }
+    resetSyncStore();
     setUnauthenticated();
     push("/connect");
   }

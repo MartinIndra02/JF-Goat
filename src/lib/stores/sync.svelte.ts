@@ -26,6 +26,14 @@ export function getFatalError(): string | null {
   return fatalError;
 }
 
+export function resetSyncStore() {
+  syncState = "idle";
+  progress = null;
+  syncErrors = [];
+  fatalError = null;
+  listenersAttached = false;
+}
+
 export function initSyncListeners() {
   if (listenersAttached) return;
   listenersAttached = true;

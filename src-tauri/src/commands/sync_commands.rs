@@ -157,3 +157,29 @@ pub async fn start_sync(
     sync::start_background_sync(app);
     Ok(())
 }
+
+/// Force a full re-sync by clearing all checkpoints and media data, then starting sync.
+#[tauri::command]
+pub async fn force_resync(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), JfgoatError> {
+    // Only allow force resync when not already syncing
+    {
+        let status = state.sync_status.read().map_err(|e| JfgoatError::Internal(e.to_string()))?;
+        if *status == SyncStatus::InitialSync {
+            return Err(JfgoatError::Internal("Sync already in progress".to_string()));
+        }
+    }
+
+    // Clear checkpoints and media items
+    {
+        let db = state.db.lock().map_err(|e| JfgoatError::Internal(e.to_string()))?;
+        media_db::clear_all_checkpoints(&db)?;
+        db.execute("DELETE FROM media_items", [])
+            .map_err(|e| JfgoatError::Internal(e.to_string()))?;
+    }
+
+    sync::start_background_sync(app);
+    Ok(())
+}
