@@ -57,14 +57,14 @@ fn parse_jfimage_uri(uri: &str) -> Option<(String, String, String)> {
 }
 
 /// Build the Jellyfin image API URL based on type.
-fn jellyfin_image_url(server_url: &str, image_type: &str, item_id: &str, tag: &str) -> String {
+fn jellyfin_image_url(server_url: &str, image_type: &str, item_id: &str, tag: &str, token: &str) -> String {
     let (endpoint, max_width) = match image_type {
         "backdrop" => ("Backdrop", 1280),
         _ => ("Primary", 400), // poster and fallback
     };
     format!(
-        "{}/Items/{}/Images/{}?tag={}&maxWidth={}&format=webp",
-        server_url, item_id, endpoint, tag, max_width
+        "{}/Items/{}/Images/{}?tag={}&maxWidth={}&api_key={}",
+        server_url.trim_end_matches('/'), item_id, endpoint, tag, max_width, token
     )
 }
 
@@ -78,7 +78,15 @@ fn fetch_and_cache_image(
     tag: &str,
     local_path: &PathBuf,
 ) -> Result<Vec<u8>, String> {
-    let url = jellyfin_image_url(server_url, image_type, item_id, tag);
+    let url = jellyfin_image_url(server_url, image_type, item_id, tag, token);
+
+    // Log the URL with the api_key redacted to avoid leaking credentials
+    let log_url = if let Some(pos) = url.find("&api_key=") {
+        format!("{}&api_key=REDACTED", &url[..pos])
+    } else {
+        url.clone()
+    };
+    println!("[jfimage] Fetching from: {}", log_url);
 
     let bytes = tauri::async_runtime::block_on(async {
         let resp = http_client
@@ -190,11 +198,14 @@ pub fn run() {
                     .header("Cache-Control", "max-age=31536000, immutable")
                     .body(bytes)
                     .unwrap(),
-                Err(_) => tauri::http::Response::builder()
-                    .status(502)
-                    .header("Content-Type", "image/webp")
-                    .body(TRANSPARENT_PIXEL_WEBP.to_vec())
-                    .unwrap(),
+                Err(err) => {
+                    println!("[jfimage] Fetch failed: {:?}", err);
+                    tauri::http::Response::builder()
+                        .status(200)
+                        .header("Content-Type", "image/webp")
+                        .body(TRANSPARENT_PIXEL_WEBP.to_vec())
+                        .unwrap()
+                }
             }
         })
         .setup(|app| {
@@ -213,6 +224,7 @@ pub fn run() {
 
             // Create HTTP client with timeouts and pool tuning for large library sync
             let http_client = reqwest::Client::builder()
+                .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                 .timeout(std::time::Duration::from_secs(120))
                 .connect_timeout(std::time::Duration::from_secs(15))
                 .tcp_keepalive(std::time::Duration::from_secs(20))
