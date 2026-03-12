@@ -243,6 +243,7 @@ pub fn run() {
             commands::get_sync_status,
             commands::start_sync,
             commands::force_resync,
+            commands::get_recent_movies,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

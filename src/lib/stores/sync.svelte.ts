@@ -1,7 +1,11 @@
 import { listen } from "@tauri-apps/api/event";
 import type { SyncProgress, SyncError } from "../types";
 
-export type SyncState = "idle" | "syncing" | "complete" | "complete_with_errors";
+export type SyncState =
+  | "idle"
+  | "syncing"
+  | "complete"
+  | "complete_with_errors";
 
 let syncState = $state<SyncState>("idle");
 let progress = $state<SyncProgress | null>(null);

@@ -4,6 +4,7 @@ import type {
   LoginResult,
   SessionInfo,
   SearchResult,
+  MediaItem,
 } from "./types";
 
 export async function connectToServer(url: string): Promise<ServerPublicInfo> {
@@ -39,4 +40,8 @@ export async function getSyncStatus(): Promise<string> {
 
 export async function forceResync(): Promise<void> {
   return invoke("force_resync");
+}
+
+export async function getRecentMovies(limit: number): Promise<MediaItem[]> {
+  return invoke("get_recent_movies", { limit });
 }
