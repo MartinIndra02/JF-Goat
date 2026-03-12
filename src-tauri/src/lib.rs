@@ -24,8 +24,11 @@ const TRANSPARENT_PIXEL_WEBP: &[u8] = &[
 /// Parse a `jfimage://poster/{item_id}?tag={tag}` URI.
 /// Returns (image_type, item_id, tag) on success.
 fn parse_jfimage_uri(uri: &str) -> Option<(String, String, String)> {
-    // URI looks like: "jfimage://poster/abc123?tag=xyz" or "http://jfimage.localhost/poster/abc123?tag=xyz"
-    // Tauri may rewrite custom schemes to http://<scheme>.localhost/...
+    // URI may look like:
+    //   "jfimage://poster/abc123?tag=xyz"
+    //   "jfimage:///poster/abc123?tag=xyz"            (triple-slash)
+    //   "jfimage://localhost/poster/abc123?tag=xyz"    (some platforms)
+    //   "http://jfimage.localhost/poster/abc123?tag=xyz" (Tauri rewrite)
     let path_and_query = if let Some(rest) = uri.strip_prefix("jfimage://") {
         rest.to_string()
     } else if let Some(pos) = uri.find("jfimage.localhost/") {
@@ -39,8 +42,20 @@ fn parse_jfimage_uri(uri: &str) -> Option<(String, String, String)> {
         None => return None,
     };
 
-    // path = "poster/abc123" or "backdrop/abc123"
-    let (image_type, item_id) = path.split_once('/')?;
+    // Split into segments and filter out empty parts and "localhost"
+    // to handle leading slashes or "localhost" prefix robustly.
+    let segments: Vec<&str> = path
+        .split('/')
+        .filter(|s| !s.is_empty() && *s != "localhost")
+        .collect();
+
+    // We expect exactly two meaningful segments: [image_type, item_id]
+    if segments.len() != 2 {
+        return None;
+    }
+    let image_type = segments[0];
+    let item_id = segments[1];
+
     if item_id.is_empty() {
         return None;
     }
@@ -57,14 +72,14 @@ fn parse_jfimage_uri(uri: &str) -> Option<(String, String, String)> {
 }
 
 /// Build the Jellyfin image API URL based on type.
-fn jellyfin_image_url(server_url: &str, image_type: &str, item_id: &str, tag: &str) -> String {
+fn jellyfin_image_url(server_url: &str, image_type: &str, item_id: &str) -> String {
     let (endpoint, max_width) = match image_type {
         "backdrop" => ("Backdrop", 1280),
         _ => ("Primary", 400), // poster and fallback
     };
     format!(
-        "{}/Items/{}/Images/{}?tag={}&maxWidth={}&format=webp",
-        server_url, item_id, endpoint, tag, max_width
+        "{}/Items/{}/Images/{}?maxWidth={}",
+        server_url.trim_end_matches('/'), item_id, endpoint, max_width
     )
 }
 
@@ -78,7 +93,9 @@ fn fetch_and_cache_image(
     tag: &str,
     local_path: &PathBuf,
 ) -> Result<Vec<u8>, String> {
-    let url = jellyfin_image_url(server_url, image_type, item_id, tag);
+    let url = jellyfin_image_url(server_url, image_type, item_id);
+
+    println!("[jfimage] Fetching from: {}", url);
 
     let bytes = tauri::async_runtime::block_on(async {
         let resp = http_client
@@ -190,11 +207,14 @@ pub fn run() {
                     .header("Cache-Control", "max-age=31536000, immutable")
                     .body(bytes)
                     .unwrap(),
-                Err(_) => tauri::http::Response::builder()
-                    .status(502)
-                    .header("Content-Type", "image/webp")
-                    .body(TRANSPARENT_PIXEL_WEBP.to_vec())
-                    .unwrap(),
+                Err(err) => {
+                    println!("[jfimage] Fetch failed: {:?}", err);
+                    tauri::http::Response::builder()
+                        .status(200)
+                        .header("Content-Type", "image/webp")
+                        .body(TRANSPARENT_PIXEL_WEBP.to_vec())
+                        .unwrap()
+                }
             }
         })
         .setup(|app| {
@@ -213,6 +233,7 @@ pub fn run() {
 
             // Create HTTP client with timeouts and pool tuning for large library sync
             let http_client = reqwest::Client::builder()
+                .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                 .timeout(std::time::Duration::from_secs(120))
                 .connect_timeout(std::time::Duration::from_secs(15))
                 .tcp_keepalive(std::time::Duration::from_secs(20))
