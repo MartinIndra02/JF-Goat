@@ -24,8 +24,11 @@ const TRANSPARENT_PIXEL_WEBP: &[u8] = &[
 /// Parse a `jfimage://poster/{item_id}?tag={tag}` URI.
 /// Returns (image_type, item_id, tag) on success.
 fn parse_jfimage_uri(uri: &str) -> Option<(String, String, String)> {
-    // URI looks like: "jfimage://poster/abc123?tag=xyz" or "http://jfimage.localhost/poster/abc123?tag=xyz"
-    // Tauri may rewrite custom schemes to http://<scheme>.localhost/...
+    // URI may look like:
+    //   "jfimage://poster/abc123?tag=xyz"
+    //   "jfimage:///poster/abc123?tag=xyz"            (triple-slash)
+    //   "jfimage://localhost/poster/abc123?tag=xyz"    (some platforms)
+    //   "http://jfimage.localhost/poster/abc123?tag=xyz" (Tauri rewrite)
     let path_and_query = if let Some(rest) = uri.strip_prefix("jfimage://") {
         rest.to_string()
     } else if let Some(pos) = uri.find("jfimage.localhost/") {
@@ -39,8 +42,20 @@ fn parse_jfimage_uri(uri: &str) -> Option<(String, String, String)> {
         None => return None,
     };
 
-    // path = "poster/abc123" or "backdrop/abc123"
-    let (image_type, item_id) = path.split_once('/')?;
+    // Split into segments and filter out empty parts and "localhost"
+    // to handle leading slashes or "localhost" prefix robustly.
+    let segments: Vec<&str> = path
+        .split('/')
+        .filter(|s| !s.is_empty() && *s != "localhost")
+        .collect();
+
+    // We expect exactly two meaningful segments: [image_type, item_id]
+    if segments.len() != 2 {
+        return None;
+    }
+    let image_type = segments[0];
+    let item_id = segments[1];
+
     if item_id.is_empty() {
         return None;
     }
@@ -57,14 +72,14 @@ fn parse_jfimage_uri(uri: &str) -> Option<(String, String, String)> {
 }
 
 /// Build the Jellyfin image API URL based on type.
-fn jellyfin_image_url(server_url: &str, image_type: &str, item_id: &str, tag: &str, token: &str) -> String {
+fn jellyfin_image_url(server_url: &str, image_type: &str, item_id: &str) -> String {
     let (endpoint, max_width) = match image_type {
         "backdrop" => ("Backdrop", 1280),
         _ => ("Primary", 400), // poster and fallback
     };
     format!(
-        "{}/Items/{}/Images/{}?tag={}&maxWidth={}&api_key={}",
-        server_url.trim_end_matches('/'), item_id, endpoint, tag, max_width, token
+        "{}/Items/{}/Images/{}?maxWidth={}",
+        server_url.trim_end_matches('/'), item_id, endpoint, max_width
     )
 }
 
@@ -78,15 +93,9 @@ fn fetch_and_cache_image(
     tag: &str,
     local_path: &PathBuf,
 ) -> Result<Vec<u8>, String> {
-    let url = jellyfin_image_url(server_url, image_type, item_id, tag, token);
+    let url = jellyfin_image_url(server_url, image_type, item_id);
 
-    // Log the URL with the api_key redacted to avoid leaking credentials
-    let log_url = if let Some(pos) = url.find("&api_key=") {
-        format!("{}&api_key=REDACTED", &url[..pos])
-    } else {
-        url.clone()
-    };
-    println!("[jfimage] Fetching from: {}", log_url);
+    println!("[jfimage] Fetching from: {}", url);
 
     let bytes = tauri::async_runtime::block_on(async {
         let resp = http_client
