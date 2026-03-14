@@ -19,7 +19,6 @@
     <div class="relative">
       <div
         class="flex gap-3 overflow-x-auto px-6 pb-4 scrollbar-hide"
-        style="scrollbar-width: none; -ms-overflow-style: none;"
       >
         {#each items as item (item.id)}
           <PosterCard {item} {landscape} />
