@@ -19,7 +19,7 @@
   }
 
   function progressPercent(item: MediaItem): number {
-    if (!item.run_time_ticks || item.playback_ticks <= 0) return 0;
+    if (!item.run_time_ticks || !item.playback_ticks || item.playback_ticks <= 0) return 0;
     return Math.min((item.playback_ticks / item.run_time_ticks) * 100, 100);
   }
 
