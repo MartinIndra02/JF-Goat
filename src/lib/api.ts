@@ -45,3 +45,15 @@ export async function forceResync(): Promise<void> {
 export async function getRecentMovies(limit: number): Promise<MediaItem[]> {
   return invoke("get_recent_movies", { limit });
 }
+
+export async function getRecentSeries(limit: number): Promise<MediaItem[]> {
+  return invoke("get_recent_series", { limit });
+}
+
+export async function getContinueWatching(limit: number): Promise<MediaItem[]> {
+  return invoke("get_continue_watching", { limit });
+}
+
+export async function getLatestMedia(limit: number): Promise<MediaItem[]> {
+  return invoke("get_latest_media", { limit });
+}
