@@ -5,6 +5,7 @@ import type {
   SessionInfo,
   SearchResult,
   MediaItem,
+  UserLibrary,
 } from "./types";
 
 export async function connectToServer(url: string): Promise<ServerPublicInfo> {
@@ -56,4 +57,25 @@ export async function getContinueWatching(limit: number): Promise<MediaItem[]> {
 
 export async function getLatestMedia(limit: number): Promise<MediaItem[]> {
   return invoke("get_latest_media", { limit });
+}
+
+// ── Live Jellyfin API commands ──────────────────────────────────────────
+
+export async function getUserViews(): Promise<UserLibrary[]> {
+  return invoke("get_user_views");
+}
+
+export async function getResumeItems(limit: number): Promise<MediaItem[]> {
+  return invoke("get_resume_items", { limit });
+}
+
+export async function getNextUp(limit: number): Promise<MediaItem[]> {
+  return invoke("get_next_up", { limit });
+}
+
+export async function getLatestItems(
+  parentId: string,
+  limit: number,
+): Promise<MediaItem[]> {
+  return invoke("get_latest_items", { parentId, limit });
 }

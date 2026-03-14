@@ -259,6 +259,99 @@ pub async fn fetch_total_item_count(
     Ok(data.total_record_count)
 }
 
+/// Fetch items the user is currently watching (have playback progress).
+/// Uses the Jellyfin `/Users/{id}/Items/Resume` endpoint.
+pub async fn fetch_resume_items(
+    client: &JellyfinClient,
+    user_id: &str,
+    limit: u32,
+) -> Result<JellyfinItemsResponse, JfgoatError> {
+    let path = format!(
+        "/Users/{}/Items/Resume?Limit={}&Recursive=true\
+         &Fields=Overview,Genres,ProductionYear,CommunityRating,OfficialRating,RunTimeTicks,ImageTags,BackdropImageTags\
+         &IncludeItemTypes=Movie,Episode\
+         &EnableTotalRecordCount=false\
+         &MediaTypes=Video",
+        user_id, limit
+    );
+
+    let resp = client.get(&path).await?;
+
+    if !resp.status().is_success() {
+        return Err(JfgoatError::Http(format!(
+            "Failed to fetch resume items: status {}",
+            resp.status()
+        )));
+    }
+
+    let data: JellyfinItemsResponse = resp.json().await.map_err(|e| {
+        JfgoatError::Http(format!("Failed to parse resume items response: {}", e))
+    })?;
+
+    Ok(data)
+}
+
+/// Fetch the next episodes to watch across all series.
+/// Uses the Jellyfin `/Shows/NextUp` endpoint.
+pub async fn fetch_next_up(
+    client: &JellyfinClient,
+    user_id: &str,
+    limit: u32,
+) -> Result<JellyfinItemsResponse, JfgoatError> {
+    let path = format!(
+        "/Shows/NextUp?UserId={}&Limit={}\
+         &Fields=Overview,Genres,ProductionYear,CommunityRating,OfficialRating,RunTimeTicks,ImageTags,BackdropImageTags\
+         &EnableTotalRecordCount=false",
+        user_id, limit
+    );
+
+    let resp = client.get(&path).await?;
+
+    if !resp.status().is_success() {
+        return Err(JfgoatError::Http(format!(
+            "Failed to fetch next up: status {}",
+            resp.status()
+        )));
+    }
+
+    let data: JellyfinItemsResponse = resp.json().await.map_err(|e| {
+        JfgoatError::Http(format!("Failed to parse next up response: {}", e))
+    })?;
+
+    Ok(data)
+}
+
+/// Fetch the latest items added to a specific library view.
+/// Uses the Jellyfin `/Users/{id}/Items/Latest` endpoint.
+pub async fn fetch_latest_items(
+    client: &JellyfinClient,
+    user_id: &str,
+    parent_id: &str,
+    limit: u32,
+) -> Result<Vec<JellyfinItem>, JfgoatError> {
+    let path = format!(
+        "/Users/{}/Items/Latest?ParentId={}&Limit={}\
+         &Fields=Overview,Genres,ProductionYear,CommunityRating,OfficialRating,RunTimeTicks,ImageTags,BackdropImageTags",
+        user_id, parent_id, limit
+    );
+
+    let resp = client.get(&path).await?;
+
+    if !resp.status().is_success() {
+        return Err(JfgoatError::Http(format!(
+            "Failed to fetch latest items: status {}",
+            resp.status()
+        )));
+    }
+
+    // The /Latest endpoint returns a flat array of items, not wrapped in { Items: [...] }
+    let data: Vec<JellyfinItem> = resp.json().await.map_err(|e| {
+        JfgoatError::Http(format!("Failed to parse latest items response: {}", e))
+    })?;
+
+    Ok(data)
+}
+
 /// Search items directly on the remote Jellyfin server (fallback during INITIAL_SYNC).
 pub async fn search_remote(
     client: &JellyfinClient,

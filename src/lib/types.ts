@@ -51,6 +51,12 @@ export interface MediaItem {
   server_id: string;
 }
 
+export interface UserLibrary {
+  id: string;
+  name: string;
+  collection_type: string | null;
+}
+
 export interface SearchResult {
   items: MediaItem[];
   source: "local" | "remote";

@@ -4,9 +4,10 @@
     logout as logoutApi,
     startSync,
     searchItems,
-    getRecentMovies,
-    getRecentSeries,
-    getContinueWatching,
+    getUserViews,
+    getResumeItems,
+    getNextUp,
+    getLatestItems,
     getLatestMedia,
   } from "../lib/api";
   import { getSession, setUnauthenticated } from "../lib/stores/auth.svelte";
@@ -18,7 +19,7 @@
   import MediaRow from "../components/media/MediaRow.svelte";
   import PosterCard from "../components/media/PosterCard.svelte";
   import { push } from "svelte-spa-router";
-  import type { MediaItem } from "../lib/types";
+  import type { MediaItem, UserLibrary } from "../lib/types";
 
   const session = getSession();
 
@@ -28,10 +29,12 @@
   let searching = $state(false);
   let searchTimer: ReturnType<typeof setTimeout> | null = null;
 
+  // Real-time data from Jellyfin server
+  let resumeItems = $state<MediaItem[]>([]);
+  let nextUpItems = $state<MediaItem[]>([]);
+  let userLibraries = $state<UserLibrary[]>([]);
+  let libraryLatest = $state<Record<string, MediaItem[]>>({});
   let featuredItems = $state<MediaItem[]>([]);
-  let continueWatching = $state<MediaItem[]>([]);
-  let recentMovies = $state<MediaItem[]>([]);
-  let recentSeries = $state<MediaItem[]>([]);
   let loading = $state(true);
 
   const syncState = $derived(getSyncState());
@@ -45,16 +48,33 @@
 
   async function loadDashboard() {
     try {
-      const [featured, watching, movies, series] = await Promise.all([
+      // Fetch all real-time data from the Jellyfin server in parallel
+      const [resume, nextUp, views, featured] = await Promise.all([
+        getResumeItems(20).catch(() => []),
+        getNextUp(20).catch(() => []),
+        getUserViews().catch(() => []),
         getLatestMedia(10).catch(() => []),
-        getContinueWatching(20).catch(() => []),
-        getRecentMovies(20).catch(() => []),
-        getRecentSeries(20).catch(() => []),
       ]);
+
+      resumeItems = resume;
+      nextUpItems = nextUp;
+      userLibraries = views;
       featuredItems = featured;
-      continueWatching = watching;
-      recentMovies = movies;
-      recentSeries = series;
+
+      // Fetch latest items for each library in parallel
+      if (views.length > 0) {
+        const latestPromises = views.map(async (lib) => {
+          const items = await getLatestItems(lib.id, 16).catch(() => []);
+          return { id: lib.id, items };
+        });
+
+        const results = await Promise.all(latestPromises);
+        const latestMap: Record<string, MediaItem[]> = {};
+        for (const r of results) {
+          latestMap[r.id] = r.items;
+        }
+        libraryLatest = latestMap;
+      }
     } catch (e) {
       console.error("Failed to load dashboard:", e);
     } finally {
@@ -97,6 +117,16 @@
     resetSyncStore();
     setUnauthenticated();
     push("/connect");
+  }
+
+  function hasAnyContent(): boolean {
+    if (featuredItems.length > 0) return true;
+    if (resumeItems.length > 0) return true;
+    if (nextUpItems.length > 0) return true;
+    for (const lib of userLibraries) {
+      if (libraryLatest[lib.id]?.length > 0) return true;
+    }
+    return false;
   }
 </script>
 
@@ -172,21 +202,25 @@
       </div>
     </div>
   {:else}
-    <!-- Dashboard content -->
+    <!-- Dashboard content with real data -->
     <div class="space-y-2">
       <!-- Hero Banner -->
       <HeroBanner items={featuredItems} />
 
-      <!-- Continue Watching -->
-      <MediaRow title="Continue Watching" items={continueWatching} landscape={true} />
+      <!-- Continue Watching (from Jellyfin /Users/{id}/Items/Resume) -->
+      <MediaRow title="Continue Watching" items={resumeItems} landscape={true} />
 
-      <!-- Recently Added Movies -->
-      <MediaRow title="Recently Added Movies" items={recentMovies} />
+      <!-- Next Up (from Jellyfin /Shows/NextUp) -->
+      <MediaRow title="Next Up" items={nextUpItems} landscape={true} />
 
-      <!-- Recently Added Series -->
-      <MediaRow title="Recently Added Series" items={recentSeries} />
+      <!-- Latest items per user library -->
+      {#each userLibraries as library (library.id)}
+        {#if libraryLatest[library.id]?.length}
+          <MediaRow title="Latest in {library.name}" items={libraryLatest[library.id]} />
+        {/if}
+      {/each}
 
-      {#if !featuredItems.length && !continueWatching.length && !recentMovies.length && !recentSeries.length}
+      {#if !hasAnyContent()}
         <div class="flex flex-col items-center justify-center h-64 text-center px-6">
           <svg class="w-16 h-16 text-gray-700 mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <path stroke-linecap="round" stroke-linejoin="round" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"/>

@@ -268,6 +268,10 @@ pub fn run() {
             commands::get_recent_series,
             commands::get_continue_watching,
             commands::get_latest_media,
+            commands::get_user_views,
+            commands::get_resume_items,
+            commands::get_next_up,
+            commands::get_latest_items,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
