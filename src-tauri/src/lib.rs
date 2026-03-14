@@ -200,7 +200,7 @@ pub fn run() {
             tauri::http::Response::builder()
                 .status(200)
                 .header("Content-Type", "image/webp")
-                .header("Cache-Control", "no-cache")
+                .header("Cache-Control", "no-store")
                 .body(TRANSPARENT_PIXEL_WEBP.to_vec())
                 .unwrap()
         })
