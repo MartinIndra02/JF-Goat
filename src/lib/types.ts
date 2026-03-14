@@ -51,6 +51,12 @@ export interface MediaItem {
   server_id: string;
 }
 
+export interface UserLibrary {
+  id: string;
+  name: string;
+  collection_type: string | null;
+}
+
 export interface SearchResult {
   items: MediaItem[];
   source: "local" | "remote";
@@ -68,4 +74,12 @@ export interface SyncError {
   batch_size: number;
   retries_attempted: number;
   is_fatal: boolean;
+}
+
+export interface HomepageCache {
+  resume_items: MediaItem[];
+  next_up_items: MediaItem[];
+  user_libraries: UserLibrary[];
+  library_latest: Record<string, MediaItem[]>;
+  featured_items: MediaItem[];
 }

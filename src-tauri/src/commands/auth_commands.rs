@@ -177,6 +177,57 @@ pub async fn check_auth(
     }
 }
 
+/// Fast offline auth check — returns the stored session without network validation.
+/// Used for instant startup; the frontend should call check_auth() in the background
+/// to verify the token and redirect to /connect if it's invalid.
+#[tauri::command]
+pub async fn check_auth_offline(
+    state: State<'_, AppState>,
+) -> Result<Option<SessionInfo>, JfgoatError> {
+    let server = {
+        let db = state.db.lock().map_err(|e| JfgoatError::Internal(e.to_string()))?;
+        servers::get_active_server(&db)?
+    };
+
+    let server = match server {
+        Some(s) => s,
+        None => return Ok(None),
+    };
+
+    let (user_id, username) = match (server.user_id, server.username) {
+        (Some(uid), Some(uname)) => (uid, uname),
+        _ => return Ok(None),
+    };
+
+    // Check if a token exists but don't verify it over the network
+    let token = match keyring_load_token()? {
+        Some(t) => t,
+        None => return Ok(None),
+    };
+
+    // Pre-populate AppState so homepage data commands work immediately
+    {
+        let mut cached_token = state.token.write().map_err(|e| JfgoatError::Internal(e.to_string()))?;
+        *cached_token = Some(token);
+    }
+    {
+        let mut cached_url = state.server_url.write().map_err(|e| JfgoatError::Internal(e.to_string()))?;
+        *cached_url = Some(server.url.clone());
+    }
+    {
+        let mut cached_uid = state.user_id.write().map_err(|e| JfgoatError::Internal(e.to_string()))?;
+        *cached_uid = Some(user_id.clone());
+    }
+
+    Ok(Some(SessionInfo {
+        user_id,
+        username,
+        server_id: server.id,
+        server_name: server.name,
+        server_url: server.url,
+    }))
+}
+
 #[tauri::command]
 pub async fn logout(
     state: State<'_, AppState>,

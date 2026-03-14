@@ -1,7 +1,7 @@
 <script lang="ts">
   import Router from "svelte-spa-router";
   import { push } from "svelte-spa-router";
-  import { checkAuth } from "./lib/api";
+  import { checkAuth, checkAuthOffline } from "./lib/api";
   import {
     getAuthStatus,
     setAuthenticated,
@@ -20,14 +20,28 @@
 
   async function init() {
     try {
-      const session = await checkAuth();
-      if (session) {
-        setAuthenticated(session);
+      // Phase 1: Fast offline check — shows homepage instantly from cached data
+      const offlineSession = await checkAuthOffline();
+      if (offlineSession) {
+        setAuthenticated(offlineSession);
         push("/home");
-      } else {
-        setUnauthenticated();
-        push("/connect");
+
+        // Phase 2: Verify token in the background (no spinner shown)
+        checkAuth().then((session) => {
+          if (!session) {
+            // Token expired — redirect to connect
+            setUnauthenticated();
+            push("/connect");
+          }
+        }).catch(() => {
+          // Network error — stay on homepage with cached data
+        });
+        return;
       }
+
+      // No cached session — fall back to full auth check
+      setUnauthenticated();
+      push("/connect");
     } catch {
       setUnauthenticated();
       push("/connect");

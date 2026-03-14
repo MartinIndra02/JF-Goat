@@ -83,24 +83,21 @@ fn jellyfin_image_url(server_url: &str, image_type: &str, item_id: &str) -> Stri
     )
 }
 
-/// Fetch an image from Jellyfin, save to cache, return bytes.
-fn fetch_and_cache_image(
-    http_client: &reqwest::Client,
-    server_url: &str,
-    token: &str,
-    image_type: &str,
-    item_id: &str,
-    tag: &str,
-    local_path: &PathBuf,
-) -> Result<Vec<u8>, String> {
-    let url = jellyfin_image_url(server_url, image_type, item_id);
+/// Fetch an image from Jellyfin and save to cache (async, for background use).
+async fn fetch_and_cache_image_async(
+    http_client: reqwest::Client,
+    server_url: String,
+    token: String,
+    image_type: String,
+    item_id: String,
+    local_path: PathBuf,
+) {
+    let url = jellyfin_image_url(&server_url, &image_type, &item_id);
 
-    println!("[jfimage] Fetching from: {}", url);
-
-    let bytes = tauri::async_runtime::block_on(async {
+    let result = async {
         let resp = http_client
             .get(&url)
-            .header("X-Emby-Token", token)
+            .header("X-Emby-Token", &token)
             .send()
             .await
             .map_err(|e| format!("Image fetch failed: {}", e))?;
@@ -109,16 +106,21 @@ fn fetch_and_cache_image(
             return Err(format!("Jellyfin returned {}", resp.status()));
         }
 
-        resp.bytes()
+        let bytes = resp
+            .bytes()
             .await
             .map(|b| b.to_vec())
-            .map_err(|e| format!("Failed to read image bytes: {}", e))
-    })?;
+            .map_err(|e| format!("Failed to read image bytes: {}", e))?;
 
-    // Best-effort write to cache; don't fail the response if disk write fails
-    let _ = fs::write(local_path, &bytes);
+        // Best-effort write to cache
+        let _ = fs::write(&local_path, &bytes);
+        Ok::<(), String>(())
+    }
+    .await;
 
-    Ok(bytes)
+    if let Err(err) = result {
+        println!("[jfimage] Background fetch failed for {}: {}", item_id, err);
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -154,7 +156,7 @@ pub fn run() {
 
             let local_path = cache_dir.join(format!("{}_{}.webp", item_id, tag));
 
-            // Cache hit — serve from disk
+            // Cache hit — serve from disk instantly (no network)
             if local_path.exists() {
                 if let Ok(bytes) = fs::read(&local_path) {
                     return tauri::http::Response::builder()
@@ -166,12 +168,12 @@ pub fn run() {
                 }
             }
 
-            // Cache miss — need server_url, token, and http_client from AppState
+            // Cache miss — return placeholder immediately, fetch in background
             let state = match ctx.app_handle().try_state::<AppState>() {
                 Some(s) => s,
                 None => {
                     return tauri::http::Response::builder()
-                        .status(503)
+                        .status(200)
                         .header("Content-Type", "image/webp")
                         .body(TRANSPARENT_PIXEL_WEBP.to_vec())
                         .unwrap();
@@ -181,41 +183,26 @@ pub fn run() {
             let server_url = state.server_url.read().ok().and_then(|v| v.clone());
             let token = state.token.read().ok().and_then(|v| v.clone());
 
-            let (server_url, token) = match (server_url, token) {
-                (Some(u), Some(t)) => (u, t),
-                _ => {
-                    return tauri::http::Response::builder()
-                        .status(503)
-                        .header("Content-Type", "image/webp")
-                        .body(TRANSPARENT_PIXEL_WEBP.to_vec())
-                        .unwrap();
-                }
-            };
-
-            match fetch_and_cache_image(
-                &state.http_client,
-                &server_url,
-                &token,
-                &image_type,
-                &item_id,
-                &tag,
-                &local_path,
-            ) {
-                Ok(bytes) => tauri::http::Response::builder()
-                    .status(200)
-                    .header("Content-Type", "image/webp")
-                    .header("Cache-Control", "max-age=31536000, immutable")
-                    .body(bytes)
-                    .unwrap(),
-                Err(err) => {
-                    println!("[jfimage] Fetch failed: {:?}", err);
-                    tauri::http::Response::builder()
-                        .status(200)
-                        .header("Content-Type", "image/webp")
-                        .body(TRANSPARENT_PIXEL_WEBP.to_vec())
-                        .unwrap()
-                }
+            if let (Some(server_url), Some(token)) = (server_url, token) {
+                let http_client = state.http_client.clone();
+                // Spawn non-blocking background fetch — image will be cached for next request
+                tauri::async_runtime::spawn(fetch_and_cache_image_async(
+                    http_client,
+                    server_url,
+                    token,
+                    image_type,
+                    item_id,
+                    local_path,
+                ));
             }
+
+            // Return transparent placeholder while the image is being fetched
+            tauri::http::Response::builder()
+                .status(200)
+                .header("Content-Type", "image/webp")
+                .header("Cache-Control", "no-store")
+                .body(TRANSPARENT_PIXEL_WEBP.to_vec())
+                .unwrap()
         })
         .setup(|app| {
             let app_data_dir = app.path().app_data_dir()?;
@@ -259,12 +246,22 @@ pub fn run() {
             commands::connect_to_server,
             commands::login,
             commands::check_auth,
+            commands::check_auth_offline,
             commands::logout,
             commands::search_items,
             commands::get_sync_status,
             commands::start_sync,
             commands::force_resync,
             commands::get_recent_movies,
+            commands::get_recent_series,
+            commands::get_continue_watching,
+            commands::get_latest_media,
+            commands::get_user_views,
+            commands::get_resume_items,
+            commands::get_next_up,
+            commands::get_latest_items,
+            commands::save_homepage_cache,
+            commands::load_homepage_cache,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
