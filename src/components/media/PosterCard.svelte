@@ -25,6 +25,28 @@
 
   const progress = $derived(progressPercent(item));
   const aspectClass = $derived(landscape ? "aspect-video" : "aspect-[2/3]");
+
+  // Retry loading images that were returned as transparent placeholders (cache miss).
+  // The background fetch will populate the cache, so the retry will succeed.
+  function handleImageLoad(event: Event) {
+    const img = event.target as HTMLImageElement;
+    if (img.naturalWidth <= 1 && img.naturalHeight <= 1) {
+      // Got the transparent placeholder — image is being fetched in background
+      const src = img.src;
+      const retryCount = parseInt(img.dataset.retry ?? "0");
+      if (retryCount < 3) {
+        setTimeout(() => {
+          img.dataset.retry = String(retryCount + 1);
+          // Force reload by busting the cached response
+          img.src = "";
+          img.src = src;
+        }, 1500 * (retryCount + 1));
+      }
+    } else {
+      // Real image loaded — fade it in
+      img.classList.add("opacity-100");
+    }
+  }
 </script>
 
 <div class="group cursor-pointer flex-shrink-0 {landscape ? 'w-56 sm:w-64' : 'w-32 sm:w-36'}">
@@ -34,20 +56,25 @@
         src={`http://jfimage.localhost/backdrop/${item.id}?tag=${item.backdrop_tag}`}
         alt={item.name}
         loading="lazy"
-        class="w-full {aspectClass} object-cover"
+        onload={handleImageLoad}
+        class="w-full {aspectClass} object-cover transition-opacity duration-300 opacity-0"
       />
     {:else if item.image_tag}
       <img
         src={`http://jfimage.localhost/poster/${item.id}?tag=${item.image_tag}`}
         alt={item.name}
         loading="lazy"
-        class="w-full {aspectClass} object-cover"
+        onload={handleImageLoad}
+        class="w-full {aspectClass} object-cover transition-opacity duration-300 opacity-0"
       />
     {:else}
       <div class="w-full {aspectClass} bg-gray-800 flex items-center justify-center">
         <span class="text-gray-400 text-xs text-center px-2 line-clamp-3">{item.name}</span>
       </div>
     {/if}
+
+    <!-- Background placeholder behind the image -->
+    <div class="absolute inset-0 bg-gray-800 -z-10"></div>
 
     <div class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors duration-200"></div>
 

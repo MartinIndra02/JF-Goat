@@ -9,6 +9,8 @@
     getNextUp,
     getLatestItems,
     getLatestMedia,
+    loadHomepageCache,
+    saveHomepageCache,
   } from "../lib/api";
   import { getSession, setUnauthenticated } from "../lib/stores/auth.svelte";
   import { initSyncListeners, getSyncState, resetSyncStore } from "../lib/stores/sync.svelte";
@@ -19,7 +21,7 @@
   import MediaRow from "../components/media/MediaRow.svelte";
   import PosterCard from "../components/media/PosterCard.svelte";
   import { push } from "svelte-spa-router";
-  import type { MediaItem, UserLibrary } from "../lib/types";
+  import type { MediaItem, UserLibrary, HomepageCache } from "../lib/types";
 
   const session = getSession();
 
@@ -35,7 +37,9 @@
   let userLibraries = $state<UserLibrary[]>([]);
   let libraryLatest = $state<Record<string, MediaItem[]>>({});
   let featuredItems = $state<MediaItem[]>([]);
+  // Show loading spinner only if we have no cached data to show
   let loading = $state(true);
+  let hasCachedData = $state(false);
 
   const syncState = $derived(getSyncState());
 
@@ -43,10 +47,32 @@
   startSync().catch((e) => console.error("Failed to start sync:", e));
 
   onMount(() => {
-    loadDashboard();
+    loadCachedThenRefresh();
   });
 
-  async function loadDashboard() {
+  async function loadCachedThenRefresh() {
+    // Phase 1: Load cached homepage data instantly (no network, ~0ms)
+    try {
+      const cached = await loadHomepageCache();
+      if (cached) {
+        resumeItems = cached.resume_items;
+        nextUpItems = cached.next_up_items;
+        userLibraries = cached.user_libraries;
+        libraryLatest = cached.library_latest;
+        featuredItems = cached.featured_items;
+        hasCachedData = true;
+        // Remove loading spinner immediately — user sees cached content
+        loading = false;
+      }
+    } catch (e) {
+      console.error("Failed to load homepage cache:", e);
+    }
+
+    // Phase 2: Fetch fresh data from the server in the background
+    await refreshFromServer();
+  }
+
+  async function refreshFromServer() {
     try {
       // Fetch all real-time data from the Jellyfin server in parallel
       const [resume, nextUp, views, featured] = await Promise.all([
@@ -56,12 +82,14 @@
         getLatestMedia(10).catch(() => []),
       ]);
 
+      // Silently update the UI with fresh data
       resumeItems = resume;
       nextUpItems = nextUp;
       userLibraries = views;
       featuredItems = featured;
 
       // Fetch latest items for each library in parallel
+      const latestMap: Record<string, MediaItem[]> = {};
       if (views.length > 0) {
         const latestPromises = views.map(async (lib) => {
           const items = await getLatestItems(lib.id, 16).catch(() => []);
@@ -69,14 +97,22 @@
         });
 
         const results = await Promise.all(latestPromises);
-        const latestMap: Record<string, MediaItem[]> = {};
         for (const r of results) {
           latestMap[r.id] = r.items;
         }
         libraryLatest = latestMap;
       }
+
+      // Persist fresh data to disk for next startup
+      saveHomepageCache({
+        resume_items: resume,
+        next_up_items: nextUp,
+        user_libraries: views,
+        library_latest: latestMap,
+        featured_items: featured,
+      }).catch((e) => console.error("Failed to save homepage cache:", e));
     } catch (e) {
-      console.error("Failed to load dashboard:", e);
+      console.error("Failed to refresh dashboard:", e);
     } finally {
       loading = false;
     }
@@ -191,7 +227,7 @@
         </div>
       {/if}
     </div>
-  {:else if loading}
+  {:else if loading && !hasCachedData}
     <div class="flex items-center justify-center h-64">
       <div class="text-center">
         <svg class="w-8 h-8 text-blue-400 animate-spin mx-auto mb-3" viewBox="0 0 24 24" fill="none">

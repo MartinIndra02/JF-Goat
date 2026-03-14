@@ -1,5 +1,6 @@
-use serde::Serialize;
-use tauri::State;
+use serde::{Deserialize, Serialize};
+use std::fs;
+use tauri::{Manager, State};
 
 use crate::api::client::JellyfinClient;
 use crate::api::media as media_api;
@@ -242,11 +243,68 @@ pub fn get_latest_media(
 
 // ── Live Jellyfin API commands (real-time data from server) ─────────────
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UserLibrary {
     pub id: String,
     pub name: String,
     pub collection_type: Option<String>,
+}
+
+// ── Homepage cache for instant startup ──────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct HomepageCache {
+    pub resume_items: Vec<MediaItem>,
+    pub next_up_items: Vec<MediaItem>,
+    pub user_libraries: Vec<UserLibrary>,
+    pub library_latest: std::collections::HashMap<String, Vec<MediaItem>>,
+    pub featured_items: Vec<MediaItem>,
+}
+
+/// Persist the homepage dashboard data to a JSON file for instant startup.
+#[tauri::command]
+pub async fn save_homepage_cache(
+    app: tauri::AppHandle,
+    data: HomepageCache,
+) -> Result<(), JfgoatError> {
+    let cache_dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| JfgoatError::Internal(e.to_string()))?;
+    let _ = fs::create_dir_all(&cache_dir);
+    let cache_path = cache_dir.join("homepage_cache.json");
+
+    let json = serde_json::to_string(&data)
+        .map_err(|e| JfgoatError::Internal(format!("JSON serialize error: {}", e)))?;
+
+    fs::write(&cache_path, json)
+        .map_err(|e| JfgoatError::Internal(format!("Cache write error: {}", e)))?;
+
+    Ok(())
+}
+
+/// Load the cached homepage data from disk. Returns null if no cache exists.
+#[tauri::command]
+pub async fn load_homepage_cache(
+    app: tauri::AppHandle,
+) -> Result<Option<HomepageCache>, JfgoatError> {
+    let cache_dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| JfgoatError::Internal(e.to_string()))?;
+    let cache_path = cache_dir.join("homepage_cache.json");
+
+    if !cache_path.exists() {
+        return Ok(None);
+    }
+
+    let json = fs::read_to_string(&cache_path)
+        .map_err(|e| JfgoatError::Internal(format!("Cache read error: {}", e)))?;
+
+    let data: HomepageCache = serde_json::from_str(&json)
+        .map_err(|e| JfgoatError::Internal(format!("Cache parse error: {}", e)))?;
+
+    Ok(Some(data))
 }
 
 /// Fetch the user's libraries (Views) directly from the Jellyfin server.

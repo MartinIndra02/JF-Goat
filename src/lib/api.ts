@@ -6,6 +6,7 @@ import type {
   SearchResult,
   MediaItem,
   UserLibrary,
+  HomepageCache,
 } from "./types";
 
 export async function connectToServer(url: string): Promise<ServerPublicInfo> {
@@ -21,6 +22,10 @@ export async function login(
 
 export async function checkAuth(): Promise<SessionInfo | null> {
   return invoke("check_auth");
+}
+
+export async function checkAuthOffline(): Promise<SessionInfo | null> {
+  return invoke("check_auth_offline");
 }
 
 export async function logout(): Promise<void> {
@@ -78,4 +83,16 @@ export async function getLatestItems(
   limit: number,
 ): Promise<MediaItem[]> {
   return invoke("get_latest_items", { parentId, limit });
+}
+
+// ── Homepage cache commands ─────────────────────────────────────────────
+
+export async function saveHomepageCache(
+  data: HomepageCache,
+): Promise<void> {
+  return invoke("save_homepage_cache", { data });
+}
+
+export async function loadHomepageCache(): Promise<HomepageCache | null> {
+  return invoke("load_homepage_cache");
 }

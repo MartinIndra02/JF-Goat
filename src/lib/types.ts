@@ -75,3 +75,11 @@ export interface SyncError {
   retries_attempted: number;
   is_fatal: boolean;
 }
+
+export interface HomepageCache {
+  resume_items: MediaItem[];
+  next_up_items: MediaItem[];
+  user_libraries: UserLibrary[];
+  library_latest: Record<string, MediaItem[]>;
+  featured_items: MediaItem[];
+}

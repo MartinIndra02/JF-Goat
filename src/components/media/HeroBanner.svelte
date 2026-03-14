@@ -42,6 +42,24 @@
     return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
   }
 
+  // Retry loading images that were returned as transparent placeholders (cache miss)
+  function handleImageLoad(event: Event) {
+    const img = event.target as HTMLImageElement;
+    if (img.naturalWidth <= 1 && img.naturalHeight <= 1) {
+      const src = img.src;
+      const retryCount = parseInt(img.dataset.retry ?? "0");
+      if (retryCount < 3) {
+        setTimeout(() => {
+          img.dataset.retry = String(retryCount + 1);
+          img.src = "";
+          img.src = src;
+        }, 1500 * (retryCount + 1));
+      }
+    } else {
+      img.classList.add("opacity-100");
+    }
+  }
+
   $effect(() => {
     if (items.length > 0) {
       startAutoPlay();
@@ -51,14 +69,15 @@
 </script>
 
 {#if items.length > 0 && current}
-  <div class="relative w-full overflow-hidden" style="height: clamp(240px, 40vh, 420px);">
+  <div class="relative w-full overflow-hidden bg-gray-800" style="height: clamp(240px, 40vh, 420px);">
     <!-- Backdrop image -->
     {#if current.backdrop_tag}
       {#key current.id}
         <img
           src={`http://jfimage.localhost/backdrop/${current.id}?tag=${current.backdrop_tag}`}
           alt={current.name}
-          class="absolute inset-0 w-full h-full object-cover animate-fade-in"
+          onload={handleImageLoad}
+          class="absolute inset-0 w-full h-full object-cover transition-opacity duration-500 opacity-0"
         />
       {/key}
     {:else if current.image_tag}
