@@ -67,6 +67,14 @@
         onload={handleImageLoad}
         class="w-full {aspectClass} object-cover transition-opacity duration-300 opacity-0"
       />
+    {:else if item.series_id}
+      <img
+        src={`http://jfimage.localhost/poster/${item.series_id}?tag=${item.series_id}`}
+        alt={item.name}
+        loading="lazy"
+        onload={handleImageLoad}
+        class="w-full {aspectClass} object-cover transition-opacity duration-300 opacity-0"
+      />
     {:else}
       <div class="w-full {aspectClass} bg-gray-800 flex items-center justify-center">
         <span class="text-gray-400 text-xs text-center px-2 line-clamp-3">{item.name}</span>
