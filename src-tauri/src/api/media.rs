@@ -331,7 +331,8 @@ pub async fn fetch_latest_items(
 ) -> Result<Vec<JellyfinItem>, JfgoatError> {
     let path = format!(
         "/Users/{}/Items/Latest?ParentId={}&Limit={}\
-         &Fields=Overview,Genres,ProductionYear,CommunityRating,OfficialRating,RunTimeTicks,ImageTags,BackdropImageTags",
+         &Fields=Overview,Genres,ProductionYear,CommunityRating,OfficialRating,RunTimeTicks,ImageTags,BackdropImageTags\
+         &GroupItems=true",
         user_id, parent_id, limit
     );
 
