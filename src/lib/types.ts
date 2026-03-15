@@ -83,3 +83,11 @@ export interface HomepageCache {
   library_latest: Record<string, MediaItem[]>;
   featured_items: MediaItem[];
 }
+
+export interface Person {
+  id: string;
+  name: string;
+  role: string | null;
+  person_type: string | null;
+  image_tag: string | null;
+}

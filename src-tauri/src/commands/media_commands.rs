@@ -8,6 +8,16 @@ use crate::db::media::MediaItem;
 use crate::error::JfgoatError;
 use crate::state::AppState;
 
+/// A person (actor, director, etc.) associated with a media item.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Person {
+    pub id: String,
+    pub name: String,
+    pub role: Option<String>,
+    pub person_type: Option<String>,
+    pub image_tag: Option<String>,
+}
+
 fn row_to_media_item(row: &rusqlite::Row) -> rusqlite::Result<MediaItem> {
     Ok(MediaItem {
         id: row.get(0)?,
@@ -565,6 +575,57 @@ pub async fn get_latest_items(
         media_api::fetch_latest_items(&jf_client, &user_id, &parent_id, limit).await?;
 
     let items: Vec<MediaItem> = items_raw
+        .into_iter()
+        .map(|item| jf_item_to_media_item(item, &server_id))
+        .collect();
+
+    Ok(items)
+}
+
+/// Fetch cast & crew (people) for a media item from the Jellyfin server.
+#[tauri::command]
+pub async fn get_item_people(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Vec<Person>, JfgoatError> {
+    let (server_url, token, user_id, device_id) = get_connection_params(&state)?;
+
+    let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
+        .with_token(&token);
+
+    let people = media_api::fetch_item_people(&jf_client, &user_id, &id).await?;
+
+    let result: Vec<Person> = people
+        .into_iter()
+        .map(|p| Person {
+            id: p.id,
+            name: p.name.unwrap_or_default(),
+            role: p.role,
+            person_type: p.person_type,
+            image_tag: p.primary_image_tag,
+        })
+        .collect();
+
+    Ok(result)
+}
+
+/// Fetch similar/related items for a media item from the Jellyfin server.
+#[tauri::command]
+pub async fn get_similar_items(
+    state: State<'_, AppState>,
+    id: String,
+    limit: u32,
+) -> Result<Vec<MediaItem>, JfgoatError> {
+    let (server_url, token, user_id, device_id) = get_connection_params(&state)?;
+    let server_id = get_server_id(&state)?;
+
+    let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
+        .with_token(&token);
+
+    let response = media_api::fetch_similar_items(&jf_client, &user_id, &id, limit).await?;
+
+    let items: Vec<MediaItem> = response
+        .items
         .into_iter()
         .map(|item| jf_item_to_media_item(item, &server_id))
         .collect();

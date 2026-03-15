@@ -263,6 +263,8 @@ pub fn run() {
             commands::get_resume_items,
             commands::get_next_up,
             commands::get_latest_items,
+            commands::get_item_people,
+            commands::get_similar_items,
             commands::save_homepage_cache,
             commands::load_homepage_cache,
         ])

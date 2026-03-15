@@ -7,6 +7,7 @@ import type {
   MediaItem,
   UserLibrary,
   HomepageCache,
+  Person,
 } from "./types";
 
 export async function connectToServer(url: string): Promise<ServerPublicInfo> {
@@ -97,6 +98,17 @@ export async function getSeriesSeasons(seriesId: string): Promise<MediaItem[]> {
 
 export async function getSeasonEpisodes(seasonId: string): Promise<MediaItem[]> {
   return invoke("get_season_episodes", { seasonId });
+}
+
+export async function getItemPeople(id: string): Promise<Person[]> {
+  return invoke("get_item_people", { id });
+}
+
+export async function getSimilarItems(
+  id: string,
+  limit: number,
+): Promise<MediaItem[]> {
+  return invoke("get_similar_items", { id, limit });
 }
 
 // ── Homepage cache commands ─────────────────────────────────────────────
