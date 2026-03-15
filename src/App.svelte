@@ -26,12 +26,15 @@
         setAuthenticated(offlineSession);
         push("/home");
 
-        // Phase 2: Verify token in the background (no spinner shown)
+        // Phase 2: Verify token in the background; auto-login if expired
         checkAuth().then((session) => {
           if (!session) {
-            // Token expired — redirect to connect
+            // Token expired and auto-login failed — redirect to login
             setUnauthenticated();
-            push("/connect");
+            push("/login");
+          } else {
+            // Update session (may have been refreshed via auto-login)
+            setAuthenticated(session);
           }
         }).catch(() => {
           // Network error — stay on homepage with cached data
@@ -39,7 +42,14 @@
         return;
       }
 
-      // No cached session — fall back to full auth check
+      // No cached token — attempt auto-login (network required) before connect
+      const session = await checkAuth().catch(() => null);
+      if (session) {
+        setAuthenticated(session);
+        push("/home");
+        return;
+      }
+
       setUnauthenticated();
       push("/connect");
     } catch {
