@@ -353,6 +353,94 @@ pub async fn fetch_latest_items(
     Ok(data)
 }
 
+/// Fetch a single item by ID from the Jellyfin server.
+/// Used as fallback when item isn't in local DB (pre-sync).
+pub async fn fetch_item_by_id(
+    client: &JellyfinClient,
+    user_id: &str,
+    item_id: &str,
+) -> Result<JellyfinItem, JfgoatError> {
+    let path = format!(
+        "/Users/{}/Items/{}?Fields=Overview,Genres,DateCreated,ProductionYear,CommunityRating,OfficialRating,RunTimeTicks,ImageTags,BackdropImageTags",
+        user_id, item_id
+    );
+
+    let resp = client.get(&path).await?;
+
+    if !resp.status().is_success() {
+        return Err(JfgoatError::Http(format!(
+            "Failed to fetch item {}: status {}",
+            item_id,
+            resp.status()
+        )));
+    }
+
+    let item: JellyfinItem = resp.json().await.map_err(|e| {
+        JfgoatError::Http(format!("Failed to parse item response: {}", e))
+    })?;
+
+    Ok(item)
+}
+
+/// Fetch seasons for a series from the Jellyfin server.
+/// Used as fallback when seasons aren't in local DB (pre-sync).
+pub async fn fetch_seasons(
+    client: &JellyfinClient,
+    user_id: &str,
+    series_id: &str,
+) -> Result<JellyfinItemsResponse, JfgoatError> {
+    let path = format!(
+        "/Shows/{}/Seasons?UserId={}&Fields=Overview,Genres,DateCreated,ProductionYear,ImageTags,BackdropImageTags",
+        series_id, user_id
+    );
+
+    let resp = client.get(&path).await?;
+
+    if !resp.status().is_success() {
+        return Err(JfgoatError::Http(format!(
+            "Failed to fetch seasons for {}: status {}",
+            series_id,
+            resp.status()
+        )));
+    }
+
+    let data: JellyfinItemsResponse = resp.json().await.map_err(|e| {
+        JfgoatError::Http(format!("Failed to parse seasons response: {}", e))
+    })?;
+
+    Ok(data)
+}
+
+/// Fetch episodes for a season from the Jellyfin server.
+/// Used as fallback when episodes aren't in local DB (pre-sync).
+pub async fn fetch_episodes(
+    client: &JellyfinClient,
+    user_id: &str,
+    series_id: &str,
+    season_id: &str,
+) -> Result<JellyfinItemsResponse, JfgoatError> {
+    let path = format!(
+        "/Shows/{}/Episodes?SeasonId={}&UserId={}&Fields=Overview,Genres,DateCreated,ProductionYear,CommunityRating,OfficialRating,RunTimeTicks,ImageTags,BackdropImageTags",
+        series_id, season_id, user_id
+    );
+
+    let resp = client.get(&path).await?;
+
+    if !resp.status().is_success() {
+        return Err(JfgoatError::Http(format!(
+            "Failed to fetch episodes for season {}: status {}",
+            season_id,
+            resp.status()
+        )));
+    }
+
+    let data: JellyfinItemsResponse = resp.json().await.map_err(|e| {
+        JfgoatError::Http(format!("Failed to parse episodes response: {}", e))
+    })?;
+
+    Ok(data)
+}
+
 /// Search items directly on the remote Jellyfin server (fallback during INITIAL_SYNC).
 pub async fn search_remote(
     client: &JellyfinClient,

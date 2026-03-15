@@ -27,13 +27,9 @@
   const progress = $derived(progressPercent(item));
   const aspectClass = $derived(landscape ? "aspect-video" : "aspect-[2/3]");
 
-  // Navigate to detail page. For episodes, navigate to the parent series.
+  // Navigate to detail page. All item types go to their own detail page.
   function handleClick() {
-    if (item.type === "Episode" && item.series_id) {
-      push(`/item?id=${item.series_id}`);
-    } else {
-      push(`/item?id=${item.id}`);
-    }
+    push(`/item?id=${item.id}`);
   }
 
   // Retry loading images that were returned as transparent placeholders (cache miss).
