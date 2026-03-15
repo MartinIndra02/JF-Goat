@@ -8,6 +8,7 @@ use crate::state::AppState;
 
 const KEYRING_SERVICE: &str = "com.jfgoat.client";
 const KEYRING_USER: &str = "access_token";
+const KEYRING_USER_PASSWORD: &str = "saved_password";
 
 fn get_device_id(state: &AppState) -> Result<String, JfgoatError> {
     let db = state.db.lock().map_err(|e| JfgoatError::Internal(e.to_string()))?;
@@ -46,6 +47,57 @@ fn keyring_clear_token() -> Result<(), JfgoatError> {
         Err(keyring::Error::NoEntry) => Ok(()),
         Err(e) => Err(JfgoatError::Internal(format!("Keyring clear error: {}", e))),
     }
+}
+
+fn keyring_store_password(password: &str) -> Result<(), JfgoatError> {
+    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER_PASSWORD)
+        .map_err(|e| JfgoatError::Internal(format!("Keyring error: {}", e)))?;
+    entry
+        .set_password(password)
+        .map_err(|e| JfgoatError::Internal(format!("Keyring store error: {}", e)))?;
+    Ok(())
+}
+
+fn keyring_load_password() -> Result<Option<String>, JfgoatError> {
+    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER_PASSWORD)
+        .map_err(|e| JfgoatError::Internal(format!("Keyring error: {}", e)))?;
+    match entry.get_password() {
+        Ok(password) => Ok(Some(password)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(e) => Err(JfgoatError::Internal(format!("Keyring load error: {}", e))),
+    }
+}
+
+fn keyring_clear_password() -> Result<(), JfgoatError> {
+    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER_PASSWORD)
+        .map_err(|e| JfgoatError::Internal(format!("Keyring error: {}", e)))?;
+    match entry.delete_credential() {
+        Ok(()) => Ok(()),
+        Err(keyring::Error::NoEntry) => Ok(()),
+        Err(e) => Err(JfgoatError::Internal(format!("Keyring clear error: {}", e))),
+    }
+}
+
+/// Cache token, server URL, and user ID in AppState after successful authentication.
+fn update_app_state_after_auth(
+    state: &AppState,
+    token: String,
+    server_url: &str,
+    user_id: &str,
+) -> Result<(), JfgoatError> {
+    {
+        let mut cached_token = state.token.write().map_err(|e| JfgoatError::Internal(e.to_string()))?;
+        *cached_token = Some(token);
+    }
+    {
+        let mut cached_url = state.server_url.write().map_err(|e| JfgoatError::Internal(e.to_string()))?;
+        *cached_url = Some(server_url.to_string());
+    }
+    {
+        let mut cached_uid = state.user_id.write().map_err(|e| JfgoatError::Internal(e.to_string()))?;
+        *cached_uid = Some(user_id.to_string());
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -93,6 +145,11 @@ pub async fn login(
     // Store token in OS credential store
     keyring_store_token(&token)?;
 
+    // Store password in OS credential store for auto-login when token expires.
+    // The OS keyring (GNOME Keyring / macOS Keychain / Windows Credential Manager)
+    // encrypts stored credentials; they are never persisted in plaintext.
+    keyring_store_password(&password)?;
+
     // Update DB with user info
     {
         let db = state.db.lock().map_err(|e| JfgoatError::Internal(e.to_string()))?;
@@ -100,14 +157,7 @@ pub async fn login(
     }
 
     // Cache in AppState
-    {
-        let mut cached_token = state.token.write().map_err(|e| JfgoatError::Internal(e.to_string()))?;
-        *cached_token = Some(token);
-    }
-    {
-        let mut user_id = state.user_id.write().map_err(|e| JfgoatError::Internal(e.to_string()))?;
-        *user_id = Some(result.user_id.clone());
-    }
+    update_app_state_after_auth(&state, token, &server_url, &result.user_id)?;
 
     Ok(result)
 }
@@ -133,45 +183,65 @@ pub async fn check_auth(
         _ => return Ok(None),
     };
 
-    // Try to load token from OS credential store
-    let token = match keyring_load_token()? {
-        Some(t) => t,
+    let device_id = get_device_id(&state)?;
+
+    // Try to validate the stored token first
+    if let Some(token) = keyring_load_token()? {
+        let jf_client = JellyfinClient::new(&state.http_client, &server.url, &device_id)
+            .with_token(&token);
+
+        let resp = jf_client.get("/System/Info").await;
+        match resp {
+            Ok(r) if r.status().is_success() => {
+                // Token is valid — cache in AppState
+                update_app_state_after_auth(&state, token, &server.url, &user_id)?;
+
+                return Ok(Some(SessionInfo {
+                    user_id,
+                    username,
+                    server_id: server.id,
+                    server_name: server.name,
+                    server_url: server.url,
+                }));
+            }
+            _ => {
+                // Token invalid — clear it and fall through to auto-login
+                keyring_clear_token()?;
+            }
+        }
+    }
+
+    // Token missing or invalid — attempt auto-login with stored credentials
+    let password = match keyring_load_password()? {
+        Some(p) => p,
         None => return Ok(None),
     };
 
-    // Optionally verify token with a lightweight API call
-    let device_id = get_device_id(&state)?;
-    let jf_client = JellyfinClient::new(&state.http_client, &server.url, &device_id)
-        .with_token(&token);
-
-    let resp = jf_client.get("/System/Info").await;
-    match resp {
-        Ok(r) if r.status().is_success() => {
-            // Token is valid — cache in AppState
+    let jf_client = JellyfinClient::new(&state.http_client, &server.url, &device_id);
+    match auth::authenticate_by_name(&jf_client, &username, &password).await {
+        Ok((new_token, result)) => {
+            // Auto-login succeeded — store new token and update AppState
+            keyring_store_token(&new_token)?;
             {
-                let mut cached_token = state.token.write().map_err(|e| JfgoatError::Internal(e.to_string()))?;
-                *cached_token = Some(token);
+                let db = state.db.lock().map_err(|e| JfgoatError::Internal(e.to_string()))?;
+                servers::update_server_user(&db, &result.server_id, &result.user_id, &result.username)?;
             }
-            {
-                let mut cached_url = state.server_url.write().map_err(|e| JfgoatError::Internal(e.to_string()))?;
-                *cached_url = Some(server.url.clone());
-            }
-            {
-                let mut cached_uid = state.user_id.write().map_err(|e| JfgoatError::Internal(e.to_string()))?;
-                *cached_uid = Some(user_id.clone());
-            }
-
+            update_app_state_after_auth(&state, new_token, &server.url, &result.user_id)?;
             Ok(Some(SessionInfo {
-                user_id,
-                username,
-                server_id: server.id,
+                user_id: result.user_id,
+                username: result.username,
+                server_id: result.server_id,
                 server_name: server.name,
                 server_url: server.url,
             }))
         }
-        _ => {
-            // Token invalid — clear it
-            keyring_clear_token()?;
+        Err(JfgoatError::Auth(_)) => {
+            // Invalid credentials — clear stored password to avoid retry loops
+            keyring_clear_password()?;
+            Ok(None)
+        }
+        Err(_) => {
+            // Network or server error — keep credentials for next attempt
             Ok(None)
         }
     }
@@ -234,6 +304,7 @@ pub async fn logout(
 ) -> Result<(), JfgoatError> {
     // Clear OS credential store
     keyring_clear_token()?;
+    keyring_clear_password()?;
 
     // Clear cached state
     {
