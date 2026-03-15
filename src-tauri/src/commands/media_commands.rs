@@ -378,6 +378,83 @@ pub async fn get_next_up(
     Ok(items)
 }
 
+// ── Detail page queries (local DB) ──────────────────────────────────────
+
+/// Get a single media item by ID from the local database.
+#[tauri::command]
+pub fn get_item_by_id(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Option<MediaItem>, JfgoatError> {
+    let db = state
+        .db
+        .lock()
+        .map_err(|e| JfgoatError::Internal(e.to_string()))?;
+
+    let sql = format!(
+        "SELECT {} FROM media_items WHERE id = ?1",
+        SELECT_COLUMNS
+    );
+    let mut stmt = db.prepare(&sql)?;
+    let result = stmt.query_row(rusqlite::params![id], |row| row_to_media_item(row));
+
+    match result {
+        Ok(item) => Ok(Some(item)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Get seasons for a series from the local database.
+#[tauri::command]
+pub fn get_series_seasons(
+    state: State<'_, AppState>,
+    series_id: String,
+) -> Result<Vec<MediaItem>, JfgoatError> {
+    let db = state
+        .db
+        .lock()
+        .map_err(|e| JfgoatError::Internal(e.to_string()))?;
+
+    let sql = format!(
+        "SELECT {} FROM media_items WHERE series_id = ?1 AND type = 'Season' ORDER BY index_number ASC",
+        SELECT_COLUMNS
+    );
+    let mut stmt = db.prepare(&sql)?;
+    let rows = stmt.query_map(rusqlite::params![series_id], |row| row_to_media_item(row))?;
+
+    let mut items = Vec::new();
+    for row in rows {
+        items.push(row?);
+    }
+    Ok(items)
+}
+
+/// Get episodes for a season from the local database.
+#[tauri::command]
+pub fn get_season_episodes(
+    state: State<'_, AppState>,
+    season_id: String,
+) -> Result<Vec<MediaItem>, JfgoatError> {
+    let db = state
+        .db
+        .lock()
+        .map_err(|e| JfgoatError::Internal(e.to_string()))?;
+
+    let sql = format!(
+        "SELECT {} FROM media_items WHERE season_id = ?1 AND type = 'Episode' ORDER BY index_number ASC",
+        SELECT_COLUMNS
+    );
+    let mut stmt = db.prepare(&sql)?;
+    let rows = stmt.query_map(rusqlite::params![season_id], |row| row_to_media_item(row))?;
+
+    let mut items = Vec::new();
+    for row in rows {
+        items.push(row?);
+    }
+    Ok(items)
+}
+
 /// Fetch latest items for a specific library view from the Jellyfin server.
 #[tauri::command]
 pub async fn get_latest_items(

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { push } from "svelte-spa-router";
   import type { MediaItem } from "../../lib/types";
 
   let {
@@ -26,6 +27,16 @@
   const progress = $derived(progressPercent(item));
   const aspectClass = $derived(landscape ? "aspect-video" : "aspect-[2/3]");
 
+  // Navigate to detail page. For episodes in continue watching, navigate to the episode.
+  // For episodes in next up, navigate to the series.
+  function handleClick() {
+    if (item.type === "Episode" && item.series_id) {
+      push(`/item?id=${item.series_id}`);
+    } else {
+      push(`/item?id=${item.id}`);
+    }
+  }
+
   // Retry loading images that were returned as transparent placeholders (cache miss).
   // The background fetch will populate the cache, so the retry will succeed.
   function handleImageLoad(event: Event) {
@@ -49,7 +60,12 @@
   }
 </script>
 
-<div class="group cursor-pointer flex-shrink-0 {landscape ? 'w-56 sm:w-64' : 'w-32 sm:w-36'}">
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<!-- svelte-ignore a11y_click_events_have_key_events -->
+<div
+  onclick={handleClick}
+  class="group cursor-pointer flex-shrink-0 {landscape ? 'w-56 sm:w-64' : 'w-32 sm:w-36'}"
+>
   <div class="relative overflow-hidden rounded-lg shadow-md transition-transform duration-200 group-hover:scale-105 group-hover:shadow-xl">
     {#if landscape && item.backdrop_tag}
       <img
