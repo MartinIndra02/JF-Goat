@@ -25,6 +25,8 @@
   // For episode detail: sibling episodes from same season
   let siblingEpisodes = $state<MediaItem[]>([]);
 
+  const IMAGE_BASE = "http://jfimage.localhost";
+
   // Derived: resume episode for series detail
   const resumeEpisode = $derived.by(() => {
     // Look through all cached episode lists for an in-progress episode
@@ -45,6 +47,11 @@
     }
     return null;
   });
+
+  /** Extract the season number from a season name (e.g. "Season 6" → "6") */
+  function seasonNumber(seasonName: string | null | undefined): string {
+    return seasonName?.replace("Season ", "") ?? "?";
+  }
 
   function formatRuntime(ticks: number | null): string {
     if (!ticks) return "";
@@ -119,20 +126,20 @@
 
   function backdropUrl(itm: MediaItem): string {
     if (itm.backdrop_tag) {
-      return `http://jfimage.localhost/backdrop/${itm.id}?tag=${itm.backdrop_tag}`;
+      return `${IMAGE_BASE}/backdrop/${itm.id}?tag=${itm.backdrop_tag}`;
     }
     if (itm.series_id) {
-      return `http://jfimage.localhost/backdrop/${itm.series_id}?tag=${itm.series_id}`;
+      return `${IMAGE_BASE}/backdrop/${itm.series_id}?tag=${itm.series_id}`;
     }
     return "";
   }
 
   function posterUrl(itm: MediaItem): string {
     if (itm.image_tag) {
-      return `http://jfimage.localhost/poster/${itm.id}?tag=${itm.image_tag}`;
+      return `${IMAGE_BASE}/poster/${itm.id}?tag=${itm.image_tag}`;
     }
     if (itm.series_id) {
-      return `http://jfimage.localhost/poster/${itm.series_id}?tag=${itm.series_id}`;
+      return `${IMAGE_BASE}/poster/${itm.series_id}?tag=${itm.series_id}`;
     }
     return "";
   }
@@ -240,7 +247,7 @@
         <h1 class="text-2xl sm:text-3xl font-bold text-white leading-tight mb-2">
           {#if item.type === "Episode"}
             {#if item.season_name && item.index_number}
-              <span class="text-gray-400 font-medium">S{item.season_name?.replace("Season ", "") ?? "?"} · E{item.index_number}</span>
+              <span class="text-gray-400 font-medium">S{seasonNumber(item.season_name)} · E{item.index_number}</span>
               <span class="text-gray-600 mx-1">—</span>
             {/if}
           {/if}
@@ -256,6 +263,7 @@
           {/if}
 
           {#if item.date_created && item.type === "Episode"}
+            <!-- date_created maps to the episode's premiere/air date from Jellyfin -->
             <span class="text-gray-400 flex items-center gap-1">
               <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
                 <path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"/>
@@ -366,7 +374,7 @@
                 <div class="relative">
                   {#if episode.backdrop_tag}
                     <img
-                      src={`http://jfimage.localhost/backdrop/${episode.id}?tag=${episode.backdrop_tag}`}
+                      src={`${IMAGE_BASE}/backdrop/${episode.id}?tag=${episode.backdrop_tag}`}
                       alt={episode.name}
                       onload={handleImageLoad}
                       class="w-full aspect-video object-cover transition-opacity duration-300 opacity-0"
@@ -394,7 +402,7 @@
                 </div>
                 <div class="p-2.5">
                   <p class="text-xs text-gray-500 mb-0.5">
-                    S{item?.season_name?.replace("Season ", "") ?? "?"} · E{episode.index_number ?? "?"}
+                    S{seasonNumber(item?.season_name)} · E{episode.index_number ?? "?"}
                     {#if episode.run_time_ticks}
                       <span class="ml-1">{formatRuntime(episode.run_time_ticks)}</span>
                     {/if}
@@ -517,7 +525,7 @@
             </svg>
             <span>
               {progressPercent(resumeEpisode) > 0 ? "Resume" : "Play"}
-              S{resumeEpisode.season_name?.replace("Season ", "") ?? "?"} · E{resumeEpisode.index_number ?? "?"}
+              S{seasonNumber(resumeEpisode.season_name)} · E{resumeEpisode.index_number ?? "?"}
             </span>
             {#if progressPercent(resumeEpisode) > 0}
               <div class="absolute bottom-0 left-0 right-0 h-1 bg-blue-900">
@@ -597,7 +605,7 @@
                   <div class="relative">
                     {#if episode.backdrop_tag}
                       <img
-                        src={`http://jfimage.localhost/backdrop/${episode.id}?tag=${episode.backdrop_tag}`}
+                        src={`${IMAGE_BASE}/backdrop/${episode.id}?tag=${episode.backdrop_tag}`}
                         alt={episode.name}
                         onload={handleImageLoad}
                         class="w-full aspect-video object-cover transition-opacity duration-300 opacity-0"
@@ -625,7 +633,7 @@
                   </div>
                   <div class="p-2.5">
                     <p class="text-xs text-gray-500 mb-0.5">
-                      S{selectedSeason?.name?.replace("Season ", "") ?? "?"} · E{episode.index_number ?? "?"}
+                      S{seasonNumber(selectedSeason?.name)} · E{episode.index_number ?? "?"}
                       {#if episode.run_time_ticks}
                         <span class="ml-1">{formatRuntime(episode.run_time_ticks)}</span>
                       {/if}
@@ -654,7 +662,7 @@
                 <div class="relative">
                   {#if season.image_tag}
                     <img
-                      src={`http://jfimage.localhost/poster/${season.id}?tag=${season.image_tag}`}
+                      src={`${IMAGE_BASE}/poster/${season.id}?tag=${season.image_tag}`}
                       alt={season.name}
                       onload={handleImageLoad}
                       class="w-full aspect-[2/3] object-cover transition-opacity duration-300 opacity-0"
@@ -785,7 +793,7 @@
                 <div class="flex-shrink-0 w-36 sm:w-44 relative overflow-hidden rounded-md">
                   {#if episode.backdrop_tag}
                     <img
-                      src={`http://jfimage.localhost/backdrop/${episode.id}?tag=${episode.backdrop_tag}`}
+                      src={`${IMAGE_BASE}/backdrop/${episode.id}?tag=${episode.backdrop_tag}`}
                       alt={episode.name}
                       onload={handleImageLoad}
                       class="w-full aspect-video object-cover transition-opacity duration-300 opacity-0"
@@ -816,7 +824,7 @@
                 <div class="flex-1 min-w-0 py-1">
                   <div class="flex items-center gap-2 mb-1">
                     <span class="text-xs text-gray-500 font-medium">
-                      S{item?.name?.replace("Season ", "") ?? "?"} · E{episode.index_number ?? "?"}
+                      S{seasonNumber(item?.name)} · E{episode.index_number ?? "?"}
                     </span>
                     {#if episode.run_time_ticks}
                       <span class="text-xs text-gray-500">{formatRuntime(episode.run_time_ticks)}</span>
@@ -841,7 +849,7 @@
                 <div class="relative">
                   {#if episode.backdrop_tag}
                     <img
-                      src={`http://jfimage.localhost/backdrop/${episode.id}?tag=${episode.backdrop_tag}`}
+                      src={`${IMAGE_BASE}/backdrop/${episode.id}?tag=${episode.backdrop_tag}`}
                       alt={episode.name}
                       onload={handleImageLoad}
                       class="w-full aspect-video object-cover transition-opacity duration-300 opacity-0"
