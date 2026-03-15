@@ -1,0 +1,25 @@
+[package]
+name = "jfgoat"
+version = "0.1.0"
+description = "Ultra-fast Jellyfin client for Windows"
+authors = ["you"]
+edition = "2021"
+
+[lib]
+name = "jfgoat_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+rusqlite = { version = "0.34", features = ["bundled", "bundled-full"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+keyring = "3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt", "time", "sync"] }
+urlencoding = "2"
+futures = "0.3"
