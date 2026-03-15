@@ -521,7 +521,7 @@
         <div class="mb-8">
           <h2 class="text-lg font-semibold text-white mb-3">Cast & Crew</h2>
           <div class="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-6 px-6">
-            {#each people as person (person.id + (person.role ?? ''))}
+            {#each people as person, i (person.id + '-' + i)}
               <div class="flex-shrink-0 w-24 text-center">
                 <div class="relative w-20 h-20 mx-auto rounded-full overflow-hidden bg-gray-800 mb-2">
                   {#if person.image_tag}
@@ -862,7 +862,7 @@
         <div class="mb-8">
           <h2 class="text-lg font-semibold text-white mb-3">Cast & Crew</h2>
           <div class="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-6 px-6">
-            {#each people as person (person.id + (person.role ?? ''))}
+            {#each people as person, i (person.id + '-' + i)}
               <div class="flex-shrink-0 w-24 text-center">
                 <div class="relative w-20 h-20 mx-auto rounded-full overflow-hidden bg-gray-800 mb-2">
                   {#if person.image_tag}
