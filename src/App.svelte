@@ -11,11 +11,13 @@
   import ServerConnect from "./views/ServerConnect.svelte";
   import Login from "./views/Login.svelte";
   import Home from "./views/Home.svelte";
+  import ItemDetail from "./views/ItemDetail.svelte";
 
   const routes = {
     "/connect": ServerConnect,
     "/login": Login,
     "/home": Home,
+    "/item": ItemDetail,
   };
 
   async function init() {

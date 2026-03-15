@@ -85,6 +85,20 @@ export async function getLatestItems(
   return invoke("get_latest_items", { parentId, limit });
 }
 
+// ── Detail page commands ─────────────────────────────────────────────
+
+export async function getItemById(id: string): Promise<MediaItem | null> {
+  return invoke("get_item_by_id", { id });
+}
+
+export async function getSeriesSeasons(seriesId: string): Promise<MediaItem[]> {
+  return invoke("get_series_seasons", { seriesId });
+}
+
+export async function getSeasonEpisodes(seasonId: string): Promise<MediaItem[]> {
+  return invoke("get_season_episodes", { seasonId });
+}
+
 // ── Homepage cache commands ─────────────────────────────────────────────
 
 export async function saveHomepageCache(

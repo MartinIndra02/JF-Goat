@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { push } from "svelte-spa-router";
   import type { MediaItem } from "../../lib/types";
 
   let {
@@ -31,6 +32,12 @@
   function goTo(index: number) {
     currentIndex = index;
     startAutoPlay();
+  }
+
+  function navigateToItem() {
+    if (current) {
+      push(`/item?id=${current.id}`);
+    }
   }
 
   function formatRuntime(ticks: number | null): string {
@@ -93,7 +100,9 @@
     <div class="absolute inset-0 bg-gradient-to-r from-gray-900/80 via-transparent to-transparent"></div>
 
     <!-- Content -->
-    <div class="absolute bottom-0 left-0 right-0 p-6 pb-8">
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <div onclick={navigateToItem} class="absolute bottom-0 left-0 right-0 p-6 pb-8 cursor-pointer">
       <div class="max-w-xl">
         {#key current.id}
           <div class="animate-fade-in">

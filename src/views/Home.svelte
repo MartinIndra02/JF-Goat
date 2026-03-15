@@ -111,6 +111,10 @@
         library_latest: latestMap,
         featured_items: featured,
       }).catch((e) => console.error("Failed to save homepage cache:", e));
+
+      // Pre-cache detail page images for continue watching and next up items
+      // so that detail pages load instantly when clicked
+      prefetchDetailImages([...resume, ...nextUp]);
     } catch (e) {
       console.error("Failed to refresh dashboard:", e);
     } finally {
@@ -163,6 +167,35 @@
       if (libraryLatest[lib.id]?.length > 0) return true;
     }
     return false;
+  }
+
+  /**
+   * Pre-cache images for items that appear in continue watching and next up.
+   * This triggers the jfimage protocol handler to fetch and cache images
+   * in the background, so detail pages load instantly when clicked.
+   */
+  function prefetchDetailImages(items: MediaItem[]) {
+    const seen = new Set<string>();
+    for (const item of items) {
+      // Pre-cache poster images
+      if (item.image_tag && !seen.has(`poster-${item.id}`)) {
+        seen.add(`poster-${item.id}`);
+        const img = new Image();
+        img.src = `http://jfimage.localhost/poster/${item.id}?tag=${item.image_tag}`;
+      }
+      // Pre-cache backdrop images
+      if (item.backdrop_tag && !seen.has(`backdrop-${item.id}`)) {
+        seen.add(`backdrop-${item.id}`);
+        const img = new Image();
+        img.src = `http://jfimage.localhost/backdrop/${item.id}?tag=${item.backdrop_tag}`;
+      }
+      // Pre-cache series poster for episodes
+      if (item.series_id && !seen.has(`poster-${item.series_id}`)) {
+        seen.add(`poster-${item.series_id}`);
+        const img = new Image();
+        img.src = `http://jfimage.localhost/poster/${item.series_id}?tag=${item.series_id}`;
+      }
+    }
   }
 </script>
 

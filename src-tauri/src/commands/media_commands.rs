@@ -378,6 +378,176 @@ pub async fn get_next_up(
     Ok(items)
 }
 
+// ── Detail page queries (local DB → API fallback) ───────────────────────
+
+/// Get a single media item by ID. Tries local DB first; falls back to
+/// the live Jellyfin API if the item hasn't been synced yet.
+#[tauri::command]
+pub async fn get_item_by_id(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Option<MediaItem>, JfgoatError> {
+    // 1. Try local DB first (fast path)
+    {
+        let db = state
+            .db
+            .lock()
+            .map_err(|e| JfgoatError::Internal(e.to_string()))?;
+
+        let sql = format!(
+            "SELECT {} FROM media_items WHERE id = ?1",
+            SELECT_COLUMNS
+        );
+        let mut stmt = db.prepare(&sql)?;
+        let result = stmt.query_row(rusqlite::params![id], |row| row_to_media_item(row));
+
+        match result {
+            Ok(item) => return Ok(Some(item)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => { /* fall through to API */ }
+            Err(e) => return Err(e.into()),
+        }
+    }
+
+    // 2. Fallback: fetch from Jellyfin API
+    let params = get_connection_params(&state);
+    let server_id = get_server_id(&state);
+    if let (Ok((server_url, token, user_id, device_id)), Ok(sid)) = (params, server_id) {
+        let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
+            .with_token(&token);
+
+        match media_api::fetch_item_by_id(&jf_client, &user_id, &id).await {
+            Ok(jf_item) => return Ok(Some(jf_item_to_media_item(jf_item, &sid))),
+            Err(e) => {
+                println!("[detail] API fallback failed for item {}: {}", id, e);
+            }
+        }
+    }
+
+    Ok(None)
+}
+
+/// Get seasons for a series. Tries local DB first; falls back to
+/// the live Jellyfin API if the seasons haven't been synced yet.
+#[tauri::command]
+pub async fn get_series_seasons(
+    state: State<'_, AppState>,
+    series_id: String,
+) -> Result<Vec<MediaItem>, JfgoatError> {
+    // 1. Try local DB first
+    {
+        let db = state
+            .db
+            .lock()
+            .map_err(|e| JfgoatError::Internal(e.to_string()))?;
+
+        let sql = format!(
+            "SELECT {} FROM media_items WHERE series_id = ?1 AND type = 'Season' ORDER BY index_number ASC",
+            SELECT_COLUMNS
+        );
+        let mut stmt = db.prepare(&sql)?;
+        let rows = stmt.query_map(rusqlite::params![series_id], |row| row_to_media_item(row))?;
+
+        let mut items = Vec::new();
+        for row in rows {
+            items.push(row?);
+        }
+        if !items.is_empty() {
+            return Ok(items);
+        }
+    }
+
+    // 2. Fallback: fetch from Jellyfin API
+    let params = get_connection_params(&state);
+    let server_id = get_server_id(&state);
+    if let (Ok((server_url, token, user_id, device_id)), Ok(sid)) = (params, server_id) {
+        let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
+            .with_token(&token);
+
+        match media_api::fetch_seasons(&jf_client, &user_id, &series_id).await {
+            Ok(response) => {
+                let items: Vec<MediaItem> = response
+                    .items
+                    .into_iter()
+                    .map(|item| jf_item_to_media_item(item, &sid))
+                    .collect();
+                return Ok(items);
+            }
+            Err(e) => {
+                println!("[detail] API fallback failed for seasons of {}: {}", series_id, e);
+            }
+        }
+    }
+
+    Ok(vec![])
+}
+
+/// Get episodes for a season. Tries local DB first; falls back to
+/// the live Jellyfin API if the episodes haven't been synced yet.
+#[tauri::command]
+pub async fn get_season_episodes(
+    state: State<'_, AppState>,
+    season_id: String,
+) -> Result<Vec<MediaItem>, JfgoatError> {
+    // 1. Try local DB first
+    let series_id_for_fallback: Option<String>;
+    {
+        let db = state
+            .db
+            .lock()
+            .map_err(|e| JfgoatError::Internal(e.to_string()))?;
+
+        let sql = format!(
+            "SELECT {} FROM media_items WHERE season_id = ?1 AND type = 'Episode' ORDER BY index_number ASC",
+            SELECT_COLUMNS
+        );
+        let mut stmt = db.prepare(&sql)?;
+        let rows = stmt.query_map(rusqlite::params![season_id], |row| row_to_media_item(row))?;
+
+        let mut items = Vec::new();
+        for row in rows {
+            items.push(row?);
+        }
+        if !items.is_empty() {
+            return Ok(items);
+        }
+
+        // For API fallback we need the series_id; try to get it from the season record
+        series_id_for_fallback = db
+            .query_row(
+                "SELECT series_id FROM media_items WHERE id = ?1",
+                rusqlite::params![season_id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .unwrap_or(None);
+    }
+
+    // 2. Fallback: fetch from Jellyfin API
+    if let Some(ref sid_for_api) = series_id_for_fallback {
+        let params = get_connection_params(&state);
+        let server_id = get_server_id(&state);
+        if let (Ok((server_url, token, user_id, device_id)), Ok(sid)) = (params, server_id) {
+            let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
+                .with_token(&token);
+
+            match media_api::fetch_episodes(&jf_client, &user_id, sid_for_api, &season_id).await {
+                Ok(response) => {
+                    let items: Vec<MediaItem> = response
+                        .items
+                        .into_iter()
+                        .map(|item| jf_item_to_media_item(item, &sid))
+                        .collect();
+                    return Ok(items);
+                }
+                Err(e) => {
+                    println!("[detail] API fallback failed for episodes of season {}: {}", season_id, e);
+                }
+            }
+        }
+    }
+
+    Ok(vec![])
+}
+
 /// Fetch latest items for a specific library view from the Jellyfin server.
 #[tauri::command]
 pub async fn get_latest_items(
