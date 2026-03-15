@@ -5,8 +5,10 @@
     getItemById,
     getSeriesSeasons,
     getSeasonEpisodes,
+    getItemPeople,
+    getSimilarItems,
   } from "../lib/api";
-  import type { MediaItem } from "../lib/types";
+  import type { MediaItem, Person } from "../lib/types";
 
   // The item ID is passed as a query param: /item?id=xxx
   const params = new URLSearchParams($querystring);
@@ -24,6 +26,17 @@
 
   // For episode detail: sibling episodes from same season
   let siblingEpisodes = $state<MediaItem[]>([]);
+
+  // Cast & crew
+  let people = $state<Person[]>([]);
+  let peopleLoading = $state(false);
+
+  // Similar/Related items
+  let similarItems = $state<MediaItem[]>([]);
+  let similarLoading = $state(false);
+
+  // Context menu (three dots)
+  let contextMenuOpen = $state(false);
 
   const IMAGE_BASE = "http://jfimage.localhost";
 
@@ -100,6 +113,41 @@
 
   function goBack() {
     window.history.length > 1 ? window.history.back() : push("/home");
+  }
+
+  function closeContextMenu() {
+    contextMenuOpen = false;
+  }
+
+  async function loadPeople(itemId: string) {
+    peopleLoading = true;
+    try {
+      people = await getItemPeople(itemId);
+    } catch (e) {
+      console.error("Failed to load people:", e);
+      people = [];
+    } finally {
+      peopleLoading = false;
+    }
+  }
+
+  async function loadSimilarItems(itemId: string) {
+    similarLoading = true;
+    try {
+      similarItems = await getSimilarItems(itemId, 12);
+    } catch (e) {
+      console.error("Failed to load similar items:", e);
+      similarItems = [];
+    } finally {
+      similarLoading = false;
+    }
+  }
+
+  function personImageUrl(person: Person): string {
+    if (person.image_tag) {
+      return `${IMAGE_BASE}/poster/${person.id}?tag=${person.image_tag}`;
+    }
+    return "";
   }
 
   async function loadSeasonEpisodes(seasonId: string) {
@@ -179,6 +227,16 @@
       // Episode/Movie: load sibling episodes from same season
       if (item.type === "Episode" && item.season_id) {
         siblingEpisodes = await getSeasonEpisodes(item.season_id);
+      }
+
+      // Load cast & crew for Episode, Movie, and Series
+      if (item.type === "Episode" || item.type === "Movie" || item.type === "Series") {
+        loadPeople(item.id);
+      }
+
+      // Load similar items for Series and Movie
+      if (item.type === "Series" || item.type === "Movie") {
+        loadSimilarItems(item.id);
       }
     } catch (e) {
       console.error("Failed to load item details:", e);
@@ -351,6 +409,49 @@
               <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
             </svg>
           </button>
+
+          <!-- Context menu (three dots) -->
+          <div class="relative">
+            <button
+              aria-label="More options"
+              onclick={() => contextMenuOpen = !contextMenuOpen}
+              class="p-2.5 rounded-lg hover:bg-white/10 transition-colors text-gray-400"
+            >
+              <svg class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"/>
+              </svg>
+            </button>
+
+            {#if contextMenuOpen}
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <!-- svelte-ignore a11y_click_events_have_key_events -->
+              <div onclick={closeContextMenu} class="fixed inset-0 z-40"></div>
+              <div class="absolute right-0 top-full mt-1 w-52 bg-gray-800 border border-white/10 rounded-lg shadow-xl z-50 py-1 overflow-hidden">
+                {#if item.type === "Episode" && item.series_id}
+                  <button onclick={() => { closeContextMenu(); item?.series_id && navigateToItem(item.series_id); }} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
+                    <svg class="w-4 h-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM2 11a2 2 0 012-2h12a2 2 0 012 2v4a2 2 0 01-2 2H4a2 2 0 01-2-2v-4z"/></svg>
+                    Open show
+                  </button>
+                {/if}
+                <button onclick={closeContextMenu} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
+                  <svg class="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                  Play from start
+                </button>
+                <button onclick={closeContextMenu} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
+                  <svg class="w-4 h-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clip-rule="evenodd"/></svg>
+                  Add to playlist
+                </button>
+                <button onclick={closeContextMenu} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
+                  <svg class="w-4 h-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                  {item.played ? "Mark as unwatched" : "Mark as watched"}
+                </button>
+                <button onclick={closeContextMenu} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
+                  <svg class="w-4 h-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd"/></svg>
+                  {item.is_favorite ? "Remove from favorites" : "Add to favorites"}
+                </button>
+              </div>
+            {/if}
+          </div>
         </div>
       </div>
 
@@ -414,11 +515,43 @@
           </div>
         </div>
       {/if}
+
+      <!-- Cast & Crew -->
+      {#if people.length > 0}
+        <div class="mb-8">
+          <h2 class="text-lg font-semibold text-white mb-3">Cast & Crew</h2>
+          <div class="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-6 px-6">
+            {#each people as person (person.id + (person.role ?? ''))}
+              <div class="flex-shrink-0 w-24 text-center">
+                <div class="relative w-20 h-20 mx-auto rounded-full overflow-hidden bg-gray-800 mb-2">
+                  {#if person.image_tag}
+                    <img
+                      src={personImageUrl(person)}
+                      alt={person.name}
+                      onload={handleImageLoad}
+                      class="w-full h-full object-cover transition-opacity duration-300 opacity-0"
+                    />
+                  {:else}
+                    <div class="w-full h-full flex items-center justify-center">
+                      <svg class="w-8 h-8 text-gray-600" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/>
+                      </svg>
+                    </div>
+                  {/if}
+                </div>
+                <p class="text-xs text-white font-medium truncate">{person.name}</p>
+                {#if person.role}
+                  <p class="text-xs text-gray-500 truncate">{person.role}</p>
+                {:else if person.person_type}
+                  <p class="text-xs text-gray-500 truncate">{person.person_type}</p>
+                {/if}
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
     </div>
   </main>
-
-<!-- ════════════════════════════════════════════════════════════════════
-     SERIES DETAIL
      ════════════════════════════════════════════════════════════════════ -->
 {:else if item && item.type === "Series"}
   <main class="min-h-screen bg-gray-900 text-white">
@@ -556,6 +689,39 @@
               <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
             </svg>
           </button>
+
+          <!-- Context menu (three dots) -->
+          <div class="relative">
+            <button
+              aria-label="More options"
+              onclick={() => contextMenuOpen = !contextMenuOpen}
+              class="p-2.5 rounded-lg hover:bg-white/10 transition-colors text-gray-400"
+            >
+              <svg class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"/>
+              </svg>
+            </button>
+
+            {#if contextMenuOpen}
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <!-- svelte-ignore a11y_click_events_have_key_events -->
+              <div onclick={closeContextMenu} class="fixed inset-0 z-40"></div>
+              <div class="absolute right-0 top-full mt-1 w-52 bg-gray-800 border border-white/10 rounded-lg shadow-xl z-50 py-1 overflow-hidden">
+                <button onclick={closeContextMenu} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
+                  <svg class="w-4 h-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                  {item.played ? "Mark as unwatched" : "Mark as watched"}
+                </button>
+                <button onclick={closeContextMenu} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
+                  <svg class="w-4 h-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd"/></svg>
+                  {item.is_favorite ? "Remove from favorites" : "Add to favorites"}
+                </button>
+                <button onclick={closeContextMenu} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
+                  <svg class="w-4 h-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clip-rule="evenodd"/></svg>
+                  Add to playlist
+                </button>
+              </div>
+            {/if}
+          </div>
         </div>
       </div>
 
@@ -690,11 +856,80 @@
           </div>
         </div>
       {/if}
+
+      <!-- Cast & Crew -->
+      {#if people.length > 0}
+        <div class="mb-8">
+          <h2 class="text-lg font-semibold text-white mb-3">Cast & Crew</h2>
+          <div class="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-6 px-6">
+            {#each people as person (person.id + (person.role ?? ''))}
+              <div class="flex-shrink-0 w-24 text-center">
+                <div class="relative w-20 h-20 mx-auto rounded-full overflow-hidden bg-gray-800 mb-2">
+                  {#if person.image_tag}
+                    <img
+                      src={personImageUrl(person)}
+                      alt={person.name}
+                      onload={handleImageLoad}
+                      class="w-full h-full object-cover transition-opacity duration-300 opacity-0"
+                    />
+                  {:else}
+                    <div class="w-full h-full flex items-center justify-center">
+                      <svg class="w-8 h-8 text-gray-600" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/>
+                      </svg>
+                    </div>
+                  {/if}
+                </div>
+                <p class="text-xs text-white font-medium truncate">{person.name}</p>
+                {#if person.role}
+                  <p class="text-xs text-gray-500 truncate">{person.role}</p>
+                {:else if person.person_type}
+                  <p class="text-xs text-gray-500 truncate">{person.person_type}</p>
+                {/if}
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
+
+      <!-- Related / Similar -->
+      {#if similarItems.length > 0}
+        <div class="mb-8">
+          <h2 class="text-lg font-semibold text-white mb-3">Related</h2>
+          <div class="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-6 px-6">
+            {#each similarItems as related (related.id)}
+              <button
+                onclick={() => navigateToItem(related.id)}
+                class="flex-shrink-0 w-28 rounded-lg overflow-hidden bg-white/5 hover:bg-white/10 transition-colors text-left cursor-pointer group"
+              >
+                <div class="relative">
+                  {#if related.image_tag}
+                    <img
+                      src={`${IMAGE_BASE}/poster/${related.id}?tag=${related.image_tag}`}
+                      alt={related.name}
+                      onload={handleImageLoad}
+                      class="w-full aspect-[2/3] object-cover transition-opacity duration-300 opacity-0"
+                    />
+                  {:else}
+                    <div class="w-full aspect-[2/3] bg-gray-800 flex items-center justify-center">
+                      <span class="text-gray-500 text-xs text-center px-2">{related.name}</span>
+                    </div>
+                  {/if}
+                  <div class="absolute inset-0 bg-gray-800 -z-10"></div>
+                </div>
+                <div class="p-2">
+                  <p class="text-xs text-white truncate font-medium">{related.name}</p>
+                  {#if related.production_year}
+                    <p class="text-xs text-gray-500">{related.production_year}</p>
+                  {/if}
+                </div>
+              </button>
+            {/each}
+          </div>
+        </div>
+      {/if}
     </div>
   </main>
-
-<!-- ════════════════════════════════════════════════════════════════════
-     SEASON DETAIL
      ════════════════════════════════════════════════════════════════════ -->
 {:else if item && item.type === "Season"}
   <main class="min-h-screen bg-gray-900 text-white">
@@ -775,7 +1010,19 @@
 
       <!-- Season overview -->
       {#if item.overview}
-        <p class="text-gray-300 text-sm leading-relaxed mb-5">{item.overview}</p>
+        <div class="mb-5">
+          <p class="text-gray-300 text-sm leading-relaxed {overviewExpanded ? '' : 'line-clamp-3'}">
+            {item.overview}
+          </p>
+          {#if item.overview.length > 200}
+            <button
+              onclick={() => overviewExpanded = !overviewExpanded}
+              class="text-blue-400 hover:text-blue-300 text-xs font-medium mt-1 transition-colors"
+            >
+              {overviewExpanded ? "Show less" : "Read more"}
+            </button>
+          {/if}
+        </div>
       {/if}
 
       <div class="border-t border-white/10 mb-5"></div>
