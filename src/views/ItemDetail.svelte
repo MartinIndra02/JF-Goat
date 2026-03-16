@@ -308,7 +308,7 @@
         <!-- Subtitle for episodes: S6 · E2 -->
         {#if item.type === "Episode" && item.season_name && item.index_number}
           <p class="text-base text-gray-300 font-medium mb-3">
-            S{seasonNumber(item.season_name)} · E{item.index_number} — {item.name}
+            S{seasonNumber(item.season_name)} · E{item.index_number}
           </p>
         {/if}
 
@@ -424,7 +424,7 @@
           {#if contextMenuOpen}
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <!-- svelte-ignore a11y_click_events_have_key_events -->
-            <div onclick={closeContextMenu} class="fixed inset-0 z-40"></div>
+            <div onclick={closeContextMenu} onkeydown={(e) => { if (e.key === 'Escape') closeContextMenu(); }} class="fixed inset-0 z-40"></div>
             <div class="absolute right-0 top-full mt-1 w-52 bg-gray-800 border border-white/10 rounded-xl shadow-xl z-50 py-1.5 overflow-hidden">
               {#if item.type === "Episode" && item.series_id}
                 <button onclick={() => { closeContextMenu(); item?.series_id && navigateToItem(item.series_id); }} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
@@ -721,7 +721,7 @@
           {#if contextMenuOpen}
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <!-- svelte-ignore a11y_click_events_have_key_events -->
-            <div onclick={closeContextMenu} class="fixed inset-0 z-40"></div>
+            <div onclick={closeContextMenu} onkeydown={(e) => { if (e.key === 'Escape') closeContextMenu(); }} class="fixed inset-0 z-40"></div>
             <div class="absolute right-0 top-full mt-1 w-52 bg-gray-800 border border-white/10 rounded-xl shadow-xl z-50 py-1.5 overflow-hidden">
               <button onclick={closeContextMenu} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
                 <svg class="w-4 h-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
