@@ -263,77 +263,86 @@
 {:else if item && (item.type === "Episode" || item.type === "Movie")}
   <main class="min-h-screen bg-gray-900 text-white">
     <!-- Hero Backdrop -->
-    <div class="relative w-full overflow-hidden" style="height: clamp(280px, 45vh, 480px);">
+    <div class="relative w-full overflow-hidden" style="height: clamp(340px, 55vh, 560px);">
       {#if backdropUrl(item)}
         <img
           src={backdropUrl(item)}
           alt=""
           onload={handleImageLoad}
-          class="absolute inset-0 w-full h-full object-cover transition-opacity duration-500 opacity-0"
+          class="absolute inset-0 w-full h-full object-cover object-top transition-opacity duration-500 opacity-0"
         />
       {/if}
       <div class="absolute inset-0 bg-gray-800 -z-10"></div>
-      <div class="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/50 to-transparent"></div>
-      <div class="absolute inset-0 bg-gradient-to-r from-gray-900/80 via-transparent to-transparent"></div>
+      <div class="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/40 to-transparent"></div>
 
       <!-- Back button -->
       <button
+        aria-label="Go back"
         onclick={goBack}
-        class="absolute top-4 left-4 z-10 flex items-center gap-2 px-3 py-2 bg-black/50 hover:bg-black/70 rounded-lg backdrop-blur-sm transition-colors"
+        class="absolute top-4 left-4 z-10 p-2 bg-black/40 hover:bg-black/60 rounded-full backdrop-blur-sm transition-colors"
       >
         <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
         </svg>
-        <span class="text-sm font-medium">Back</span>
       </button>
     </div>
 
-    <div class="relative -mt-28 z-10 px-6 pb-16 max-w-5xl mx-auto">
-      <!-- Episode/Movie Header Info -->
-      <div class="mb-4">
+    <div class="relative -mt-32 z-10 px-5 pb-16 max-w-3xl mx-auto">
+      <!-- Centered header section -->
+      <div class="text-center mb-6">
+        <!-- Episode: series name link -->
         {#if item.type === "Episode" && item.series_name}
           <button
             onclick={() => item?.series_id && navigateToItem(item.series_id)}
-            class="text-blue-400 hover:text-blue-300 text-sm font-semibold mb-1 transition-colors cursor-pointer inline-flex items-center gap-1"
+            class="text-blue-400 hover:text-blue-300 text-lg font-bold mb-1 transition-colors cursor-pointer inline-flex items-center gap-1"
           >
             <span>{item.series_name}</span>
-            <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd"/></svg>
           </button>
         {/if}
 
-        <!-- Title: S6 - E2 - Home or Movie title -->
-        <h1 class="text-2xl sm:text-3xl font-bold text-white leading-tight mb-2">
-          {#if item.type === "Episode"}
-            {#if item.season_name && item.index_number}
-              <span class="text-gray-400 font-medium">S{seasonNumber(item.season_name)} · E{item.index_number}</span>
-              <span class="text-gray-600 mx-1">—</span>
-            {/if}
-          {/if}
+        <!-- Title -->
+        <h1 class="text-2xl sm:text-3xl font-bold text-white leading-tight mb-1">
           {item.name}
         </h1>
 
-        <!-- Metadata row -->
-        <div class="flex flex-wrap items-center gap-2.5 mb-4 text-sm">
+        <!-- Subtitle for episodes: S6 · E2 -->
+        {#if item.type === "Episode" && item.season_name && item.index_number}
+          <p class="text-base text-gray-300 font-medium mb-3">
+            S{seasonNumber(item.season_name)} · E{item.index_number} — {item.name}
+          </p>
+        {/if}
+
+        <!-- Metadata labels with dot separators -->
+        <div class="flex flex-wrap items-center justify-center gap-2 mb-3">
           {#if item.official_rating}
-            <span class="text-xs font-semibold text-gray-200 bg-white/10 px-2 py-0.5 rounded border border-white/20">
+            <span class="inline-flex items-center gap-1 text-xs font-semibold text-gray-200 bg-white/10 px-2.5 py-1 rounded-md border border-white/15">
               {item.official_rating}
             </span>
           {/if}
 
+          {#if item.official_rating && (item.production_year || item.date_created)}
+            <span class="w-1 h-1 rounded-full bg-gray-500"></span>
+          {/if}
+
           {#if item.date_created && item.type === "Episode"}
-            <!-- date_created maps to the episode's premiere/air date from Jellyfin -->
-            <span class="text-gray-400 flex items-center gap-1">
+            <span class="inline-flex items-center gap-1.5 text-xs text-gray-300 bg-white/8 px-2.5 py-1 rounded-md">
               <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
                 <path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"/>
               </svg>
               {formatDate(item.date_created)}
             </span>
           {:else if item.production_year}
-            <span class="text-gray-400">{item.production_year}</span>
+            <span class="inline-flex items-center gap-1.5 text-xs text-gray-300 bg-white/8 px-2.5 py-1 rounded-md">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"/>
+              </svg>
+              {item.production_year}
+            </span>
           {/if}
 
           {#if item.run_time_ticks}
-            <span class="text-gray-400 flex items-center gap-1">
+            <span class="w-1 h-1 rounded-full bg-gray-500"></span>
+            <span class="inline-flex items-center gap-1.5 text-xs text-gray-300 bg-white/8 px-2.5 py-1 rounded-md">
               <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
                 <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/>
               </svg>
@@ -342,7 +351,8 @@
           {/if}
 
           {#if item.community_rating}
-            <span class="flex items-center gap-1 text-yellow-400">
+            <span class="w-1 h-1 rounded-full bg-gray-500"></span>
+            <span class="inline-flex items-center gap-1.5 text-xs font-medium bg-amber-500/20 text-amber-300 px-2.5 py-1 rounded-md">
               <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
                 <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
               </svg>
@@ -353,122 +363,159 @@
 
         <!-- Genre badges -->
         {#if item.genres}
-          <div class="flex flex-wrap gap-1.5 mb-5">
+          <div class="flex flex-wrap justify-center gap-1.5 mb-4">
             {#each item.genres.split(",").slice(0, 6) as genre}
-              <span class="text-xs text-gray-300 bg-white/10 px-2.5 py-1 rounded-full">
+              <span class="text-xs text-gray-300 bg-white/10 px-2.5 py-1 rounded-full border border-white/5">
                 {genre.trim()}
               </span>
             {/each}
           </div>
         {/if}
-
-        <!-- Overview -->
-        {#if item.overview}
-          <p class="text-gray-300 text-sm leading-relaxed mb-5">{item.overview}</p>
-        {/if}
       </div>
 
-      <!-- Primary Actions -->
-      <div class="flex flex-wrap items-center gap-3 mb-6">
-        <!-- Play / Resume button -->
-        <button class="relative flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 rounded-lg font-semibold text-sm transition-colors overflow-hidden">
+      <!-- Play / Resume button (full width) -->
+      <div class="mb-3">
+        <button class="relative w-full flex items-center justify-center gap-2.5 py-3 bg-blue-600 hover:bg-blue-700 rounded-xl font-semibold text-sm transition-colors overflow-hidden">
           <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
             <path d="M8 5v14l11-7z"/>
           </svg>
           {#if progressPercent(item) > 0}
             <span>Resume</span>
-            <!-- Progress bar at bottom of button -->
             <div class="absolute bottom-0 left-0 right-0 h-1 bg-blue-900">
-              <div class="h-full bg-blue-300" style="width: {progressPercent(item)}%"></div>
+              <div class="h-full bg-blue-300 transition-all" style="width: {progressPercent(item)}%"></div>
             </div>
           {:else}
             <span>Play</span>
           {/if}
         </button>
+      </div>
 
-        {#if progressPercent(item) > 0}
-          <button class="flex items-center gap-2 px-4 py-2.5 bg-white/10 hover:bg-white/20 rounded-lg text-sm transition-colors">
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-            </svg>
-            <span>Play from start</span>
-          </button>
-        {/if}
+      <!-- Separator -->
+      <div class="flex justify-center my-2">
+        <div class="w-3 h-0.5 rounded-full bg-white/20"></div>
+      </div>
 
-        <div class="flex items-center gap-1 ml-auto">
-          <!-- Favorite -->
-          <button aria-label="Toggle favorite" class="p-2.5 rounded-lg hover:bg-white/10 transition-colors {item.is_favorite ? 'text-red-400' : 'text-gray-400'}">
+      <!-- Action buttons centered -->
+      <div class="flex items-center justify-center gap-2 mb-5">
+        <button aria-label="Toggle favorite" class="p-2.5 rounded-full hover:bg-white/10 transition-colors {item.is_favorite ? 'text-red-400' : 'text-gray-400'}">
+          <svg class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd"/>
+          </svg>
+        </button>
+
+        <button aria-label="Toggle watched" class="p-2.5 rounded-full hover:bg-white/10 transition-colors {item.played ? 'text-green-400' : 'text-gray-400'}">
+          <svg class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+          </svg>
+        </button>
+
+        <!-- Context menu (three dots) -->
+        <div class="relative">
+          <button
+            aria-label="More options"
+            onclick={() => contextMenuOpen = !contextMenuOpen}
+            class="p-2.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"
+          >
             <svg class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
-              <path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd"/>
+              <path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM16 12a2 2 0 100-4 2 2 0 000 4z"/>
             </svg>
           </button>
 
-          <!-- Watched -->
-          <button aria-label="Toggle watched" class="p-2.5 rounded-lg hover:bg-white/10 transition-colors {item.played ? 'text-green-400' : 'text-gray-400'}">
-            <svg class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
-              <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
-            </svg>
-          </button>
-
-          <!-- Context menu (three dots) -->
-          <div class="relative">
-            <button
-              aria-label="More options"
-              onclick={() => contextMenuOpen = !contextMenuOpen}
-              class="p-2.5 rounded-lg hover:bg-white/10 transition-colors text-gray-400"
-            >
-              <svg class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
-                <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"/>
-              </svg>
-            </button>
-
-            {#if contextMenuOpen}
-              <!-- svelte-ignore a11y_no_static_element_interactions -->
-              <!-- svelte-ignore a11y_click_events_have_key_events -->
-              <div onclick={closeContextMenu} class="fixed inset-0 z-40"></div>
-              <div class="absolute right-0 top-full mt-1 w-52 bg-gray-800 border border-white/10 rounded-lg shadow-xl z-50 py-1 overflow-hidden">
-                {#if item.type === "Episode" && item.series_id}
-                  <button onclick={() => { closeContextMenu(); item?.series_id && navigateToItem(item.series_id); }} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
-                    <svg class="w-4 h-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM2 11a2 2 0 012-2h12a2 2 0 012 2v4a2 2 0 01-2 2H4a2 2 0 01-2-2v-4z"/></svg>
-                    Open show
-                  </button>
-                {/if}
-                <button onclick={closeContextMenu} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
-                  <svg class="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                  Play from start
+          {#if contextMenuOpen}
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <div onclick={closeContextMenu} class="fixed inset-0 z-40"></div>
+            <div class="absolute right-0 top-full mt-1 w-52 bg-gray-800 border border-white/10 rounded-xl shadow-xl z-50 py-1.5 overflow-hidden">
+              {#if item.type === "Episode" && item.series_id}
+                <button onclick={() => { closeContextMenu(); item?.series_id && navigateToItem(item.series_id); }} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
+                  <svg class="w-4 h-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM2 11a2 2 0 012-2h12a2 2 0 012 2v4a2 2 0 01-2 2H4a2 2 0 01-2-2v-4z"/></svg>
+                  Open show
                 </button>
-                <button onclick={closeContextMenu} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
-                  <svg class="w-4 h-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clip-rule="evenodd"/></svg>
-                  Add to playlist
-                </button>
-                <button onclick={closeContextMenu} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
-                  <svg class="w-4 h-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
-                  {item.played ? "Mark as unwatched" : "Mark as watched"}
-                </button>
-                <button onclick={closeContextMenu} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
-                  <svg class="w-4 h-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd"/></svg>
-                  {item.is_favorite ? "Remove from favorites" : "Add to favorites"}
-                </button>
-              </div>
-            {/if}
-          </div>
+              {/if}
+              <button onclick={closeContextMenu} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
+                <svg class="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                Play from start
+              </button>
+              <button onclick={closeContextMenu} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
+                <svg class="w-4 h-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clip-rule="evenodd"/></svg>
+                Add to playlist
+              </button>
+              <button onclick={closeContextMenu} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
+                <svg class="w-4 h-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                {item.played ? "Mark as unwatched" : "Mark as watched"}
+              </button>
+              <button onclick={closeContextMenu} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
+                <svg class="w-4 h-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd"/></svg>
+                {item.is_favorite ? "Remove from favorites" : "Add to favorites"}
+              </button>
+            </div>
+          {/if}
         </div>
       </div>
 
-      <!-- Divider -->
-      <div class="border-t border-white/10 mb-6"></div>
+      <!-- Overview -->
+      {#if item.overview}
+        <div class="mb-6">
+          <p class="text-gray-300 text-sm leading-relaxed {overviewExpanded ? '' : 'line-clamp-3'}">
+            {item.overview}
+          </p>
+          {#if item.overview.length > 200}
+            <button
+              onclick={() => overviewExpanded = !overviewExpanded}
+              class="text-blue-400 hover:text-blue-300 text-xs font-medium mt-1.5 transition-colors"
+            >
+              {overviewExpanded ? "Show less" : "Read more"}
+            </button>
+          {/if}
+        </div>
+      {/if}
+
+      <!-- Cast & Crew -->
+      {#if people.length > 0}
+        <div class="mb-8">
+          <h2 class="text-base font-semibold text-white mb-3">Cast & Crew</h2>
+          <div class="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-5 px-5">
+            {#each people as person, i (person.id + '-' + i)}
+              <div class="flex-shrink-0 w-[72px] text-center">
+                <div class="relative w-16 h-16 mx-auto rounded-full overflow-hidden bg-gray-800 mb-1.5 ring-1 ring-white/10">
+                  {#if person.image_tag}
+                    <img
+                      src={personImageUrl(person)}
+                      alt={person.name}
+                      onload={handleImageLoad}
+                      class="w-full h-full object-cover transition-opacity duration-300 opacity-0"
+                    />
+                  {:else}
+                    <div class="w-full h-full flex items-center justify-center">
+                      <svg class="w-7 h-7 text-gray-600" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/>
+                      </svg>
+                    </div>
+                  {/if}
+                </div>
+                <p class="text-[11px] text-white font-medium truncate leading-tight">{person.name}</p>
+                {#if person.role}
+                  <p class="text-[10px] text-gray-500 truncate leading-tight">{person.role}</p>
+                {:else if person.person_type}
+                  <p class="text-[10px] text-gray-500 truncate leading-tight">{person.person_type}</p>
+                {/if}
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
 
       <!-- More from season X (for episodes) -->
       {#if item.type === "Episode" && siblingEpisodes.length > 1}
         <div class="mb-8">
-          <h2 class="text-lg font-semibold text-white mb-3">
+          <h2 class="text-base font-semibold text-white mb-3">
             More from {item.season_name ?? "this season"}
           </h2>
-          <div class="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-6 px-6">
+          <div class="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-5 px-5">
             {#each siblingEpisodes as episode (episode.id)}
               <button
                 onclick={() => navigateToItem(episode.id)}
-                class="flex-shrink-0 w-52 rounded-lg overflow-hidden bg-white/5 hover:bg-white/10 transition-colors text-left cursor-pointer {
+                class="flex-shrink-0 w-48 rounded-xl overflow-hidden bg-white/5 hover:bg-white/10 transition-colors text-left cursor-pointer {
                   episode.id === item?.id ? 'ring-2 ring-blue-500' : ''
                 }"
               >
@@ -502,10 +549,10 @@
                   {/if}
                 </div>
                 <div class="p-2.5">
-                  <p class="text-xs text-gray-500 mb-0.5">
-                    S{seasonNumber(item?.season_name)} · E{episode.index_number ?? "?"}
+                  <p class="text-[11px] text-gray-500 mb-0.5">
+                    E{episode.index_number ?? "?"}
                     {#if episode.run_time_ticks}
-                      <span class="ml-1">{formatRuntime(episode.run_time_ticks)}</span>
+                      <span class="ml-1">· {formatRuntime(episode.run_time_ticks)}</span>
                     {/if}
                   </p>
                   <p class="text-sm text-white truncate font-medium">{episode.name}</p>
@@ -515,143 +562,107 @@
           </div>
         </div>
       {/if}
-
-      <!-- Cast & Crew -->
-      {#if people.length > 0}
-        <div class="mb-8">
-          <h2 class="text-lg font-semibold text-white mb-3">Cast & Crew</h2>
-          <div class="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-6 px-6">
-            {#each people as person, i (person.id + '-' + i)}
-              <div class="flex-shrink-0 w-24 text-center">
-                <div class="relative w-20 h-20 mx-auto rounded-full overflow-hidden bg-gray-800 mb-2">
-                  {#if person.image_tag}
-                    <img
-                      src={personImageUrl(person)}
-                      alt={person.name}
-                      onload={handleImageLoad}
-                      class="w-full h-full object-cover transition-opacity duration-300 opacity-0"
-                    />
-                  {:else}
-                    <div class="w-full h-full flex items-center justify-center">
-                      <svg class="w-8 h-8 text-gray-600" viewBox="0 0 20 20" fill="currentColor">
-                        <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/>
-                      </svg>
-                    </div>
-                  {/if}
-                </div>
-                <p class="text-xs text-white font-medium truncate">{person.name}</p>
-                {#if person.role}
-                  <p class="text-xs text-gray-500 truncate">{person.role}</p>
-                {:else if person.person_type}
-                  <p class="text-xs text-gray-500 truncate">{person.person_type}</p>
-                {/if}
-              </div>
-            {/each}
-          </div>
-        </div>
-      {/if}
     </div>
   </main>
+
+<!-- ════════════════════════════════════════════════════════════════════
+     SERIES DETAIL
      ════════════════════════════════════════════════════════════════════ -->
 {:else if item && item.type === "Series"}
   <main class="min-h-screen bg-gray-900 text-white">
     <!-- Hero Backdrop -->
-    <div class="relative w-full overflow-hidden" style="height: clamp(280px, 45vh, 480px);">
+    <div class="relative w-full overflow-hidden" style="height: clamp(340px, 55vh, 560px);">
       {#if backdropUrl(item)}
         <img
           src={backdropUrl(item)}
           alt=""
           onload={handleImageLoad}
-          class="absolute inset-0 w-full h-full object-cover transition-opacity duration-500 opacity-0"
+          class="absolute inset-0 w-full h-full object-cover object-top transition-opacity duration-500 opacity-0"
         />
       {/if}
       <div class="absolute inset-0 bg-gray-800 -z-10"></div>
-      <div class="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/50 to-transparent"></div>
-      <div class="absolute inset-0 bg-gradient-to-r from-gray-900/80 via-transparent to-transparent"></div>
+      <div class="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/40 to-transparent"></div>
 
       <!-- Back button -->
       <button
+        aria-label="Go back"
         onclick={goBack}
-        class="absolute top-4 left-4 z-10 flex items-center gap-2 px-3 py-2 bg-black/50 hover:bg-black/70 rounded-lg backdrop-blur-sm transition-colors"
+        class="absolute top-4 left-4 z-10 p-2 bg-black/40 hover:bg-black/60 rounded-full backdrop-blur-sm transition-colors"
       >
         <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
         </svg>
-        <span class="text-sm font-medium">Back</span>
       </button>
     </div>
 
-    <div class="relative -mt-28 z-10 px-6 pb-16 max-w-5xl mx-auto">
-      <!-- Series Title -->
-      <h1 class="text-3xl sm:text-4xl font-bold text-white leading-tight mb-3">
-        {item.name}
-      </h1>
+    <div class="relative -mt-32 z-10 px-5 pb-16 max-w-3xl mx-auto">
+      <!-- Centered header section -->
+      <div class="text-center mb-6">
+        <!-- Series Title -->
+        <h1 class="text-3xl sm:text-4xl font-bold text-white leading-tight mb-3">
+          {item.name}
+        </h1>
 
-      <!-- Metadata row -->
-      <div class="flex flex-wrap items-center gap-2.5 mb-4 text-sm">
-        {#if item.official_rating}
-          <span class="text-xs font-semibold text-gray-200 bg-white/10 px-2 py-0.5 rounded border border-white/20">
-            {item.official_rating}
-          </span>
-        {/if}
+        <!-- Metadata labels with dot separators -->
+        <div class="flex flex-wrap items-center justify-center gap-2 mb-3">
+          {#if item.official_rating}
+            <span class="inline-flex items-center gap-1 text-xs font-semibold text-gray-200 bg-white/10 px-2.5 py-1 rounded-md border border-white/15">
+              {item.official_rating}
+            </span>
+          {/if}
 
-        {#if item.production_year}
-          <span class="text-gray-400">{item.production_year}</span>
-        {/if}
+          {#if item.official_rating && item.production_year}
+            <span class="w-1 h-1 rounded-full bg-gray-500"></span>
+          {/if}
 
-        {#if item.run_time_ticks}
-          <span class="text-gray-400 flex items-center gap-1">
-            <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
-              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/>
-            </svg>
-            {formatRuntime(item.run_time_ticks)}
-          </span>
-        {/if}
+          {#if item.production_year}
+            <span class="inline-flex items-center gap-1.5 text-xs text-gray-300 bg-white/8 px-2.5 py-1 rounded-md">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"/>
+              </svg>
+              {item.production_year}
+            </span>
+          {/if}
 
-        {#if item.community_rating}
-          <span class="flex items-center gap-1 text-yellow-400">
-            <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
-              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
-            </svg>
-            {item.community_rating.toFixed(1)}
-          </span>
+          {#if item.run_time_ticks}
+            <span class="w-1 h-1 rounded-full bg-gray-500"></span>
+            <span class="inline-flex items-center gap-1.5 text-xs text-gray-300 bg-white/8 px-2.5 py-1 rounded-md">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/>
+              </svg>
+              {formatRuntime(item.run_time_ticks)}
+            </span>
+          {/if}
+
+          {#if item.community_rating}
+            <span class="w-1 h-1 rounded-full bg-gray-500"></span>
+            <span class="inline-flex items-center gap-1.5 text-xs font-medium bg-amber-500/20 text-amber-300 px-2.5 py-1 rounded-md">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+              </svg>
+              {item.community_rating.toFixed(1)}
+            </span>
+          {/if}
+        </div>
+
+        <!-- Genre badges -->
+        {#if item.genres}
+          <div class="flex flex-wrap justify-center gap-1.5 mb-4">
+            {#each item.genres.split(",").slice(0, 6) as genre}
+              <span class="text-xs text-gray-300 bg-white/10 px-2.5 py-1 rounded-full border border-white/5">
+                {genre.trim()}
+              </span>
+            {/each}
+          </div>
         {/if}
       </div>
 
-      <!-- Genre badges -->
-      {#if item.genres}
-        <div class="flex flex-wrap gap-1.5 mb-5">
-          {#each item.genres.split(",").slice(0, 6) as genre}
-            <span class="text-xs text-gray-300 bg-white/10 px-2.5 py-1 rounded-full">
-              {genre.trim()}
-            </span>
-          {/each}
-        </div>
-      {/if}
-
-      <!-- Overview with expand/collapse -->
-      {#if item.overview}
-        <div class="mb-5">
-          <p class="text-gray-300 text-sm leading-relaxed {overviewExpanded ? '' : 'line-clamp-3'}">
-            {item.overview}
-          </p>
-          {#if item.overview.length > 200}
-            <button
-              onclick={() => overviewExpanded = !overviewExpanded}
-              class="text-blue-400 hover:text-blue-300 text-xs font-medium mt-1 transition-colors"
-            >
-              {overviewExpanded ? "Show less" : "Read more"}
-            </button>
-          {/if}
-        </div>
-      {/if}
-
-      <!-- Dynamic Action Panel -->
-      <div class="flex flex-wrap items-center gap-3 mb-6">
+      <!-- Play / Resume button (full width) -->
+      <div class="mb-3">
         {#if resumeEpisode}
           <button
             onclick={() => resumeEpisode && navigateToItem(resumeEpisode.id)}
-            class="relative flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 rounded-lg font-semibold text-sm transition-colors overflow-hidden"
+            class="relative w-full flex items-center justify-center gap-2.5 py-3 bg-blue-600 hover:bg-blue-700 rounded-xl font-semibold text-sm transition-colors overflow-hidden"
           >
             <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
               <path d="M8 5v14l11-7z"/>
@@ -662,76 +673,95 @@
             </span>
             {#if progressPercent(resumeEpisode) > 0}
               <div class="absolute bottom-0 left-0 right-0 h-1 bg-blue-900">
-                <div class="h-full bg-blue-300" style="width: {progressPercent(resumeEpisode)}%"></div>
+                <div class="h-full bg-blue-300 transition-all" style="width: {progressPercent(resumeEpisode)}%"></div>
               </div>
             {/if}
           </button>
         {:else}
-          <button class="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 rounded-lg font-semibold text-sm transition-colors">
+          <button class="w-full flex items-center justify-center gap-2.5 py-3 bg-blue-600 hover:bg-blue-700 rounded-xl font-semibold text-sm transition-colors">
             <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
               <path d="M8 5v14l11-7z"/>
             </svg>
             <span>Play</span>
           </button>
         {/if}
+      </div>
 
-        <div class="flex items-center gap-1 ml-auto">
-          <!-- Favorite -->
-          <button aria-label="Toggle favorite" class="p-2.5 rounded-lg hover:bg-white/10 transition-colors {item.is_favorite ? 'text-red-400' : 'text-gray-400'}">
+      <!-- Separator -->
+      <div class="flex justify-center my-2">
+        <div class="w-3 h-0.5 rounded-full bg-white/20"></div>
+      </div>
+
+      <!-- Action buttons centered -->
+      <div class="flex items-center justify-center gap-2 mb-5">
+        <button aria-label="Toggle favorite" class="p-2.5 rounded-full hover:bg-white/10 transition-colors {item.is_favorite ? 'text-red-400' : 'text-gray-400'}">
+          <svg class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd"/>
+          </svg>
+        </button>
+
+        <button aria-label="Toggle watched" class="p-2.5 rounded-full hover:bg-white/10 transition-colors {item.played ? 'text-green-400' : 'text-gray-400'}">
+          <svg class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+          </svg>
+        </button>
+
+        <!-- Context menu (three dots) -->
+        <div class="relative">
+          <button
+            aria-label="More options"
+            onclick={() => contextMenuOpen = !contextMenuOpen}
+            class="p-2.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"
+          >
             <svg class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
-              <path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd"/>
+              <path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM16 12a2 2 0 100-4 2 2 0 000 4z"/>
             </svg>
           </button>
 
-          <!-- Watched -->
-          <button aria-label="Toggle watched" class="p-2.5 rounded-lg hover:bg-white/10 transition-colors {item.played ? 'text-green-400' : 'text-gray-400'}">
-            <svg class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
-              <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
-            </svg>
-          </button>
-
-          <!-- Context menu (three dots) -->
-          <div class="relative">
-            <button
-              aria-label="More options"
-              onclick={() => contextMenuOpen = !contextMenuOpen}
-              class="p-2.5 rounded-lg hover:bg-white/10 transition-colors text-gray-400"
-            >
-              <svg class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
-                <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"/>
-              </svg>
-            </button>
-
-            {#if contextMenuOpen}
-              <!-- svelte-ignore a11y_no_static_element_interactions -->
-              <!-- svelte-ignore a11y_click_events_have_key_events -->
-              <div onclick={closeContextMenu} class="fixed inset-0 z-40"></div>
-              <div class="absolute right-0 top-full mt-1 w-52 bg-gray-800 border border-white/10 rounded-lg shadow-xl z-50 py-1 overflow-hidden">
-                <button onclick={closeContextMenu} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
-                  <svg class="w-4 h-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
-                  {item.played ? "Mark as unwatched" : "Mark as watched"}
-                </button>
-                <button onclick={closeContextMenu} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
-                  <svg class="w-4 h-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd"/></svg>
-                  {item.is_favorite ? "Remove from favorites" : "Add to favorites"}
-                </button>
-                <button onclick={closeContextMenu} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
-                  <svg class="w-4 h-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clip-rule="evenodd"/></svg>
-                  Add to playlist
-                </button>
-              </div>
-            {/if}
-          </div>
+          {#if contextMenuOpen}
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <div onclick={closeContextMenu} class="fixed inset-0 z-40"></div>
+            <div class="absolute right-0 top-full mt-1 w-52 bg-gray-800 border border-white/10 rounded-xl shadow-xl z-50 py-1.5 overflow-hidden">
+              <button onclick={closeContextMenu} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
+                <svg class="w-4 h-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                {item.played ? "Mark as unwatched" : "Mark as watched"}
+              </button>
+              <button onclick={closeContextMenu} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
+                <svg class="w-4 h-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd"/></svg>
+                {item.is_favorite ? "Remove from favorites" : "Add to favorites"}
+              </button>
+              <button onclick={closeContextMenu} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
+                <svg class="w-4 h-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clip-rule="evenodd"/></svg>
+                Add to playlist
+              </button>
+            </div>
+          {/if}
         </div>
       </div>
 
-      <div class="border-t border-white/10 mb-6"></div>
+      <!-- Overview with expand/collapse -->
+      {#if item.overview}
+        <div class="mb-6">
+          <p class="text-gray-300 text-sm leading-relaxed {overviewExpanded ? '' : 'line-clamp-3'}">
+            {item.overview}
+          </p>
+          {#if item.overview.length > 200}
+            <button
+              onclick={() => overviewExpanded = !overviewExpanded}
+              class="text-blue-400 hover:text-blue-300 text-xs font-medium mt-1.5 transition-colors"
+            >
+              {overviewExpanded ? "Show less" : "Read more"}
+            </button>
+          {/if}
+        </div>
+      {/if}
 
       <!-- Episodes section with season dropdown -->
       {#if seasons.length > 0}
         <div class="mb-8">
           <div class="flex items-center justify-between mb-3">
-            <h2 class="text-lg font-semibold text-white">Episodes</h2>
+            <h2 class="text-base font-semibold text-white">Episodes</h2>
 
             <!-- Season dropdown -->
             <div class="relative">
@@ -762,11 +792,11 @@
             </div>
           {:else if episodes.length > 0}
             <!-- Episode carousel -->
-            <div class="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-6 px-6">
+            <div class="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-5 px-5">
               {#each episodes as episode (episode.id)}
                 <button
                   onclick={() => navigateToItem(episode.id)}
-                  class="flex-shrink-0 w-52 rounded-lg overflow-hidden bg-white/5 hover:bg-white/10 transition-colors text-left cursor-pointer"
+                  class="flex-shrink-0 w-48 rounded-xl overflow-hidden bg-white/5 hover:bg-white/10 transition-colors text-left cursor-pointer"
                 >
                   <div class="relative">
                     {#if episode.backdrop_tag}
@@ -798,10 +828,10 @@
                     {/if}
                   </div>
                   <div class="p-2.5">
-                    <p class="text-xs text-gray-500 mb-0.5">
-                      S{seasonNumber(selectedSeason?.name)} · E{episode.index_number ?? "?"}
+                    <p class="text-[11px] text-gray-500 mb-0.5">
+                      E{episode.index_number ?? "?"}
                       {#if episode.run_time_ticks}
-                        <span class="ml-1">{formatRuntime(episode.run_time_ticks)}</span>
+                        <span class="ml-1">· {formatRuntime(episode.run_time_ticks)}</span>
                       {/if}
                     </p>
                     <p class="text-sm text-white truncate font-medium">{episode.name}</p>
@@ -818,12 +848,12 @@
       <!-- Seasons carousel -->
       {#if seasons.length > 1}
         <div class="mb-8">
-          <h2 class="text-lg font-semibold text-white mb-3">Seasons</h2>
-          <div class="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-6 px-6">
+          <h2 class="text-base font-semibold text-white mb-3">Seasons</h2>
+          <div class="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-5 px-5">
             {#each seasons as season (season.id)}
               <button
                 onclick={() => navigateToItem(season.id)}
-                class="flex-shrink-0 w-28 rounded-lg overflow-hidden bg-white/5 hover:bg-white/10 transition-colors text-left cursor-pointer group"
+                class="flex-shrink-0 w-28 rounded-xl overflow-hidden bg-white/5 hover:bg-white/10 transition-colors text-left cursor-pointer group"
               >
                 <div class="relative">
                   {#if season.image_tag}
@@ -860,11 +890,11 @@
       <!-- Cast & Crew -->
       {#if people.length > 0}
         <div class="mb-8">
-          <h2 class="text-lg font-semibold text-white mb-3">Cast & Crew</h2>
-          <div class="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-6 px-6">
+          <h2 class="text-base font-semibold text-white mb-3">Cast & Crew</h2>
+          <div class="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-5 px-5">
             {#each people as person, i (person.id + '-' + i)}
-              <div class="flex-shrink-0 w-24 text-center">
-                <div class="relative w-20 h-20 mx-auto rounded-full overflow-hidden bg-gray-800 mb-2">
+              <div class="flex-shrink-0 w-[72px] text-center">
+                <div class="relative w-16 h-16 mx-auto rounded-full overflow-hidden bg-gray-800 mb-1.5 ring-1 ring-white/10">
                   {#if person.image_tag}
                     <img
                       src={personImageUrl(person)}
@@ -874,17 +904,17 @@
                     />
                   {:else}
                     <div class="w-full h-full flex items-center justify-center">
-                      <svg class="w-8 h-8 text-gray-600" viewBox="0 0 20 20" fill="currentColor">
+                      <svg class="w-7 h-7 text-gray-600" viewBox="0 0 20 20" fill="currentColor">
                         <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/>
                       </svg>
                     </div>
                   {/if}
                 </div>
-                <p class="text-xs text-white font-medium truncate">{person.name}</p>
+                <p class="text-[11px] text-white font-medium truncate leading-tight">{person.name}</p>
                 {#if person.role}
-                  <p class="text-xs text-gray-500 truncate">{person.role}</p>
+                  <p class="text-[10px] text-gray-500 truncate leading-tight">{person.role}</p>
                 {:else if person.person_type}
-                  <p class="text-xs text-gray-500 truncate">{person.person_type}</p>
+                  <p class="text-[10px] text-gray-500 truncate leading-tight">{person.person_type}</p>
                 {/if}
               </div>
             {/each}
@@ -895,12 +925,12 @@
       <!-- Related / Similar -->
       {#if similarItems.length > 0}
         <div class="mb-8">
-          <h2 class="text-lg font-semibold text-white mb-3">Related</h2>
-          <div class="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-6 px-6">
+          <h2 class="text-base font-semibold text-white mb-3">Related</h2>
+          <div class="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-5 px-5">
             {#each similarItems as related (related.id)}
               <button
                 onclick={() => navigateToItem(related.id)}
-                class="flex-shrink-0 w-28 rounded-lg overflow-hidden bg-white/5 hover:bg-white/10 transition-colors text-left cursor-pointer group"
+                class="flex-shrink-0 w-28 rounded-xl overflow-hidden bg-white/5 hover:bg-white/10 transition-colors text-left cursor-pointer group"
               >
                 <div class="relative">
                   {#if related.image_tag}
@@ -920,7 +950,7 @@
                 <div class="p-2">
                   <p class="text-xs text-white truncate font-medium">{related.name}</p>
                   {#if related.production_year}
-                    <p class="text-xs text-gray-500">{related.production_year}</p>
+                    <p class="text-[11px] text-gray-500">{related.production_year}</p>
                   {/if}
                 </div>
               </button>
@@ -930,79 +960,107 @@
       {/if}
     </div>
   </main>
+
+<!-- ════════════════════════════════════════════════════════════════════
+     SEASON DETAIL
      ════════════════════════════════════════════════════════════════════ -->
 {:else if item && item.type === "Season"}
   <main class="min-h-screen bg-gray-900 text-white">
     <!-- Hero Backdrop (from parent series) -->
-    <div class="relative w-full overflow-hidden" style="height: clamp(240px, 40vh, 420px);">
+    <div class="relative w-full overflow-hidden" style="height: clamp(300px, 50vh, 500px);">
       {#if backdropUrl(item)}
         <img
           src={backdropUrl(item)}
           alt=""
           onload={handleImageLoad}
-          class="absolute inset-0 w-full h-full object-cover transition-opacity duration-500 opacity-0"
+          class="absolute inset-0 w-full h-full object-cover object-top transition-opacity duration-500 opacity-0"
         />
       {/if}
       <div class="absolute inset-0 bg-gray-800 -z-10"></div>
-      <div class="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/50 to-transparent"></div>
+      <div class="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/40 to-transparent"></div>
 
       <!-- Back button -->
       <button
+        aria-label="Go back"
         onclick={goBack}
-        class="absolute top-4 left-4 z-10 flex items-center gap-2 px-3 py-2 bg-black/50 hover:bg-black/70 rounded-lg backdrop-blur-sm transition-colors"
+        class="absolute top-4 left-4 z-10 p-2 bg-black/40 hover:bg-black/60 rounded-full backdrop-blur-sm transition-colors"
       >
         <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
         </svg>
-        <span class="text-sm font-medium">Back</span>
       </button>
     </div>
 
-    <div class="relative -mt-24 z-10 px-6 pb-16 max-w-5xl mx-auto">
-      <!-- Series name link -->
-      {#if item.series_name && item.series_id}
-        <button
-          onclick={() => item?.series_id && navigateToItem(item.series_id)}
-          class="text-blue-400 hover:text-blue-300 text-sm font-semibold mb-1 transition-colors cursor-pointer inline-flex items-center gap-1"
-        >
-          <span>{item.series_name}</span>
-          <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd"/></svg>
-        </button>
-      {/if}
+    <div class="relative -mt-28 z-10 px-5 pb-16 max-w-3xl mx-auto">
+      <!-- Centered header section -->
+      <div class="text-center mb-5">
+        <!-- Series name link -->
+        {#if item.series_name && item.series_id}
+          <button
+            onclick={() => item?.series_id && navigateToItem(item.series_id)}
+            class="text-blue-400 hover:text-blue-300 text-lg font-bold mb-1 transition-colors cursor-pointer inline-flex items-center gap-1"
+          >
+            <span>{item.series_name}</span>
+          </button>
+        {/if}
 
-      <!-- Season heading -->
-      <h1 class="text-3xl font-bold text-white mb-3">{item.name}</h1>
+        <!-- Season heading -->
+        <h1 class="text-2xl font-bold text-white mb-3">{item.name}</h1>
 
-      <!-- Actions row -->
+        <!-- Metadata labels -->
+        <div class="flex flex-wrap items-center justify-center gap-2 mb-3">
+          {#if item.production_year}
+            <span class="inline-flex items-center gap-1.5 text-xs text-gray-300 bg-white/8 px-2.5 py-1 rounded-md">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"/>
+              </svg>
+              {item.production_year}
+            </span>
+          {/if}
+          {#if item.community_rating}
+            <span class="w-1 h-1 rounded-full bg-gray-500"></span>
+            <span class="inline-flex items-center gap-1.5 text-xs font-medium bg-amber-500/20 text-amber-300 px-2.5 py-1 rounded-md">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+              </svg>
+              {item.community_rating.toFixed(1)}
+            </span>
+          {/if}
+        </div>
+      </div>
+
+      <!-- Actions row: Favorite + Watched on left, view toggle on right -->
       <div class="flex flex-wrap items-center gap-3 mb-5">
-        <!-- Favorite -->
-        <button class="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 transition-colors text-sm {item.is_favorite ? 'text-red-400' : 'text-gray-300'}">
-          <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
-            <path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd"/>
-          </svg>
-          <span>Favorite</span>
-        </button>
+        <div class="flex items-center gap-2">
+          <button class="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-white/10 hover:bg-white/15 transition-colors text-sm {item.is_favorite ? 'text-red-400' : 'text-gray-300'}">
+            <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd"/>
+            </svg>
+            <span>Favorite</span>
+          </button>
 
-        <!-- Mark all as watched -->
-        <button class="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 transition-colors text-sm {item.played ? 'text-green-400' : 'text-gray-300'}">
-          <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
-            <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
-          </svg>
-          <span>Watched</span>
-        </button>
+          <button class="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-white/10 hover:bg-white/15 transition-colors text-sm {item.played ? 'text-green-400' : 'text-gray-300'}">
+            <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+            </svg>
+            <span>Watched</span>
+          </button>
+        </div>
 
         <!-- View toggle -->
         <div class="flex items-center ml-auto bg-white/5 rounded-lg overflow-hidden border border-white/10">
           <button
             onclick={() => seasonEpisodesViewMode = "list"}
-            class="px-3 py-1.5 text-xs font-medium transition-colors {seasonEpisodesViewMode === 'list' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}"
+            class="px-3 py-1.5 text-xs font-medium transition-colors flex items-center gap-1.5 {seasonEpisodesViewMode === 'list' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}"
           >
+            <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd"/></svg>
             List
           </button>
           <button
             onclick={() => seasonEpisodesViewMode = "grid"}
-            class="px-3 py-1.5 text-xs font-medium transition-colors {seasonEpisodesViewMode === 'grid' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}"
+            class="px-3 py-1.5 text-xs font-medium transition-colors flex items-center gap-1.5 {seasonEpisodesViewMode === 'grid' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}"
           >
+            <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
             Grid
           </button>
         </div>
@@ -1017,7 +1075,7 @@
           {#if item.overview.length > 200}
             <button
               onclick={() => overviewExpanded = !overviewExpanded}
-              class="text-blue-400 hover:text-blue-300 text-xs font-medium mt-1 transition-colors"
+              class="text-blue-400 hover:text-blue-300 text-xs font-medium mt-1.5 transition-colors"
             >
               {overviewExpanded ? "Show less" : "Read more"}
             </button>
@@ -1025,19 +1083,17 @@
         </div>
       {/if}
 
-      <div class="border-t border-white/10 mb-5"></div>
-
       <!-- Episodes list or grid -->
       {#if episodes.length > 0}
         {#if seasonEpisodesViewMode === "list"}
-          <div class="space-y-2">
+          <div class="space-y-2 mb-8">
             {#each episodes as episode (episode.id)}
               <button
                 onclick={() => navigateToItem(episode.id)}
-                class="w-full flex gap-4 p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-left cursor-pointer"
+                class="w-full flex gap-3.5 p-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-colors text-left cursor-pointer"
               >
                 <!-- Episode Thumbnail -->
-                <div class="flex-shrink-0 w-36 sm:w-44 relative overflow-hidden rounded-md">
+                <div class="flex-shrink-0 w-36 sm:w-40 relative overflow-hidden rounded-lg">
                   {#if episode.backdrop_tag}
                     <img
                       src={`${IMAGE_BASE}/backdrop/${episode.id}?tag=${episode.backdrop_tag}`}
@@ -1068,13 +1124,13 @@
                 </div>
 
                 <!-- Episode Info -->
-                <div class="flex-1 min-w-0 py-1">
-                  <div class="flex items-center gap-2 mb-1">
-                    <span class="text-xs text-gray-500 font-medium">
-                      S{seasonNumber(item?.name)} · E{episode.index_number ?? "?"}
+                <div class="flex-1 min-w-0 py-0.5">
+                  <div class="flex items-center gap-2 mb-0.5">
+                    <span class="text-[11px] text-gray-500 font-medium">
+                      E{episode.index_number ?? "?"}
                     </span>
                     {#if episode.run_time_ticks}
-                      <span class="text-xs text-gray-500">{formatRuntime(episode.run_time_ticks)}</span>
+                      <span class="text-[11px] text-gray-500">· {formatRuntime(episode.run_time_ticks)}</span>
                     {/if}
                   </div>
                   <p class="text-sm text-white font-medium truncate">{episode.name}</p>
@@ -1087,11 +1143,11 @@
           </div>
         {:else}
           <!-- Grid view -->
-          <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+          <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-8">
             {#each episodes as episode (episode.id)}
               <button
                 onclick={() => navigateToItem(episode.id)}
-                class="rounded-lg overflow-hidden bg-white/5 hover:bg-white/10 transition-colors text-left cursor-pointer"
+                class="rounded-xl overflow-hidden bg-white/5 hover:bg-white/10 transition-colors text-left cursor-pointer"
               >
                 <div class="relative">
                   {#if episode.backdrop_tag}
@@ -1123,7 +1179,7 @@
                   {/if}
                 </div>
                 <div class="p-2">
-                  <p class="text-xs text-gray-500 mb-0.5">E{episode.index_number ?? "?"}</p>
+                  <p class="text-[11px] text-gray-500 mb-0.5">E{episode.index_number ?? "?"}</p>
                   <p class="text-sm text-white truncate font-medium">{episode.name}</p>
                 </div>
               </button>
