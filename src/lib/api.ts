@@ -95,15 +95,15 @@ export async function getSeriesSeasons(seriesId: string): Promise<MediaItem[]> {
   return invoke("get_series_seasons", { seriesId });
 }
 
-export async function getSeasonEpisodes(seasonId: string): Promise<MediaItem[]> {
+export async function getSeasonEpisodes(
+  seasonId: string,
+): Promise<MediaItem[]> {
   return invoke("get_season_episodes", { seasonId });
 }
 
 // ── Homepage cache commands ─────────────────────────────────────────────
 
-export async function saveHomepageCache(
-  data: HomepageCache,
-): Promise<void> {
+export async function saveHomepageCache(data: HomepageCache): Promise<void> {
   return invoke("save_homepage_cache", { data });
 }
 
@@ -113,7 +113,10 @@ export async function loadHomepageCache(): Promise<HomepageCache | null> {
 
 // ── MPV player commands ─────────────────────────────────────────
 
-export async function mpvPlay(itemId: string, startTicks: number): Promise<void> {
+export async function mpvPlay(
+  itemId: string,
+  startTicks: number,
+): Promise<void> {
   return invoke("mpv_play", { itemId, startTicks });
 }
 
