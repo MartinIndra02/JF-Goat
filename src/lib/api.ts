@@ -7,6 +7,9 @@ import type {
   MediaItem,
   UserLibrary,
   HomepageCache,
+  Person,
+  MediaStreamInfo,
+  ExternalUrl,
 } from "./types";
 
 export async function connectToServer(url: string): Promise<ServerPublicInfo> {
@@ -101,6 +104,17 @@ export async function getSeasonEpisodes(
   return invoke("get_season_episodes", { seasonId });
 }
 
+export async function getItemPeople(id: string): Promise<Person[]> {
+  return invoke("get_item_people", { id });
+}
+
+export async function getSimilarItems(
+  id: string,
+  limit: number,
+): Promise<MediaItem[]> {
+  return invoke("get_similar_items", { id, limit });
+}
+
 // ── Homepage cache commands ─────────────────────────────────────────────
 
 export async function saveHomepageCache(data: HomepageCache): Promise<void> {
@@ -138,4 +152,20 @@ export async function mpvSetVolume(volume: number): Promise<void> {
 
 export async function mpvStop(): Promise<void> {
   return invoke("mpv_stop");
+export async function getMediaStreams(id: string): Promise<MediaStreamInfo> {
+  return invoke("get_media_streams", { id });
+}
+
+export async function getExternalUrls(id: string): Promise<ExternalUrl[]> {
+  return invoke("get_external_urls", { id });
+}
+
+// ── User data mutations ──────────────────────────────────────────────
+
+export async function togglePlayed(id: string, played: boolean): Promise<boolean> {
+  return invoke("toggle_played", { id, played });
+}
+
+export async function toggleFavorite(id: string, isFavorite: boolean): Promise<boolean> {
+  return invoke("toggle_favorite", { id, isFavorite });
 }

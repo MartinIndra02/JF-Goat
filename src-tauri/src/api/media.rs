@@ -33,7 +33,7 @@ pub struct JellyfinItem {
     pub id: String,
     #[serde(alias = "Name", default)]
     pub name: Option<String>,
-    #[serde(alias = "Type")]
+    #[serde(alias = "Type", default)]
     pub item_type: String,
     #[serde(alias = "ParentId")]
     pub parent_id: Option<String>,
@@ -57,8 +57,10 @@ pub struct JellyfinItem {
     pub backdrop_image_tags: Option<Vec<String>>,
     #[serde(alias = "DateCreated")]
     pub date_created: Option<String>,
-    #[serde(alias = "DateLastMediaAdded", alias = "PremiereDate")]
-    pub date_updated: Option<String>,
+    #[serde(alias = "DateLastMediaAdded", default)]
+    pub date_last_media_added: Option<String>,
+    #[serde(alias = "PremiereDate", default)]
+    pub premiere_date: Option<String>,
     #[serde(alias = "CommunityRating")]
     pub community_rating: Option<f64>,
     #[serde(alias = "OfficialRating")]
@@ -361,7 +363,7 @@ pub async fn fetch_item_by_id(
     item_id: &str,
 ) -> Result<JellyfinItem, JfgoatError> {
     let path = format!(
-        "/Users/{}/Items/{}?Fields=Overview,Genres,DateCreated,ProductionYear,CommunityRating,OfficialRating,RunTimeTicks,ImageTags,BackdropImageTags",
+        "/Users/{}/Items/{}?Fields=Overview,Genres,DateCreated,ProductionYear,CommunityRating,OfficialRating,RunTimeTicks,ImageTags,BackdropImageTags,UserData",
         user_id, item_id
     );
 
@@ -375,11 +377,14 @@ pub async fn fetch_item_by_id(
         )));
     }
 
-    let item: JellyfinItem = resp.json().await.map_err(|e| {
-        JfgoatError::Http(format!("Failed to parse item response: {}", e))
+    let text = resp.text().await.map_err(|e| {
+        JfgoatError::Http(format!("Failed to read item response body: {}", e))
     })?;
 
-    Ok(item)
+    serde_json::from_str::<JellyfinItem>(&text).map_err(|e| {
+        let snippet = &text[..text.len().min(300)];
+        JfgoatError::Http(format!("Failed to parse item {}: {} | body: {}", item_id, e, snippet))
+    })
 }
 
 /// Fetch seasons for a series from the Jellyfin server.
@@ -441,6 +446,155 @@ pub async fn fetch_episodes(
     Ok(data)
 }
 
+/// Jellyfin person object returned from the People field or /Items/{id} endpoint.
+#[derive(Debug, Deserialize)]
+pub struct JellyfinPerson {
+    #[serde(alias = "Id")]
+    pub id: String,
+    #[serde(alias = "Name", default)]
+    pub name: Option<String>,
+    #[serde(alias = "Role")]
+    pub role: Option<String>,
+    #[serde(alias = "Type")]
+    pub person_type: Option<String>,
+    #[serde(alias = "PrimaryImageTag")]
+    pub primary_image_tag: Option<String>,
+}
+
+/// Jellyfin item response that includes People field.
+#[derive(Debug, Deserialize)]
+pub struct JellyfinItemWithPeople {
+    #[serde(alias = "People", default)]
+    pub people: Vec<JellyfinPerson>,
+}
+
+/// Fetch the cast & crew (people) for a specific item from the Jellyfin server.
+pub async fn fetch_item_people(
+    client: &JellyfinClient,
+    user_id: &str,
+    item_id: &str,
+) -> Result<Vec<JellyfinPerson>, JfgoatError> {
+    let path = format!(
+        "/Users/{}/Items/{}?Fields=People",
+        user_id, item_id
+    );
+
+    let resp = client.get(&path).await?;
+
+    if !resp.status().is_success() {
+        return Err(JfgoatError::Http(format!(
+            "Failed to fetch people for {}: status {}",
+            item_id,
+            resp.status()
+        )));
+    }
+
+    let data: JellyfinItemWithPeople = resp.json().await.map_err(|e| {
+        JfgoatError::Http(format!("Failed to parse people response: {}", e))
+    })?;
+
+    Ok(data.people)
+}
+
+/// Fetch similar/related items for a specific item from the Jellyfin server.
+pub async fn fetch_similar_items(
+    client: &JellyfinClient,
+    user_id: &str,
+    item_id: &str,
+    limit: u32,
+) -> Result<JellyfinItemsResponse, JfgoatError> {
+    let path = format!(
+        "/Items/{}/Similar?UserId={}&Limit={}&Fields=Overview,Genres,ProductionYear,CommunityRating,OfficialRating,RunTimeTicks,ImageTags,BackdropImageTags",
+        item_id, user_id, limit
+    );
+
+    let resp = client.get(&path).await?;
+
+    if !resp.status().is_success() {
+        return Err(JfgoatError::Http(format!(
+            "Failed to fetch similar items for {}: status {}",
+            item_id,
+            resp.status()
+        )));
+    }
+
+    let data: JellyfinItemsResponse = resp.json().await.map_err(|e| {
+        JfgoatError::Http(format!("Failed to parse similar items response: {}", e))
+    })?;
+
+    Ok(data)
+}
+
+// ── User data mutations (mark played, favorite) ─────────────────────────
+
+/// Mark an item as played for a user.
+pub async fn mark_played(
+    client: &JellyfinClient,
+    user_id: &str,
+    item_id: &str,
+) -> Result<(), JfgoatError> {
+    let path = format!("/Users/{}/PlayedItems/{}", user_id, item_id);
+    let resp = client.post_empty(&path).await?;
+    if !resp.status().is_success() {
+        return Err(JfgoatError::Http(format!(
+            "Failed to mark item {} as played: status {}",
+            item_id, resp.status()
+        )));
+    }
+    Ok(())
+}
+
+/// Mark an item as unplayed for a user.
+pub async fn mark_unplayed(
+    client: &JellyfinClient,
+    user_id: &str,
+    item_id: &str,
+) -> Result<(), JfgoatError> {
+    let path = format!("/Users/{}/PlayedItems/{}", user_id, item_id);
+    let resp = client.delete(&path).await?;
+    if !resp.status().is_success() {
+        return Err(JfgoatError::Http(format!(
+            "Failed to mark item {} as unplayed: status {}",
+            item_id, resp.status()
+        )));
+    }
+    Ok(())
+}
+
+/// Mark an item as favorite for a user.
+pub async fn mark_favorite(
+    client: &JellyfinClient,
+    user_id: &str,
+    item_id: &str,
+) -> Result<(), JfgoatError> {
+    let path = format!("/Users/{}/FavoriteItems/{}", user_id, item_id);
+    let resp = client.post_empty(&path).await?;
+    if !resp.status().is_success() {
+        return Err(JfgoatError::Http(format!(
+            "Failed to mark item {} as favorite: status {}",
+            item_id, resp.status()
+        )));
+    }
+    Ok(())
+}
+
+/// Remove an item from favorites for a user.
+pub async fn unmark_favorite(
+    client: &JellyfinClient,
+    user_id: &str,
+    item_id: &str,
+) -> Result<(), JfgoatError> {
+    let path = format!("/Users/{}/FavoriteItems/{}", user_id, item_id);
+    let resp = client.delete(&path).await?;
+    if !resp.status().is_success() {
+        return Err(JfgoatError::Http(format!(
+            "Failed to remove item {} from favorites: status {}",
+            item_id, resp.status()
+        )));
+    }
+    Ok(())
+}
+
 /// Search items directly on the remote Jellyfin server (fallback during INITIAL_SYNC).
 pub async fn search_remote(
     client: &JellyfinClient,
@@ -469,4 +623,112 @@ pub async fn search_remote(
     })?;
 
     Ok(data)
+}
+
+// ── MediaStreams and ExternalUrls ────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct JellyfinMediaStream {
+    #[serde(alias = "Codec")]
+    pub codec: Option<String>,
+    #[serde(alias = "Language")]
+    pub language: Option<String>,
+    #[serde(alias = "DisplayTitle")]
+    pub display_title: Option<String>,
+    #[serde(alias = "Type")]
+    pub stream_type: Option<String>,
+    #[serde(alias = "IsDefault")]
+    pub is_default: Option<bool>,
+    #[serde(alias = "Index")]
+    pub index: Option<i64>,
+    #[serde(alias = "Height")]
+    pub height: Option<i64>,
+    #[serde(alias = "Width")]
+    pub width: Option<i64>,
+    #[serde(alias = "BitRate")]
+    pub bit_rate: Option<i64>,
+    #[serde(alias = "Channels")]
+    pub channels: Option<i64>,
+    #[serde(alias = "ChannelLayout")]
+    pub channel_layout: Option<String>,
+    #[serde(alias = "VideoRange")]
+    pub video_range: Option<String>,
+    #[serde(alias = "VideoRangeType")]
+    pub video_range_type: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct JellyfinExternalUrl {
+    #[serde(alias = "Name")]
+    pub name: Option<String>,
+    #[serde(alias = "Url")]
+    pub url: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct JellyfinItemWithStreams {
+    #[serde(alias = "MediaStreams", default)]
+    pub media_streams: Vec<JellyfinMediaStream>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct JellyfinItemWithExternals {
+    #[serde(alias = "ExternalUrls", default)]
+    pub external_urls: Vec<JellyfinExternalUrl>,
+}
+
+/// Fetch media streams (video, audio, subtitle tracks) for a specific item.
+pub async fn fetch_item_media_streams(
+    client: &JellyfinClient,
+    user_id: &str,
+    item_id: &str,
+) -> Result<Vec<JellyfinMediaStream>, JfgoatError> {
+    let path = format!(
+        "/Users/{}/Items/{}?Fields=MediaStreams",
+        user_id, item_id
+    );
+
+    let resp = client.get(&path).await?;
+
+    if !resp.status().is_success() {
+        return Err(JfgoatError::Http(format!(
+            "Failed to fetch media streams for {}: status {}",
+            item_id,
+            resp.status()
+        )));
+    }
+
+    let data: JellyfinItemWithStreams = resp.json().await.map_err(|e| {
+        JfgoatError::Http(format!("Failed to parse media streams response: {}", e))
+    })?;
+
+    Ok(data.media_streams)
+}
+
+/// Fetch external URLs (IMDb, TMDB, etc.) for a specific item.
+pub async fn fetch_item_external_urls(
+    client: &JellyfinClient,
+    user_id: &str,
+    item_id: &str,
+) -> Result<Vec<JellyfinExternalUrl>, JfgoatError> {
+    let path = format!(
+        "/Users/{}/Items/{}?Fields=ExternalUrls",
+        user_id, item_id
+    );
+
+    let resp = client.get(&path).await?;
+
+    if !resp.status().is_success() {
+        return Err(JfgoatError::Http(format!(
+            "Failed to fetch external URLs for {}: status {}",
+            item_id,
+            resp.status()
+        )));
+    }
+
+    let data: JellyfinItemWithExternals = resp.json().await.map_err(|e| {
+        JfgoatError::Http(format!("Failed to parse external URLs response: {}", e))
+    })?;
+
+    Ok(data.external_urls)
 }

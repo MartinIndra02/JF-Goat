@@ -308,6 +308,8 @@ pub fn run() {
             commands::get_resume_items,
             commands::get_next_up,
             commands::get_latest_items,
+            commands::get_item_people,
+            commands::get_similar_items,
             commands::save_homepage_cache,
             commands::load_homepage_cache,
             commands::mpv_play,
@@ -316,6 +318,10 @@ pub fn run() {
             commands::mpv_seek_absolute,
             commands::mpv_set_volume,
             commands::mpv_stop,
+            commands::get_media_streams,
+            commands::get_external_urls,
+            commands::toggle_played,
+            commands::toggle_favorite,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
