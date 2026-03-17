@@ -19,14 +19,19 @@ export function formatDate(dateStr: string | null): string {
   if (!dateStr) return "";
   try {
     const d = new Date(dateStr);
-    return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+    return d.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
   } catch {
     return "";
   }
 }
 
 export function progressPercent(item: MediaItem): number {
-  if (!item.run_time_ticks || !item.playback_ticks || item.playback_ticks <= 0) return 0;
+  if (!item.run_time_ticks || !item.playback_ticks || item.playback_ticks <= 0)
+    return 0;
   return Math.min((item.playback_ticks / item.run_time_ticks) * 100, 100);
 }
 
@@ -36,11 +41,14 @@ export function handleImageLoad(event: Event) {
     const src = img.src;
     const retryCount = parseInt(img.dataset.retry ?? "0");
     if (retryCount < 3) {
-      setTimeout(() => {
-        img.dataset.retry = String(retryCount + 1);
-        img.src = "";
-        img.src = src;
-      }, 1500 * (retryCount + 1));
+      setTimeout(
+        () => {
+          img.dataset.retry = String(retryCount + 1);
+          img.src = "";
+          img.src = src;
+        },
+        1500 * (retryCount + 1),
+      );
     }
   } else {
     img.classList.add("opacity-100");
@@ -89,7 +97,10 @@ export function personImageUrl(id: string, imageTag: string | null): string {
 }
 
 /** Scroll a carousel container left or right by a page width */
-export function scrollCarousel(container: HTMLElement | null, direction: "left" | "right") {
+export function scrollCarousel(
+  container: HTMLElement | null,
+  direction: "left" | "right",
+) {
   if (!container) return;
   const scrollAmount = container.clientWidth * 0.8;
   container.scrollBy({
