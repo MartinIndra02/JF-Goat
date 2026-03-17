@@ -267,6 +267,10 @@ pub fn run() {
             commands::get_similar_items,
             commands::save_homepage_cache,
             commands::load_homepage_cache,
+            commands::get_media_streams,
+            commands::get_external_urls,
+            commands::toggle_played,
+            commands::toggle_favorite,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

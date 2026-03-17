@@ -87,7 +87,7 @@ fn jf_item_to_media_item(item: media_api::JellyfinItem, server_id: &str) -> Medi
         image_tag,
         backdrop_tag,
         date_created: item.date_created,
-        date_updated: item.date_updated,
+        date_updated: item.date_last_media_added.or(item.premiere_date),
         community_rating: item.community_rating,
         official_rating: item.official_rating,
         genres,
@@ -532,7 +532,22 @@ pub async fn get_season_episodes(
     }
 
     // 2. Fallback: fetch from Jellyfin API
-    if let Some(ref sid_for_api) = series_id_for_fallback {
+    //    If we don't have the series_id from the local DB (season not synced),
+    //    fetch the season item from the API first to discover its series_id.
+    let mut series_id_resolved = series_id_for_fallback;
+    if series_id_resolved.is_none() {
+        if let (Ok((ref server_url, ref token, ref user_id, ref device_id)), Ok(ref _sid)) =
+            (get_connection_params(&state), get_server_id(&state))
+        {
+            let jf_client = JellyfinClient::new(&state.http_client, server_url, device_id)
+                .with_token(token);
+            if let Ok(season_item) = media_api::fetch_item_by_id(&jf_client, user_id, &season_id).await {
+                series_id_resolved = season_item.series_id;
+            }
+        }
+    }
+
+    if let Some(ref sid_for_api) = series_id_resolved {
         let params = get_connection_params(&state);
         let server_id = get_server_id(&state);
         if let (Ok((server_url, token, user_id, device_id)), Ok(sid)) = (params, server_id) {
@@ -631,4 +646,181 @@ pub async fn get_similar_items(
         .collect();
 
     Ok(items)
+}
+
+// ── Media streams and external URLs for detail pages ────────────────────
+
+/// A single stream option (video, audio, or subtitle track).
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct StreamOption {
+    pub index: i64,
+    pub codec: String,
+    pub display_title: String,
+    pub language: Option<String>,
+    pub is_default: bool,
+}
+
+/// Grouped media stream info for an item.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MediaStreamInfo {
+    pub video: Vec<StreamOption>,
+    pub audio: Vec<StreamOption>,
+    pub subtitle: Vec<StreamOption>,
+    /// Short label for the primary video stream, e.g. "HD SDR"
+    pub video_label: Option<String>,
+}
+
+/// An external URL (e.g. IMDb, TMDB, TheTVDB).
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ExternalUrl {
+    pub name: String,
+    pub url: String,
+}
+
+/// Fetch media stream info (video quality, audio tracks, subtitles) for a media item.
+#[tauri::command]
+pub async fn get_media_streams(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<MediaStreamInfo, JfgoatError> {
+    let (server_url, token, user_id, device_id) = get_connection_params(&state)?;
+
+    let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
+        .with_token(&token);
+
+    let streams = media_api::fetch_item_media_streams(&jf_client, &user_id, &id).await?;
+
+    let mut video = Vec::new();
+    let mut audio = Vec::new();
+    let mut subtitle = Vec::new();
+    let mut video_label: Option<String> = None;
+
+    for s in streams {
+        let stream_type = s.stream_type.as_deref().unwrap_or("");
+        let option = StreamOption {
+            index: s.index.unwrap_or(0),
+            codec: s.codec.clone().unwrap_or_default().to_uppercase(),
+            display_title: s.display_title.clone().unwrap_or_default(),
+            language: s.language.clone(),
+            is_default: s.is_default.unwrap_or(false),
+        };
+
+        match stream_type {
+            "Video" => {
+                // Build a short label like "HD SDR" or "4K HDR"
+                if video_label.is_none() {
+                    let resolution = match s.height.unwrap_or(0) {
+                        h if h >= 2160 => "4K",
+                        h if h >= 1080 => "HD",
+                        h if h >= 720 => "HD",
+                        h if h > 0 => "SD",
+                        _ => "HD",
+                    };
+                    let range = s.video_range.as_deref().unwrap_or("SDR");
+                    video_label = Some(format!("{} {}", resolution, range));
+                }
+                video.push(option);
+            }
+            "Audio" => audio.push(option),
+            "Subtitle" => subtitle.push(option),
+            _ => {}
+        }
+    }
+
+    Ok(MediaStreamInfo {
+        video,
+        audio,
+        subtitle,
+        video_label,
+    })
+}
+
+/// Fetch external URLs (IMDb, TMDB, TheTVDB, etc.) for a media item.
+#[tauri::command]
+pub async fn get_external_urls(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Vec<ExternalUrl>, JfgoatError> {
+    let (server_url, token, user_id, device_id) = get_connection_params(&state)?;
+
+    let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
+        .with_token(&token);
+
+    let urls = media_api::fetch_item_external_urls(&jf_client, &user_id, &id).await?;
+
+    let result: Vec<ExternalUrl> = urls
+        .into_iter()
+        .filter_map(|u| {
+            let name = u.name?;
+            let url = u.url?;
+            if url.is_empty() { return None; }
+            Some(ExternalUrl { name, url })
+        })
+        .collect();
+
+    Ok(result)
+}
+
+// ── User data mutations ─────────────────────────────────────────────────
+
+/// Toggle the played/unplayed state for a media item on the Jellyfin server
+/// and update the local DB. Returns the new played state.
+#[tauri::command]
+pub async fn toggle_played(
+    state: State<'_, AppState>,
+    id: String,
+    played: bool,
+) -> Result<bool, JfgoatError> {
+    let (server_url, token, user_id, device_id) = get_connection_params(&state)?;
+    let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
+        .with_token(&token);
+
+    let new_played = !played;
+    if new_played {
+        media_api::mark_played(&jf_client, &user_id, &id).await?;
+    } else {
+        media_api::mark_unplayed(&jf_client, &user_id, &id).await?;
+    }
+
+    // Update local DB
+    {
+        let db = state.db.lock().map_err(|e| JfgoatError::Internal(e.to_string()))?;
+        let _ = db.execute(
+            "UPDATE media_items SET played = ?1, playback_ticks = CASE WHEN ?1 = 0 THEN 0 ELSE playback_ticks END WHERE id = ?2",
+            rusqlite::params![new_played as i32, id],
+        );
+    }
+
+    Ok(new_played)
+}
+
+/// Toggle the favorite state for a media item on the Jellyfin server
+/// and update the local DB. Returns the new favorite state.
+#[tauri::command]
+pub async fn toggle_favorite(
+    state: State<'_, AppState>,
+    id: String,
+    is_favorite: bool,
+) -> Result<bool, JfgoatError> {
+    let (server_url, token, user_id, device_id) = get_connection_params(&state)?;
+    let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
+        .with_token(&token);
+
+    let new_favorite = !is_favorite;
+    if new_favorite {
+        media_api::mark_favorite(&jf_client, &user_id, &id).await?;
+    } else {
+        media_api::unmark_favorite(&jf_client, &user_id, &id).await?;
+    }
+
+    // Update local DB
+    {
+        let db = state.db.lock().map_err(|e| JfgoatError::Internal(e.to_string()))?;
+        let _ = db.execute(
+            "UPDATE media_items SET is_favorite = ?1 WHERE id = ?2",
+            rusqlite::params![new_favorite as i32, id],
+        );
+    }
+
+    Ok(new_favorite)
 }

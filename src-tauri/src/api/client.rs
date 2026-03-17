@@ -61,4 +61,26 @@ impl JellyfinClient {
             .await?;
         Ok(resp)
     }
+
+    pub async fn post_empty(&self, path: &str) -> Result<reqwest::Response, JfgoatError> {
+        let url = format!("{}{}", self.base_url, path);
+        let resp = self
+            .client
+            .post(&url)
+            .header("Authorization", self.auth_header())
+            .send()
+            .await?;
+        Ok(resp)
+    }
+
+    pub async fn delete(&self, path: &str) -> Result<reqwest::Response, JfgoatError> {
+        let url = format!("{}{}", self.base_url, path);
+        let resp = self
+            .client
+            .delete(&url)
+            .header("Authorization", self.auth_header())
+            .send()
+            .await?;
+        Ok(resp)
+    }
 }

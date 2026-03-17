@@ -91,3 +91,23 @@ export interface Person {
   person_type: string | null;
   image_tag: string | null;
 }
+
+export interface StreamOption {
+  index: number;
+  codec: string;
+  display_title: string;
+  language: string | null;
+  is_default: boolean;
+}
+
+export interface MediaStreamInfo {
+  video: StreamOption[];
+  audio: StreamOption[];
+  subtitle: StreamOption[];
+  video_label: string | null;
+}
+
+export interface ExternalUrl {
+  name: string;
+  url: string;
+}
