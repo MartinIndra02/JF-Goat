@@ -75,7 +75,7 @@ fn to_media_item(item: media::JellyfinItem, server_id: &str) -> MediaItem {
         image_tag,
         backdrop_tag,
         date_created: item.date_created,
-        date_updated: item.date_updated,
+        date_updated: item.date_last_media_added.or(item.premiere_date),
         community_rating: item.community_rating,
         official_rating: item.official_rating,
         genres,
