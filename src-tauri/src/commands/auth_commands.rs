@@ -190,7 +190,10 @@ pub async fn check_auth(
         let jf_client = JellyfinClient::new(&state.http_client, &server.url, &device_id)
             .with_token(&token);
 
-        let resp = jf_client.get("/System/Info").await;
+        // Use /Users/Me instead of /System/Info — the latter requires admin
+        // privileges and returns 403 for regular users, falsely invalidating
+        // a perfectly good token.
+        let resp = jf_client.get("/Users/Me").await;
         match resp {
             Ok(r) if r.status().is_success() => {
                 // Token is valid — cache in AppState
@@ -204,9 +207,14 @@ pub async fn check_auth(
                     server_url: server.url,
                 }));
             }
-            _ => {
-                // Token invalid — clear it and fall through to auto-login
+            Ok(r) if r.status() == reqwest::StatusCode::UNAUTHORIZED => {
+                // Token is definitively invalid — clear it and fall through to auto-login
                 keyring_clear_token()?;
+            }
+            _ => {
+                // Network error or unexpected status — keep the token (it may still
+                // be valid) and fall through to auto-login attempt.
+                // Don't clear credentials on transient failures.
             }
         }
     }
