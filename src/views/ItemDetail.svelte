@@ -7,7 +7,8 @@
     mpvPlay,
   } from "../lib/api";
   import { showPlayer } from "../lib/stores/player.svelte";
-  import type { MediaItem } from "../lib/types";
+  import { seasonNumber } from "./detail/detailHelpers";
+  import {
     getItemPeople,
     getSimilarItems,
     getMediaStreams,
@@ -293,6 +294,7 @@
     {people}
     {mediaStreams}
     {externalUrls}
+    onPlay={handlePlay}
     onTogglePlayed={handleTogglePlayed}
     onToggleFavorite={handleToggleFavorite}
   />

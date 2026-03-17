@@ -152,6 +152,8 @@ export async function mpvSetVolume(volume: number): Promise<void> {
 
 export async function mpvStop(): Promise<void> {
   return invoke("mpv_stop");
+}
+
 export async function getMediaStreams(id: string): Promise<MediaStreamInfo> {
   return invoke("get_media_streams", { id });
 }
@@ -162,10 +164,16 @@ export async function getExternalUrls(id: string): Promise<ExternalUrl[]> {
 
 // ── User data mutations ──────────────────────────────────────────────
 
-export async function togglePlayed(id: string, played: boolean): Promise<boolean> {
+export async function togglePlayed(
+  id: string,
+  played: boolean,
+): Promise<boolean> {
   return invoke("toggle_played", { id, played });
 }
 
-export async function toggleFavorite(id: string, isFavorite: boolean): Promise<boolean> {
+export async function toggleFavorite(
+  id: string,
+  isFavorite: boolean,
+): Promise<boolean> {
   return invoke("toggle_favorite", { id, isFavorite });
 }

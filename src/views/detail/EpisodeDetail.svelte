@@ -15,6 +15,7 @@
     externalUrls = [],
     onTogglePlayed,
     onToggleFavorite,
+    onPlay,
   }: {
     item: MediaItem;
     siblingEpisodes: MediaItem[];
@@ -23,6 +24,7 @@
     externalUrls: ExternalUrl[];
     onTogglePlayed: (id: string, played: boolean) => void;
     onToggleFavorite: (id: string, isFavorite: boolean) => void;
+    onPlay: (item: MediaItem, fromStart?: boolean) => void;
   } = $props();
 
   let overviewExpanded = $state(false);
@@ -179,7 +181,7 @@
 
     <!-- Play / Resume button -->
     <div class="mb-2">
-      <button class="relative w-full flex items-center justify-center gap-2.5 py-3 bg-blue-600 hover:bg-blue-700 rounded-xl font-semibold text-sm transition-colors overflow-hidden">
+      <button onclick={() => onPlay(item)} class="relative w-full flex items-center justify-center gap-2.5 py-3 bg-blue-600 hover:bg-blue-700 rounded-xl font-semibold text-sm transition-colors overflow-hidden">
         <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
         {#if progressPercent(item) > 0}
           <span>Resume</span>
@@ -195,7 +197,7 @@
     <!-- Play from start (only if there's progress) -->
     {#if progressPercent(item) > 0}
       <div class="mb-3">
-        <button class="w-full flex items-center justify-center gap-2 py-2 bg-white/10 hover:bg-white/15 rounded-xl text-sm text-gray-300 transition-colors">
+        <button onclick={() => onPlay(item, true)} class="w-full flex items-center justify-center gap-2 py-2 bg-white/10 hover:bg-white/15 rounded-xl text-sm text-gray-300 transition-colors">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
           Play from start
         </button>
@@ -304,7 +306,7 @@
                 Open show
               </button>
             {/if}
-            <button onclick={closeContextMenu} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
+            <button onclick={() => { onPlay(item, true); closeContextMenu(); }} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
               <svg class="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
               Play from start
             </button>
