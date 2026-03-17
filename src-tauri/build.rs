@@ -79,6 +79,18 @@ fn ensure_mpv_import_lib() -> Result<(), String> {
     }
 
     println!("cargo:rustc-link-search=native={}", out_dir.display());
+
+    // Copy mpv-2.dll to the target executable directory
+    let target_dir = out_dir
+        .parent() // build
+        .and_then(|p| p.parent()) // build/jfgoat-<hash>
+        .and_then(|p| p.parent()) // target/<profile>
+        .ok_or("Failed to determine target directory")?;
+    
+    let dest_dll = target_dir.join("mpv-2.dll");
+    fs::copy(&mpv_dll, &dest_dll)
+        .map_err(|e| format!("failed to copy mpv-2.dll to {}: {}", dest_dll.display(), e))?;
+
     Ok(())
 }
 

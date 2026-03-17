@@ -34,6 +34,8 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": ["bin/mpv-2.dll"]
+    "resources": {
+      "bin/mpv-2.dll": "mpv-2.dll"
+    }
   }
 }
