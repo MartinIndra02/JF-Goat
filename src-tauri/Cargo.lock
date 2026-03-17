@@ -1703,6 +1703,8 @@ version = "0.1.0"
 dependencies = [
  "futures",
  "keyring",
+ "libmpv2",
+ "raw-window-handle",
  "reqwest 0.12.28",
  "rusqlite",
  "serde",
@@ -1712,6 +1714,7 @@ dependencies = [
  "tauri-plugin-shell",
  "tokio",
  "urlencoding",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1870,6 +1873,21 @@ dependencies = [
  "cfg-if",
  "winapi",
 ]
+
+[[package]]
+name = "libmpv2"
+version = "4.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3e0c3802b4bb1a18adbf5659b078ce24cb8e16c79ff695557f4e10af2a44722a"
+dependencies = [
+ "libmpv2-sys",
+]
+
+[[package]]
+name = "libmpv2-sys"
+version = "4.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "edb32cabe7176b7d270b0dca6ff418b75187ae8d3854423e3d06fbff376841e4"
 
 [[package]]
 name = "libredox"

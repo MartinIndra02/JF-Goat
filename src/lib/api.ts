@@ -98,7 +98,9 @@ export async function getSeriesSeasons(seriesId: string): Promise<MediaItem[]> {
   return invoke("get_series_seasons", { seriesId });
 }
 
-export async function getSeasonEpisodes(seasonId: string): Promise<MediaItem[]> {
+export async function getSeasonEpisodes(
+  seasonId: string,
+): Promise<MediaItem[]> {
   return invoke("get_season_episodes", { seasonId });
 }
 
@@ -115,9 +117,7 @@ export async function getSimilarItems(
 
 // ── Homepage cache commands ─────────────────────────────────────────────
 
-export async function saveHomepageCache(
-  data: HomepageCache,
-): Promise<void> {
+export async function saveHomepageCache(data: HomepageCache): Promise<void> {
   return invoke("save_homepage_cache", { data });
 }
 
@@ -125,6 +125,33 @@ export async function loadHomepageCache(): Promise<HomepageCache | null> {
   return invoke("load_homepage_cache");
 }
 
+// ── MPV player commands ─────────────────────────────────────────
+
+export async function mpvPlay(
+  itemId: string,
+  startTicks: number,
+): Promise<void> {
+  return invoke("mpv_play", { itemId, startTicks });
+}
+
+export async function mpvTogglePause(): Promise<void> {
+  return invoke("mpv_toggle_pause");
+}
+
+export async function mpvSeek(seconds: number): Promise<void> {
+  return invoke("mpv_seek", { seconds });
+}
+
+export async function mpvSeekAbsolute(seconds: number): Promise<void> {
+  return invoke("mpv_seek_absolute", { seconds });
+}
+
+export async function mpvSetVolume(volume: number): Promise<void> {
+  return invoke("mpv_set_volume", { volume });
+}
+
+export async function mpvStop(): Promise<void> {
+  return invoke("mpv_stop");
 export async function getMediaStreams(id: string): Promise<MediaStreamInfo> {
   return invoke("get_media_streams", { id });
 }

@@ -84,6 +84,15 @@ export interface HomepageCache {
   featured_items: MediaItem[];
 }
 
+// ── Player types ────────────────────────────────────────────────
+
+export interface MpvTimeUpdate {
+  position: number;
+  duration: number;
+}
+
+export interface MpvStateChange {
+  paused: boolean;
 export interface Person {
   id: string;
   name: string;

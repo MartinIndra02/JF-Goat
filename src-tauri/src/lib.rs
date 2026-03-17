@@ -2,6 +2,7 @@ mod api;
 mod commands;
 mod db;
 mod error;
+mod mpv;
 mod state;
 mod sync;
 
@@ -240,6 +241,50 @@ pub fn run() {
             };
             app.manage(app_state);
 
+            // ── MPV Player Setup (Windows) ─────────────────────────────────
+            #[cfg(target_os = "windows")]
+            {
+                use raw_window_handle::HasWindowHandle;
+                use raw_window_handle::RawWindowHandle;
+
+                // Set DLL search directory so libmpv2 can find mpv-2.dll
+                if let Ok(resource_dir) = app.path().resource_dir() {
+                    mpv::set_mpv_dll_directory(&resource_dir);
+                    println!("[mpv] DLL search dir: {:?}", resource_dir);
+                }
+
+                let window = app
+                    .get_webview_window("main")
+                    .expect("No 'main' window found");
+
+                let parent_hwnd = match window
+                    .window_handle()
+                    .expect("Failed to get window handle")
+                    .as_raw()
+                {
+                    RawWindowHandle::Win32(h) => h.hwnd.get() as isize,
+                    _ => panic!("Expected Win32 window handle"),
+                };
+
+                let child_hwnd = mpv::create_mpv_child_window(parent_hwnd)
+                    .expect("Failed to create mpv child window");
+
+                let (cmd_tx, cmd_rx) = std::sync::mpsc::channel();
+                let app_handle = app.handle().clone();
+
+                mpv::spawn_mpv_thread(child_hwnd, cmd_rx, app_handle);
+
+                app.manage(mpv::MpvState { cmd_tx, child_hwnd });
+
+                // Resize mpv child window when the main window is resized
+                let mpv_hwnd = child_hwnd;
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::Resized(size) = event {
+                        mpv::resize_mpv_window(mpv_hwnd, size.width, size.height);
+                    }
+                });
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -267,6 +312,12 @@ pub fn run() {
             commands::get_similar_items,
             commands::save_homepage_cache,
             commands::load_homepage_cache,
+            commands::mpv_play,
+            commands::mpv_toggle_pause,
+            commands::mpv_seek,
+            commands::mpv_seek_absolute,
+            commands::mpv_set_volume,
+            commands::mpv_stop,
             commands::get_media_streams,
             commands::get_external_urls,
             commands::toggle_played,

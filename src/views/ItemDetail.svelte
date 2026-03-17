@@ -4,6 +4,10 @@
     getItemById,
     getSeriesSeasons,
     getSeasonEpisodes,
+    mpvPlay,
+  } from "../lib/api";
+  import { showPlayer } from "../lib/stores/player.svelte";
+  import type { MediaItem } from "../lib/types";
     getItemPeople,
     getSimilarItems,
     getMediaStreams,
@@ -37,6 +41,72 @@
   // Similar/Related items
   let similarItems = $state<MediaItem[]>([]);
 
+  function formatRuntime(ticks: number | null): string {
+    if (!ticks) return "";
+    const minutes = Math.round(ticks / 600_000_000);
+    if (minutes < 60) return `${minutes}m`;
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+  }
+
+  function formatDate(dateStr: string | null): string {
+    if (!dateStr) return "";
+    try {
+      const d = new Date(dateStr);
+      return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+    } catch {
+      return "";
+    }
+  }
+
+  function progressPercent(item: MediaItem): number {
+    if (!item.run_time_ticks || !item.playback_ticks || item.playback_ticks <= 0) return 0;
+    return Math.min((item.playback_ticks / item.run_time_ticks) * 100, 100);
+  }
+
+  function handleImageLoad(event: Event) {
+    const img = event.target as HTMLImageElement;
+    if (img.naturalWidth <= 1 && img.naturalHeight <= 1) {
+      const src = img.src;
+      const retryCount = parseInt(img.dataset.retry ?? "0");
+      if (retryCount < 3) {
+        setTimeout(() => {
+          img.dataset.retry = String(retryCount + 1);
+          img.src = "";
+          img.src = src;
+        }, 1500 * (retryCount + 1));
+      }
+    } else {
+      img.classList.add("opacity-100");
+    }
+  }
+
+  function navigateToItem(id: string) {
+    push(`/item?id=${id}`);
+  }
+
+  async function handlePlay(target: MediaItem, fromStart: boolean = false) {
+    const startTicks = fromStart ? 0 : target.playback_ticks;
+
+    let displayTitle = target.name;
+    if (target.type === "Episode" && target.series_name) {
+      const sNum = seasonNumber(target.season_name);
+      displayTitle = `${target.series_name} - S${sNum} E${target.index_number ?? "?"} - ${target.name}`;
+    }
+
+    showPlayer(target.id, displayTitle);
+
+    try {
+      await mpvPlay(target.id, startTicks);
+    } catch (e) {
+      console.error("Failed to start playback:", e);
+    }
+  }
+
+  function goBack() {
+    window.history.length > 1 ? window.history.back() : push("/home");
+  }
   // Media streams & external URLs
   let mediaStreams = $state<MediaStreamInfo | null>(null);
   let externalUrls = $state<ExternalUrl[]>([]);
