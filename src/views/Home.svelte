@@ -31,6 +31,21 @@
   let searching = $state(false);
   let searchTimer: ReturnType<typeof setTimeout> | null = null;
 
+  let movieResults = $derived(searchResults.filter((item) => item.type === "Movie"));
+  let showResults = $derived(
+    searchResults.filter((item) => item.type === "Series" || item.type === "Season")
+  );
+  let episodeResults = $derived(searchResults.filter((item) => item.type === "Episode"));
+  let otherResults = $derived(
+    searchResults.filter(
+      (item) =>
+        item.type !== "Movie" &&
+        item.type !== "Series" &&
+        item.type !== "Season" &&
+        item.type !== "Episode"
+    )
+  );
+
   // Real-time data from Jellyfin server
   let resumeItems = $state<MediaItem[]>([]);
   let nextUpItems = $state<MediaItem[]>([]);
@@ -253,10 +268,50 @@
         <p class="text-gray-500 text-xs mb-4">
           {searchResults.length} results (from {searchSource === "remote" ? "server" : "local cache"})
         </p>
-        <div class="flex flex-wrap gap-3">
-          {#each searchResults as item (item.id)}
-            <PosterCard {item} />
-          {/each}
+        <div class="space-y-8">
+          {#if movieResults.length > 0}
+            <section>
+              <h2 class="text-sm font-semibold text-gray-200 mb-3">Movies ({movieResults.length})</h2>
+              <div class="flex flex-wrap gap-3">
+                {#each movieResults as item (item.id)}
+                  <PosterCard {item} />
+                {/each}
+              </div>
+            </section>
+          {/if}
+
+          {#if showResults.length > 0}
+            <section>
+              <h2 class="text-sm font-semibold text-gray-200 mb-3">Shows ({showResults.length})</h2>
+              <div class="flex flex-wrap gap-3">
+                {#each showResults as item (item.id)}
+                  <PosterCard {item} />
+                {/each}
+              </div>
+            </section>
+          {/if}
+
+          {#if episodeResults.length > 0}
+            <section>
+              <h2 class="text-sm font-semibold text-gray-200 mb-3">Episodes ({episodeResults.length})</h2>
+              <div class="flex flex-wrap gap-3">
+                {#each episodeResults as item (item.id)}
+                  <PosterCard {item} />
+                {/each}
+              </div>
+            </section>
+          {/if}
+
+          {#if otherResults.length > 0}
+            <section>
+              <h2 class="text-sm font-semibold text-gray-300 mb-3">Other ({otherResults.length})</h2>
+              <div class="flex flex-wrap gap-3">
+                {#each otherResults as item (item.id)}
+                  <PosterCard {item} />
+                {/each}
+              </div>
+            </section>
+          {/if}
         </div>
       {/if}
     </div>

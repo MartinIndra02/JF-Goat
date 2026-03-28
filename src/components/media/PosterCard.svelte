@@ -1,4 +1,14 @@
 <script lang="ts">
+  import {
+    getSeasonEpisodes,
+    getSeriesSeasons,
+    mpvPlay,
+  } from "../../lib/api";
+  import {
+    getPreferredAudioStreamIndex,
+    getPreferredSubtitleStreamIndex,
+    showPlayer,
+  } from "../../lib/stores/player.svelte";
   import { push } from "svelte-spa-router";
   import type { MediaItem } from "../../lib/types";
 
@@ -26,10 +36,95 @@
 
   const progress = $derived(progressPercent(item));
   const aspectClass = $derived(landscape ? "aspect-video" : "aspect-[2/3]");
+  let launchingPlayback = $state(false);
 
-  // Navigate to detail page. All item types go to their own detail page.
-  function handleClick() {
+  function openDetail() {
     push(`/item?id=${item.id}`);
+  }
+
+  function seasonNumber(value: string | null): number | string {
+    if (!value) return "?";
+    const m = value.match(/\d+/);
+    return m ? Number(m[0]) : "?";
+  }
+
+  function playbackTitle(target: MediaItem): string {
+    if (target.type === "Episode" && target.series_name) {
+      const sNum = seasonNumber(target.season_name);
+      return `${target.series_name} - S${sNum} E${target.index_number ?? "?"} - ${target.name}`;
+    }
+    return target.name;
+  }
+
+  function pickEpisode(episodes: MediaItem[]): MediaItem | null {
+    if (episodes.length === 0) return null;
+
+    const inProgress = episodes.find((ep) => ep.playback_ticks > 0 && !ep.played);
+    if (inProgress) return inProgress;
+
+    const firstUnplayed = episodes.find((ep) => !ep.played);
+    return firstUnplayed ?? episodes[0];
+  }
+
+  async function resolvePlayableItem(target: MediaItem): Promise<MediaItem | null> {
+    if (target.type === "Movie" || target.type === "Episode") {
+      return target;
+    }
+
+    if (target.type === "Season") {
+      const seasonEpisodes = await getSeasonEpisodes(target.id).catch(() => []);
+      return pickEpisode(seasonEpisodes);
+    }
+
+    if (target.type === "Series") {
+      const seasons = await getSeriesSeasons(target.id).catch(() => []);
+      if (seasons.length === 0) return null;
+
+      const episodeLists = await Promise.all(
+        seasons.map((season) => getSeasonEpisodes(season.id).catch(() => [])),
+      );
+      return pickEpisode(episodeLists.flat());
+    }
+
+    return null;
+  }
+
+  async function handlePosterClick() {
+    if (launchingPlayback) return;
+
+    launchingPlayback = true;
+    try {
+      const playableItem = await resolvePlayableItem(item);
+      if (!playableItem) {
+        openDetail();
+        return;
+      }
+
+      const startTicks = playableItem.playback_ticks;
+      showPlayer(playableItem.id, playbackTitle(playableItem));
+
+      const preferredAudio = getPreferredAudioStreamIndex();
+      const preferredSubtitle = getPreferredSubtitleStreamIndex();
+
+      await mpvPlay({
+        itemId: playableItem.id,
+        startTicks,
+        audioStreamIndex: preferredAudio ?? null,
+        subtitleStreamIndex:
+          preferredSubtitle === undefined
+            ? null
+            : preferredSubtitle === null
+              ? -1
+              : preferredSubtitle,
+        maxStreamingBitrate: null,
+        targetHeight: null,
+      });
+    } catch (e) {
+      console.error("Failed to start playback from poster:", e);
+      openDetail();
+    } finally {
+      launchingPlayback = false;
+    }
   }
 
   // Retry loading images that were returned as transparent placeholders (cache miss).
@@ -55,13 +150,15 @@
   }
 </script>
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<!-- svelte-ignore a11y_click_events_have_key_events -->
 <div
-  onclick={handleClick}
-  class="group cursor-pointer flex-shrink-0 {landscape ? 'w-56 sm:w-64' : 'w-32 sm:w-36'}"
+  class="group flex-shrink-0 {landscape ? 'w-56 sm:w-64' : 'w-32 sm:w-36'}"
 >
-  <div class="relative overflow-hidden rounded-lg shadow-md transition-transform duration-200 group-hover:scale-105 group-hover:shadow-xl">
+  <button
+    type="button"
+    onclick={handlePosterClick}
+    class="block w-full text-left relative overflow-hidden rounded-lg shadow-md transition-transform duration-200 group-hover:scale-105 group-hover:shadow-xl cursor-pointer"
+    aria-label="Play {item.name}"
+  >
     {#if landscape && item.backdrop_tag}
       <img
         src={`http://jfimage.localhost/backdrop/${item.id}?tag=${item.backdrop_tag}`}
@@ -113,9 +210,14 @@
         </span>
       </div>
     {/if}
-  </div>
+  </button>
 
-  <div class="mt-1.5 px-0.5">
+  <button
+    type="button"
+    onclick={openDetail}
+    class="mt-1.5 px-0.5 block w-full text-left cursor-pointer"
+    aria-label="Open details for {item.name}"
+  >
     <p class="text-sm text-gray-200 truncate font-medium">{item.name}</p>
     {#if item.type === "Episode" && item.series_name}
       <p class="text-xs text-gray-400 truncate">{item.series_name}</p>
@@ -137,5 +239,5 @@
         {/if}
       </div>
     {/if}
-  </div>
+  </button>
 </div>
