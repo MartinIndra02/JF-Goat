@@ -6,7 +6,15 @@
     getSeasonEpisodes,
     mpvPlay,
   } from "../lib/api";
-  import { showPlayer } from "../lib/stores/player.svelte";
+  import {
+    showPlayer,
+    getPreferredAudioStreamIndex,
+    getPreferredSubtitleStreamIndex,
+    setPreferredAudioStreamIndex,
+    setPreferredSubtitleStreamIndex,
+    setPreferredAudioMetadata,
+    setPreferredSubtitleMetadata,
+  } from "../lib/stores/player.svelte";
   import { seasonNumber } from "./detail/detailHelpers";
   import {
     getItemPeople,
@@ -16,7 +24,13 @@
     togglePlayed,
     toggleFavorite,
   } from "../lib/api";
-  import type { MediaItem, Person, MediaStreamInfo, ExternalUrl } from "../lib/types";
+  import type {
+    MediaItem,
+    Person,
+    MediaStreamInfo,
+    ExternalUrl,
+    PlaybackSelection,
+  } from "../lib/types";
   import EpisodeDetail from "./detail/EpisodeDetail.svelte";
   import SeriesDetail from "./detail/SeriesDetail.svelte";
   import SeasonDetail from "./detail/SeasonDetail.svelte";
@@ -42,52 +56,11 @@
   // Similar/Related items
   let similarItems = $state<MediaItem[]>([]);
 
-  function formatRuntime(ticks: number | null): string {
-    if (!ticks) return "";
-    const minutes = Math.round(ticks / 600_000_000);
-    if (minutes < 60) return `${minutes}m`;
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
-  }
-
-  function formatDate(dateStr: string | null): string {
-    if (!dateStr) return "";
-    try {
-      const d = new Date(dateStr);
-      return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
-    } catch {
-      return "";
-    }
-  }
-
-  function progressPercent(item: MediaItem): number {
-    if (!item.run_time_ticks || !item.playback_ticks || item.playback_ticks <= 0) return 0;
-    return Math.min((item.playback_ticks / item.run_time_ticks) * 100, 100);
-  }
-
-  function handleImageLoad(event: Event) {
-    const img = event.target as HTMLImageElement;
-    if (img.naturalWidth <= 1 && img.naturalHeight <= 1) {
-      const src = img.src;
-      const retryCount = parseInt(img.dataset.retry ?? "0");
-      if (retryCount < 3) {
-        setTimeout(() => {
-          img.dataset.retry = String(retryCount + 1);
-          img.src = "";
-          img.src = src;
-        }, 1500 * (retryCount + 1));
-      }
-    } else {
-      img.classList.add("opacity-100");
-    }
-  }
-
-  function navigateToItem(id: string) {
-    push(`/item?id=${id}`);
-  }
-
-  async function handlePlay(target: MediaItem, fromStart: boolean = false) {
+  async function handlePlay(
+    target: MediaItem,
+    fromStart: boolean = false,
+    selection?: PlaybackSelection,
+  ) {
     const startTicks = fromStart ? 0 : target.playback_ticks;
 
     let displayTitle = target.name;
@@ -98,16 +71,51 @@
 
     showPlayer(target.id, displayTitle);
 
+    if (selection?.audioStreamIndex !== undefined) {
+      if (selection.audioStreamIndex === null) {
+        setPreferredAudioStreamIndex(undefined);
+      } else {
+        setPreferredAudioStreamIndex(selection.audioStreamIndex);
+      }
+      setPreferredAudioMetadata(
+        selection.audioLanguage,
+        selection.audioDisplayTitle,
+      );
+    }
+
+    if (selection?.subtitleStreamIndex !== undefined) {
+      setPreferredSubtitleStreamIndex(selection.subtitleStreamIndex);
+      setPreferredSubtitleMetadata(
+        selection.subtitleLanguage,
+        selection.subtitleDisplayTitle,
+      );
+    }
+
+    const preferredAudio = getPreferredAudioStreamIndex();
+    const preferredSubtitle = getPreferredSubtitleStreamIndex();
+    const resolvedAudio = selection?.audioStreamIndex ?? preferredAudio ?? null;
+    const resolvedSubtitle = selection?.subtitleStreamIndex ?? preferredSubtitle;
+
     try {
-      await mpvPlay(target.id, startTicks);
+      await mpvPlay({
+        itemId: target.id,
+        startTicks,
+        audioStreamIndex: resolvedAudio ?? null,
+        subtitleStreamIndex:
+          resolvedSubtitle === undefined
+            ? null
+            : resolvedSubtitle === null
+              ? -1
+              : resolvedSubtitle,
+        // Startup should always be direct-play; transcode options are applied later from player UI.
+        maxStreamingBitrate: null,
+        targetHeight: null,
+      });
     } catch (e) {
       console.error("Failed to start playback:", e);
     }
   }
 
-  function goBack() {
-    window.history.length > 1 ? window.history.back() : push("/home");
-  }
   // Media streams & external URLs
   let mediaStreams = $state<MediaStreamInfo | null>(null);
   let externalUrls = $state<ExternalUrl[]>([]);

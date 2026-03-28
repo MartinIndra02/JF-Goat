@@ -4,15 +4,23 @@ use tauri::Emitter;
 
 /// Commands sent from Tauri command handlers to the MPV thread.
 pub enum MpvCommand {
-    LoadFile { url: String, start_seconds: f64 },
+    LoadFile {
+        url: String,
+        start_seconds: f64,
+        audio_track: Option<i64>,
+        subtitle_track: Option<i64>,
+    },
     TogglePause,
-    Pause,
-    Resume,
     SeekRelative(f64),
     SeekAbsolute(f64),
     SetVolume(f64),
+    SetMute(bool),
+    SetRate(f64),
+    SetSubtitlePosition(i64),
+    SetVideoScale(String),
+    SetAudioTrack(i64),
+    SetSubtitleTrack(Option<i64>),
     Stop,
-    Shutdown,
 }
 
 /// Emitted as Tauri event payloads for time position updates.
@@ -26,6 +34,17 @@ pub struct MpvTimeUpdate {
 #[derive(Debug, Clone, Serialize)]
 pub struct MpvStateChange {
     pub paused: bool,
+}
+
+/// Emitted as Tauri event payloads for mutable playback settings.
+#[derive(Debug, Clone, Serialize)]
+pub struct MpvPlaybackSettings {
+    pub volume: f64,
+    pub muted: bool,
+    pub playback_rate: f64,
+    pub video_scale_mode: String,
+    pub audio_track: Option<i64>,
+    pub subtitle_track: Option<i64>,
 }
 
 /// Managed Tauri state for the MPV player.
@@ -195,17 +214,73 @@ fn run_mpv_loop(
     mpv.event_context_mut()
         .observe_property("pause", libmpv2::Format::Flag, 0)
         .unwrap();
+    mpv.event_context_mut()
+        .observe_property("volume", libmpv2::Format::Double, 0)
+        .unwrap();
+    mpv.event_context_mut()
+        .observe_property("mute", libmpv2::Format::Flag, 0)
+        .unwrap();
+    mpv.event_context_mut()
+        .observe_property("speed", libmpv2::Format::Double, 0)
+        .unwrap();
+    mpv.event_context_mut()
+        .observe_property("aid", libmpv2::Format::Int64, 0)
+        .unwrap();
+    mpv.event_context_mut()
+        .observe_property("sid", libmpv2::Format::Int64, 0)
+        .unwrap();
 
     let mut time_pos: f64 = 0.0;
     let mut duration: f64 = 0.0;
+    let mut volume: f64 = 100.0;
+    let mut muted = false;
+    let mut playback_rate: f64 = 1.0;
+    let mut video_scale_mode = String::from("contain");
+    let mut audio_track: Option<i64> = None;
+    let mut subtitle_track: Option<i64> = None;
     let mut last_emit = std::time::Instant::now();
     let emit_interval = std::time::Duration::from_millis(250);
+
+    let emit_settings = |app: &tauri::AppHandle,
+                         volume: f64,
+                         muted: bool,
+                         playback_rate: f64,
+                         video_scale_mode: &str,
+                         audio_track: Option<i64>,
+                         subtitle_track: Option<i64>| {
+        let _ = app.emit(
+            "mpv-playback-settings",
+            MpvPlaybackSettings {
+                volume,
+                muted,
+                playback_rate,
+                video_scale_mode: video_scale_mode.to_string(),
+                audio_track,
+                subtitle_track,
+            },
+        );
+    };
+
+    emit_settings(
+        &app_handle,
+        volume,
+        muted,
+        playback_rate,
+        &video_scale_mode,
+        audio_track,
+        subtitle_track,
+    );
 
     loop {
         // 1. Drain the command queue (non-blocking)
         while let Ok(cmd) = cmd_rx.try_recv() {
             match cmd {
-                MpvCommand::LoadFile { url, start_seconds } => {
+                MpvCommand::LoadFile {
+                    url,
+                    start_seconds,
+                    audio_track: initial_audio_track,
+                    subtitle_track: initial_subtitle_track,
+                } => {
                     if start_seconds > 0.0 {
                         mpv.set_property("start", format!("+{}", start_seconds))
                             .ok();
@@ -213,16 +288,34 @@ fn run_mpv_loop(
                         mpv.set_property("start", "0").ok();
                     }
                     mpv.command("loadfile", &[&url, "replace"]).ok();
+
+                    if let Some(track) = initial_audio_track {
+                        audio_track = Some(track);
+                        mpv.set_property("aid", track).ok();
+                    }
+
+                    if let Some(track) = initial_subtitle_track {
+                        subtitle_track = if track < 0 { None } else { Some(track) };
+                        if track < 0 {
+                            mpv.set_property("sid", -1i64).ok();
+                        } else {
+                            mpv.set_property("sid", track).ok();
+                        }
+                    }
+
+                    emit_settings(
+                        &app_handle,
+                        volume,
+                        muted,
+                        playback_rate,
+                        &video_scale_mode,
+                        audio_track,
+                        subtitle_track,
+                    );
                 }
                 MpvCommand::TogglePause => {
                     let paused: bool = mpv.get_property("pause").unwrap_or(false);
                     mpv.set_property("pause", !paused).ok();
-                }
-                MpvCommand::Pause => {
-                    mpv.set_property("pause", true).ok();
-                }
-                MpvCommand::Resume => {
-                    mpv.set_property("pause", false).ok();
                 }
                 MpvCommand::SeekRelative(secs) => {
                     mpv.command("seek", &[&secs.to_string(), "relative"]).ok();
@@ -232,12 +325,114 @@ fn run_mpv_loop(
                 }
                 MpvCommand::SetVolume(vol) => {
                     mpv.set_property("volume", vol).ok();
+                    volume = vol;
+                    emit_settings(
+                        &app_handle,
+                        volume,
+                        muted,
+                        playback_rate,
+                        &video_scale_mode,
+                        audio_track,
+                        subtitle_track,
+                    );
+                }
+                MpvCommand::SetMute(should_mute) => {
+                    mpv.set_property("mute", should_mute).ok();
+                    muted = should_mute;
+                    emit_settings(
+                        &app_handle,
+                        volume,
+                        muted,
+                        playback_rate,
+                        &video_scale_mode,
+                        audio_track,
+                        subtitle_track,
+                    );
+                }
+                MpvCommand::SetRate(rate) => {
+                    let safe_rate = if rate.is_finite() {
+                        rate.clamp(0.25, 3.0)
+                    } else {
+                        1.0
+                    };
+                    mpv.set_property("speed", safe_rate).ok();
+                    playback_rate = safe_rate;
+                    emit_settings(
+                        &app_handle,
+                        volume,
+                        muted,
+                        playback_rate,
+                        &video_scale_mode,
+                        audio_track,
+                        subtitle_track,
+                    );
+                }
+                MpvCommand::SetSubtitlePosition(position) => {
+                    let clamped = position.clamp(0, 100);
+                    mpv.set_property("sub-pos", clamped).ok();
+                }
+                MpvCommand::SetVideoScale(mode) => {
+                    match mode.as_str() {
+                        "cover" => {
+                            mpv.set_property("keepaspect", true).ok();
+                            mpv.set_property("panscan", 1.0f64).ok();
+                            video_scale_mode = "cover".to_string();
+                        }
+                        "stretch" => {
+                            mpv.set_property("keepaspect", false).ok();
+                            mpv.set_property("panscan", 0.0f64).ok();
+                            video_scale_mode = "stretch".to_string();
+                        }
+                        _ => {
+                            mpv.set_property("keepaspect", true).ok();
+                            mpv.set_property("panscan", 0.0f64).ok();
+                            video_scale_mode = "contain".to_string();
+                        }
+                    }
+                    emit_settings(
+                        &app_handle,
+                        volume,
+                        muted,
+                        playback_rate,
+                        &video_scale_mode,
+                        audio_track,
+                        subtitle_track,
+                    );
+                }
+                MpvCommand::SetAudioTrack(track) => {
+                    audio_track = Some(track);
+                    mpv.set_property("aid", track).ok();
+                    emit_settings(
+                        &app_handle,
+                        volume,
+                        muted,
+                        playback_rate,
+                        &video_scale_mode,
+                        audio_track,
+                        subtitle_track,
+                    );
+                }
+                MpvCommand::SetSubtitleTrack(track) => {
+                    subtitle_track = track;
+                    if let Some(track_idx) = track {
+                        mpv.set_property("sid", track_idx).ok();
+                    } else {
+                        mpv.set_property("sid", -1i64).ok();
+                    }
+                    emit_settings(
+                        &app_handle,
+                        volume,
+                        muted,
+                        playback_rate,
+                        &video_scale_mode,
+                        audio_track,
+                        subtitle_track,
+                    );
                 }
                 MpvCommand::Stop => {
                     mpv.command("stop", &[]).ok();
                     let _ = app_handle.emit("mpv-stopped", ());
                 }
-                MpvCommand::Shutdown => return,
             }
         }
 
@@ -256,6 +451,66 @@ fn run_mpv_loop(
                     }
                     ("pause", PropertyData::Flag(p)) => {
                         let _ = app_handle.emit("mpv-state-change", MpvStateChange { paused: p });
+                    }
+                    ("volume", PropertyData::Double(v)) => {
+                        volume = v;
+                        emit_settings(
+                            &app_handle,
+                            volume,
+                            muted,
+                            playback_rate,
+                            &video_scale_mode,
+                            audio_track,
+                            subtitle_track,
+                        );
+                    }
+                    ("mute", PropertyData::Flag(v)) => {
+                        muted = v;
+                        emit_settings(
+                            &app_handle,
+                            volume,
+                            muted,
+                            playback_rate,
+                            &video_scale_mode,
+                            audio_track,
+                            subtitle_track,
+                        );
+                    }
+                    ("speed", PropertyData::Double(v)) => {
+                        playback_rate = v;
+                        emit_settings(
+                            &app_handle,
+                            volume,
+                            muted,
+                            playback_rate,
+                            &video_scale_mode,
+                            audio_track,
+                            subtitle_track,
+                        );
+                    }
+                    ("aid", PropertyData::Int64(v)) => {
+                        audio_track = Some(v);
+                        emit_settings(
+                            &app_handle,
+                            volume,
+                            muted,
+                            playback_rate,
+                            &video_scale_mode,
+                            audio_track,
+                            subtitle_track,
+                        );
+                    }
+                    ("sid", PropertyData::Int64(v)) => {
+                        subtitle_track = if v < 0 { None } else { Some(v) };
+                        emit_settings(
+                            &app_handle,
+                            volume,
+                            muted,
+                            playback_rate,
+                            &video_scale_mode,
+                            audio_track,
+                            subtitle_track,
+                        );
                     }
                     _ => {}
                 },

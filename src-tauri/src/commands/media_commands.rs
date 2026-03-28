@@ -658,6 +658,15 @@ pub struct StreamOption {
     pub display_title: String,
     pub language: Option<String>,
     pub is_default: bool,
+    pub delivery_method: Option<String>,
+    pub is_external: bool,
+    pub height: Option<i64>,
+    pub width: Option<i64>,
+    pub bit_rate: Option<i64>,
+    pub channels: Option<i64>,
+    pub channel_layout: Option<String>,
+    pub video_range: Option<String>,
+    pub video_range_type: Option<String>,
 }
 
 /// Grouped media stream info for an item.
@@ -675,6 +684,16 @@ pub struct MediaStreamInfo {
 pub struct ExternalUrl {
     pub name: String,
     pub url: String,
+}
+
+/// A single chapter marker in a media item timeline.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ChapterInfo {
+    pub name: String,
+    pub start_ticks: i64,
+    pub image_tag: Option<String>,
+    pub marker_type: Option<String>,
+    pub chapter_type: Option<String>,
 }
 
 /// Fetch media stream info (video quality, audio tracks, subtitles) for a media item.
@@ -703,6 +722,15 @@ pub async fn get_media_streams(
             display_title: s.display_title.clone().unwrap_or_default(),
             language: s.language.clone(),
             is_default: s.is_default.unwrap_or(false),
+            delivery_method: s.delivery_method.clone(),
+            is_external: s.is_external.unwrap_or(false),
+            height: s.height,
+            width: s.width,
+            bit_rate: s.bit_rate,
+            channels: s.channels,
+            channel_layout: s.channel_layout.clone(),
+            video_range: s.video_range.clone(),
+            video_range_type: s.video_range_type.clone(),
         };
 
         match stream_type {
@@ -755,6 +783,33 @@ pub async fn get_external_urls(
             let url = u.url?;
             if url.is_empty() { return None; }
             Some(ExternalUrl { name, url })
+        })
+        .collect();
+
+    Ok(result)
+}
+
+/// Fetch chapter markers for a media item.
+#[tauri::command]
+pub async fn get_item_chapters(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Vec<ChapterInfo>, JfgoatError> {
+    let (server_url, token, _user_id, device_id) = get_connection_params(&state)?;
+
+    let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
+        .with_token(&token);
+
+    let chapters = media_api::fetch_item_chapters(&jf_client, &id).await?;
+
+    let result = chapters
+        .into_iter()
+        .map(|chapter| ChapterInfo {
+            name: chapter.name.unwrap_or_else(|| "Chapter".to_string()),
+            start_ticks: chapter.start_position_ticks.unwrap_or(0),
+            image_tag: chapter.image_tag,
+            marker_type: chapter.marker_type,
+            chapter_type: chapter.chapter_type,
         })
         .collect();
 
@@ -823,4 +878,61 @@ pub async fn toggle_favorite(
     }
 
     Ok(new_favorite)
+}
+
+/// Report playback stop/progress to Jellyfin and update local playback flags.
+#[tauri::command]
+pub async fn report_playback_stopped(
+    state: State<'_, AppState>,
+    item_id: String,
+    position_ticks: i64,
+    duration_ticks: i64,
+) -> Result<(), JfgoatError> {
+    let (server_url, token, user_id, device_id) = get_connection_params(&state)?;
+    let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
+        .with_token(&token);
+
+    let safe_position = position_ticks.max(0);
+    let safe_duration = duration_ticks.max(0);
+
+    // Best effort reporting to keep server-side resume/Next Up in sync.
+    if let Err(e) = media_api::report_playback_stopped(&jf_client, &item_id, safe_position).await {
+        println!("[playback] stop report failed for {}: {:?}", item_id, e);
+    }
+
+    let near_end = if safe_duration > 0 {
+        let remaining = (safe_duration - safe_position).max(0);
+        let remaining_threshold = 60 * 10_000_000; // 60s
+        let percent = safe_position as f64 / safe_duration as f64;
+        remaining <= remaining_threshold || percent >= 0.95
+    } else {
+        false
+    };
+
+    if near_end {
+        if let Err(e) = media_api::mark_played(&jf_client, &user_id, &item_id).await {
+            println!("[playback] mark played failed for {}: {:?}", item_id, e);
+        }
+    }
+
+    {
+        let db = state
+            .db
+            .lock()
+            .map_err(|e| JfgoatError::Internal(e.to_string()))?;
+
+        if near_end {
+            let _ = db.execute(
+                "UPDATE media_items SET played = 1, playback_ticks = 0 WHERE id = ?1",
+                rusqlite::params![item_id],
+            );
+        } else {
+            let _ = db.execute(
+                "UPDATE media_items SET played = 0, playback_ticks = ?1 WHERE id = ?2",
+                rusqlite::params![safe_position, item_id],
+            );
+        }
+    }
+
+    Ok(())
 }

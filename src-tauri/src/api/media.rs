@@ -561,6 +561,29 @@ pub async fn mark_unplayed(
     Ok(())
 }
 
+/// Report playback stop/progress to Jellyfin session API.
+pub async fn report_playback_stopped(
+    client: &JellyfinClient,
+    item_id: &str,
+    position_ticks: i64,
+) -> Result<(), JfgoatError> {
+    let body = serde_json::json!({
+        "ItemId": item_id,
+        "PositionTicks": position_ticks,
+    });
+
+    let resp = client.post_json("/Sessions/Playing/Stopped", &body).await?;
+    if !resp.status().is_success() {
+        return Err(JfgoatError::Http(format!(
+            "Failed to report playback stop for {}: status {}",
+            item_id,
+            resp.status()
+        )));
+    }
+
+    Ok(())
+}
+
 /// Mark an item as favorite for a user.
 pub async fn mark_favorite(
     client: &JellyfinClient,
@@ -639,6 +662,10 @@ pub struct JellyfinMediaStream {
     pub stream_type: Option<String>,
     #[serde(alias = "IsDefault")]
     pub is_default: Option<bool>,
+    #[serde(alias = "DeliveryMethod")]
+    pub delivery_method: Option<String>,
+    #[serde(alias = "IsExternal")]
+    pub is_external: Option<bool>,
     #[serde(alias = "Index")]
     pub index: Option<i64>,
     #[serde(alias = "Height")]
@@ -675,6 +702,20 @@ pub struct JellyfinItemWithStreams {
 pub struct JellyfinItemWithExternals {
     #[serde(alias = "ExternalUrls", default)]
     pub external_urls: Vec<JellyfinExternalUrl>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct JellyfinChapter {
+    #[serde(alias = "Name")]
+    pub name: Option<String>,
+    #[serde(alias = "StartPositionTicks")]
+    pub start_position_ticks: Option<i64>,
+    #[serde(alias = "ImageTag")]
+    pub image_tag: Option<String>,
+    #[serde(alias = "MarkerType")]
+    pub marker_type: Option<String>,
+    #[serde(alias = "ChapterType")]
+    pub chapter_type: Option<String>,
 }
 
 /// Fetch media streams (video, audio, subtitle tracks) for a specific item.
@@ -731,4 +772,28 @@ pub async fn fetch_item_external_urls(
     })?;
 
     Ok(data.external_urls)
+}
+
+/// Fetch chapter markers for a specific item.
+pub async fn fetch_item_chapters(
+    client: &JellyfinClient,
+    item_id: &str,
+) -> Result<Vec<JellyfinChapter>, JfgoatError> {
+    let path = format!("/Items/{}/Chapters", item_id);
+
+    let resp = client.get(&path).await?;
+
+    if !resp.status().is_success() {
+        return Err(JfgoatError::Http(format!(
+            "Failed to fetch chapters for {}: status {}",
+            item_id,
+            resp.status()
+        )));
+    }
+
+    let data: Vec<JellyfinChapter> = resp.json().await.map_err(|e| {
+        JfgoatError::Http(format!("Failed to parse chapters response: {}", e))
+    })?;
+
+    Ok(data)
 }

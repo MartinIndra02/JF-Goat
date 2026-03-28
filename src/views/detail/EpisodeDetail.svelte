@@ -1,8 +1,22 @@
 <script lang="ts">
   import { push } from "svelte-spa-router";
-  import type { MediaItem, Person, MediaStreamInfo, ExternalUrl } from "../../lib/types";
+  import type {
+    MediaItem,
+    Person,
+    MediaStreamInfo,
+    ExternalUrl,
+    PlaybackSelection,
+  } from "../../lib/types";
   import {
-    IMAGE_BASE, seasonNumber, formatRuntime, formatDate,
+    setPreferredAudioStreamIndex,
+    setPreferredSubtitleStreamIndex,
+    setPreferredAudioMetadata,
+    setPreferredSubtitleMetadata,
+    resolvePreferredAudioStreamIndex,
+    resolvePreferredSubtitleStreamIndex,
+  } from "../../lib/stores/player.svelte";
+  import {
+    seasonNumber, formatRuntime, formatDate,
     progressPercent, handleImageLoad, backdropUrl, personImageUrl, scrollCarousel,
     episodeThumbnailUrl,
   } from "./detailHelpers";
@@ -24,15 +38,17 @@
     externalUrls: ExternalUrl[];
     onTogglePlayed: (id: string, played: boolean) => void;
     onToggleFavorite: (id: string, isFavorite: boolean) => void;
-    onPlay: (item: MediaItem, fromStart?: boolean) => void;
+    onPlay: (item: MediaItem, fromStart?: boolean, selection?: PlaybackSelection) => void;
   } = $props();
 
   let overviewExpanded = $state(false);
   let contextMenuOpen = $state(false);
   let audioDropdownOpen = $state(false);
   let subtitleDropdownOpen = $state(false);
+  let qualityDropdownOpen = $state(false);
   let selectedAudioIndex = $state<number | null>(null);
   let selectedSubtitleIndex = $state<number | null>(null);
+  let selectedQualityKey = $state("original");
   let siblingScrollEl = $state<HTMLElement | null>(null);
   let castScrollEl = $state<HTMLElement | null>(null);
 
@@ -44,17 +60,22 @@
     contextMenuOpen = false;
     audioDropdownOpen = false;
     subtitleDropdownOpen = false;
+    qualityDropdownOpen = false;
     selectedAudioIndex = null;
     selectedSubtitleIndex = null;
+    selectedQualityKey = "original";
   });
 
   // Set defaults from stream info
   $effect(() => {
     if (mediaStreams) {
-      const defAudio = mediaStreams.audio.find(a => a.is_default);
-      if (defAudio && selectedAudioIndex === null) selectedAudioIndex = defAudio.index;
-      const defSub = mediaStreams.subtitle.find(s => s.is_default);
-      if (defSub && selectedSubtitleIndex === null) selectedSubtitleIndex = defSub.index;
+      if (selectedAudioIndex === null) {
+        selectedAudioIndex = resolvePreferredAudioStreamIndex(mediaStreams.audio);
+      }
+
+      if (selectedSubtitleIndex === null) {
+        selectedSubtitleIndex = resolvePreferredSubtitleStreamIndex(mediaStreams.subtitle);
+      }
     }
   });
 
@@ -70,10 +91,86 @@
     return sel?.display_title ?? null;
   });
 
+  const qualityOptions = $derived.by(() => {
+    const base = [{
+      key: "original",
+      label: "Original",
+      maxStreamingBitrate: null,
+      targetHeight: null,
+    }];
+
+    if (!mediaStreams || mediaStreams.video.length === 0) {
+      return base;
+    }
+
+    const bitrateForHeight = (height: number): number => {
+      if (height >= 2160) return 20_000_000;
+      if (height >= 1080) return 8_000_000;
+      if (height >= 720) return 4_500_000;
+      if (height >= 480) return 2_000_000;
+      return 1_000_000;
+    };
+
+    const heights = Array.from(
+      new Set(
+        mediaStreams.video
+          .map((track) => track.height ?? null)
+          .filter((height): height is number => !!height && height > 0),
+      ),
+    ).sort((a, b) => b - a);
+
+    const transcodeProfiles = heights.map((height) => ({
+      key: `h-${height}`,
+      label: `${height}p`,
+      maxStreamingBitrate: bitrateForHeight(height),
+      targetHeight: height,
+    }));
+
+    return [...base, ...transcodeProfiles];
+  });
+
+  const selectedQuality = $derived(() => {
+    const match = qualityOptions.find((option) => option.key === selectedQualityKey);
+    return match ?? qualityOptions[0];
+  });
+
+  const selectedQualityLabel = $derived(() => selectedQuality().label);
+
+  $effect(() => {
+    const options = qualityOptions;
+    if (!options.some((option) => option.key === selectedQualityKey)) {
+      selectedQualityKey = options[0].key;
+    }
+  });
+
+  function buildPlaybackSelection(): PlaybackSelection {
+    const selectedAudioTrack = mediaStreams?.audio.find(
+      (track) => track.index === selectedAudioIndex,
+    );
+    const selectedSubtitleTrack = mediaStreams?.subtitle.find(
+      (track) => track.index === selectedSubtitleIndex,
+    );
+
+    return {
+      audioStreamIndex: selectedAudioIndex,
+      subtitleStreamIndex: selectedSubtitleIndex,
+      audioLanguage: selectedAudioTrack?.language ?? null,
+      subtitleLanguage: selectedSubtitleTrack?.language ?? null,
+      audioDisplayTitle: selectedAudioTrack?.display_title ?? null,
+      subtitleDisplayTitle: selectedSubtitleTrack?.display_title ?? null,
+      maxStreamingBitrate: selectedQuality().maxStreamingBitrate,
+      targetHeight: selectedQuality().targetHeight,
+    };
+  }
+
   function navigateToItem(id: string) { push(`/item?id=${id}`); }
   function goBack() { window.history.length > 1 ? window.history.back() : push("/home"); }
   function closeContextMenu() { contextMenuOpen = false; }
-  function closeDropdowns() { audioDropdownOpen = false; subtitleDropdownOpen = false; }
+  function closeDropdowns() {
+    audioDropdownOpen = false;
+    subtitleDropdownOpen = false;
+    qualityDropdownOpen = false;
+  }
 </script>
 
 <main class="min-h-screen bg-gray-900 text-white">
@@ -181,7 +278,7 @@
 
     <!-- Play / Resume button -->
     <div class="mb-2">
-      <button onclick={() => onPlay(item)} class="relative w-full flex items-center justify-center gap-2.5 py-3 bg-blue-600 hover:bg-blue-700 rounded-xl font-semibold text-sm transition-colors overflow-hidden">
+      <button onclick={() => onPlay(item, false, buildPlaybackSelection())} class="relative w-full flex items-center justify-center gap-2.5 py-3 bg-blue-600 hover:bg-blue-700 rounded-xl font-semibold text-sm transition-colors overflow-hidden">
         <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
         {#if progressPercent(item) > 0}
           <span>Resume</span>
@@ -197,7 +294,7 @@
     <!-- Play from start (only if there's progress) -->
     {#if progressPercent(item) > 0}
       <div class="mb-3">
-        <button onclick={() => onPlay(item, true)} class="w-full flex items-center justify-center gap-2 py-2 bg-white/10 hover:bg-white/15 rounded-xl text-sm text-gray-300 transition-colors">
+        <button onclick={() => onPlay(item, true, buildPlaybackSelection())} class="w-full flex items-center justify-center gap-2 py-2 bg-white/10 hover:bg-white/15 rounded-xl text-sm text-gray-300 transition-colors">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
           Play from start
         </button>
@@ -216,6 +313,31 @@
           </span>
         {/if}
 
+        <!-- Quality dropdown -->
+        <div class="relative">
+          <button
+            onclick={() => { closeDropdowns(); qualityDropdownOpen = !qualityDropdownOpen; }}
+            class="inline-flex items-center gap-1.5 text-xs font-medium text-blue-300 bg-blue-500/15 px-3 py-1.5 rounded-lg border border-blue-500/30 hover:bg-blue-500/25 transition-colors cursor-pointer"
+          >
+            <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm2 3a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm0 5a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1z" clip-rule="evenodd"/></svg>
+            {selectedQualityLabel()}
+            <svg class="w-3 h-3" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+          </button>
+          {#if qualityDropdownOpen}
+            <div onclick={closeDropdowns} class="fixed inset-0 z-40"></div>
+            <div class="absolute left-0 top-full mt-1 w-56 bg-gray-800 border border-white/10 rounded-xl shadow-xl z-50 py-1.5 overflow-hidden max-h-64 overflow-y-auto">
+              {#each qualityOptions as option}
+                <button
+                  onclick={() => { selectedQualityKey = option.key; qualityDropdownOpen = false; }}
+                  class="w-full text-left px-4 py-2 text-sm transition-colors {option.key === selectedQualityKey ? 'text-blue-400 bg-blue-500/10' : 'text-gray-200 hover:bg-white/10'}"
+                >
+                  {option.label}
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
+
         <!-- Audio dropdown -->
         {#if mediaStreams.audio.length > 0}
           <div class="relative">
@@ -232,7 +354,12 @@
               <div class="absolute left-0 top-full mt-1 w-56 bg-gray-800 border border-white/10 rounded-xl shadow-xl z-50 py-1.5 overflow-hidden max-h-64 overflow-y-auto">
                 {#each mediaStreams.audio as track}
                   <button
-                    onclick={() => { selectedAudioIndex = track.index; audioDropdownOpen = false; }}
+                    onclick={() => {
+                      selectedAudioIndex = track.index;
+                      setPreferredAudioStreamIndex(track.index);
+                      setPreferredAudioMetadata(track.language, track.display_title);
+                      audioDropdownOpen = false;
+                    }}
                     class="w-full text-left px-4 py-2 text-sm transition-colors flex items-center gap-2 {track.index === selectedAudioIndex ? 'text-blue-400 bg-blue-500/10' : 'text-gray-200 hover:bg-white/10'}"
                   >
                     {track.display_title}
@@ -258,12 +385,22 @@
               <div onclick={() => subtitleDropdownOpen = false} class="fixed inset-0 z-40"></div>
               <div class="absolute left-0 top-full mt-1 w-56 bg-gray-800 border border-white/10 rounded-xl shadow-xl z-50 py-1.5 overflow-hidden max-h-64 overflow-y-auto">
                 <button
-                  onclick={() => { selectedSubtitleIndex = null; subtitleDropdownOpen = false; }}
+                  onclick={() => {
+                    selectedSubtitleIndex = null;
+                    setPreferredSubtitleStreamIndex(null);
+                    setPreferredSubtitleMetadata(null, null);
+                    subtitleDropdownOpen = false;
+                  }}
                   class="w-full text-left px-4 py-2 text-sm transition-colors {selectedSubtitleIndex === null ? 'text-blue-400 bg-blue-500/10' : 'text-gray-200 hover:bg-white/10'}"
                 >None</button>
                 {#each mediaStreams.subtitle as track}
                   <button
-                    onclick={() => { selectedSubtitleIndex = track.index; subtitleDropdownOpen = false; }}
+                    onclick={() => {
+                      selectedSubtitleIndex = track.index;
+                      setPreferredSubtitleStreamIndex(track.index);
+                      setPreferredSubtitleMetadata(track.language, track.display_title);
+                      subtitleDropdownOpen = false;
+                    }}
                     class="w-full text-left px-4 py-2 text-sm transition-colors flex items-center gap-2 {track.index === selectedSubtitleIndex ? 'text-blue-400 bg-blue-500/10' : 'text-gray-200 hover:bg-white/10'}"
                   >
                     {track.display_title}
@@ -306,7 +443,7 @@
                 Open show
               </button>
             {/if}
-            <button onclick={() => { onPlay(item, true); closeContextMenu(); }} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
+            <button onclick={() => { onPlay(item, true, buildPlaybackSelection()); closeContextMenu(); }} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
               <svg class="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
               Play from start
             </button>
@@ -355,8 +492,8 @@
         <div class="flex items-center justify-between mb-3">
           <h2 class="text-base font-semibold text-white">Cast & Crew</h2>
           <div class="flex items-center gap-1">
-            <button onclick={() => scrollCarousel(castScrollEl, 'left')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"/></svg></button>
-            <button onclick={() => scrollCarousel(castScrollEl, 'right')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg></button>
+            <button aria-label="Scroll cast left" onclick={() => scrollCarousel(castScrollEl, 'left')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"/></svg></button>
+            <button aria-label="Scroll cast right" onclick={() => scrollCarousel(castScrollEl, 'right')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg></button>
           </div>
         </div>
         <div bind:this={castScrollEl} class="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-5 px-5">
@@ -389,8 +526,8 @@
         <div class="flex items-center justify-between mb-3">
           <h2 class="text-base font-semibold text-white">More from {item.season_name ?? "this season"}</h2>
           <div class="flex items-center gap-1">
-            <button onclick={() => scrollCarousel(siblingScrollEl, 'left')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"/></svg></button>
-            <button onclick={() => scrollCarousel(siblingScrollEl, 'right')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg></button>
+            <button aria-label="Scroll episodes left" onclick={() => scrollCarousel(siblingScrollEl, 'left')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"/></svg></button>
+            <button aria-label="Scroll episodes right" onclick={() => scrollCarousel(siblingScrollEl, 'right')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg></button>
           </div>
         </div>
         <div bind:this={siblingScrollEl} class="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-5 px-5">

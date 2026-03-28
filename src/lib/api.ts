@@ -9,7 +9,10 @@ import type {
   HomepageCache,
   Person,
   MediaStreamInfo,
+  ChapterInfo,
   ExternalUrl,
+  PlaybackRequest,
+  VideoScaleMode,
 } from "./types";
 
 export async function connectToServer(url: string): Promise<ServerPublicInfo> {
@@ -127,11 +130,8 @@ export async function loadHomepageCache(): Promise<HomepageCache | null> {
 
 // ── MPV player commands ─────────────────────────────────────────
 
-export async function mpvPlay(
-  itemId: string,
-  startTicks: number,
-): Promise<void> {
-  return invoke("mpv_play", { itemId, startTicks });
+export async function mpvPlay(request: PlaybackRequest): Promise<void> {
+  return invoke("mpv_play", request);
 }
 
 export async function mpvTogglePause(): Promise<void> {
@@ -150,6 +150,30 @@ export async function mpvSetVolume(volume: number): Promise<void> {
   return invoke("mpv_set_volume", { volume });
 }
 
+export async function mpvSetMute(muted: boolean): Promise<void> {
+  return invoke("mpv_set_mute", { muted });
+}
+
+export async function mpvSetPlaybackRate(rate: number): Promise<void> {
+  return invoke("mpv_set_playback_rate", { rate });
+}
+
+export async function mpvSetSubtitlePosition(position: number): Promise<void> {
+  return invoke("mpv_set_subtitle_position", { position });
+}
+
+export async function mpvSetVideoScale(mode: VideoScaleMode): Promise<void> {
+  return invoke("mpv_set_video_scale", { mode });
+}
+
+export async function mpvSetAudioTrack(track: number): Promise<void> {
+  return invoke("mpv_set_audio_track", { track });
+}
+
+export async function mpvSetSubtitleTrack(track: number | null): Promise<void> {
+  return invoke("mpv_set_subtitle_track", { track });
+}
+
 export async function mpvStop(): Promise<void> {
   return invoke("mpv_stop");
 }
@@ -158,8 +182,24 @@ export async function getMediaStreams(id: string): Promise<MediaStreamInfo> {
   return invoke("get_media_streams", { id });
 }
 
+export async function getItemChapters(id: string): Promise<ChapterInfo[]> {
+  return invoke("get_item_chapters", { id });
+}
+
 export async function getExternalUrls(id: string): Promise<ExternalUrl[]> {
   return invoke("get_external_urls", { id });
+}
+
+export async function reportPlaybackStopped(
+  itemId: string,
+  positionTicks: number,
+  durationTicks: number,
+): Promise<void> {
+  return invoke("report_playback_stopped", {
+    itemId,
+    positionTicks,
+    durationTicks,
+  });
 }
 
 // ── User data mutations ──────────────────────────────────────────────

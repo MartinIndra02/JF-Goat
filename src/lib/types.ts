@@ -93,6 +93,39 @@ export interface MpvTimeUpdate {
 
 export interface MpvStateChange {
   paused: boolean;
+}
+
+export type VideoScaleMode = "contain" | "cover" | "stretch";
+
+export interface MpvPlaybackSettings {
+  volume: number;
+  muted: boolean;
+  playback_rate: number;
+  video_scale_mode: VideoScaleMode;
+  audio_track: number | null;
+  subtitle_track: number | null;
+}
+
+export interface PlaybackRequest {
+  itemId: string;
+  startTicks: number;
+  audioStreamIndex?: number | null;
+  subtitleStreamIndex?: number | null;
+  maxStreamingBitrate?: number | null;
+  targetHeight?: number | null;
+}
+
+export interface PlaybackSelection {
+  audioStreamIndex?: number | null;
+  subtitleStreamIndex?: number | null;
+  audioLanguage?: string | null;
+  subtitleLanguage?: string | null;
+  audioDisplayTitle?: string | null;
+  subtitleDisplayTitle?: string | null;
+  maxStreamingBitrate?: number | null;
+  targetHeight?: number | null;
+}
+
 export interface Person {
   id: string;
   name: string;
@@ -107,6 +140,15 @@ export interface StreamOption {
   display_title: string;
   language: string | null;
   is_default: boolean;
+  delivery_method?: string | null;
+  is_external?: boolean | null;
+  height?: number | null;
+  width?: number | null;
+  bit_rate?: number | null;
+  channels?: number | null;
+  channel_layout?: string | null;
+  video_range?: string | null;
+  video_range_type?: string | null;
 }
 
 export interface MediaStreamInfo {
@@ -114,6 +156,14 @@ export interface MediaStreamInfo {
   audio: StreamOption[];
   subtitle: StreamOption[];
   video_label: string | null;
+}
+
+export interface ChapterInfo {
+  name: string;
+  start_ticks: number;
+  image_tag: string | null;
+  marker_type?: string | null;
+  chapter_type?: string | null;
 }
 
 export interface ExternalUrl {
