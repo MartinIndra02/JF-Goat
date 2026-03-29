@@ -229,7 +229,12 @@ export async function reportPlaybackStopped(
   positionTicks: number,
   durationTicks: number,
 ): Promise<void> {
-  return reportPlaybackLifecycle(itemId, positionTicks, durationTicks, "stopped");
+  return reportPlaybackLifecycle(
+    itemId,
+    positionTicks,
+    durationTicks,
+    "stopped",
+  );
 }
 
 // ── User data mutations ──────────────────────────────────────────────

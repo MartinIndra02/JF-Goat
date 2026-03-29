@@ -66,11 +66,15 @@ describe("detailHelpers", () => {
     expect(backdropUrl(withBackdrop)).toContain("/backdrop/ep-1?tag=bg1");
 
     const withSeries = mediaItem({ series_id: "series-1" });
-    expect(backdropUrl(withSeries)).toContain("/backdrop/series-1?tag=series-1");
+    expect(backdropUrl(withSeries)).toContain(
+      "/backdrop/series-1?tag=series-1",
+    );
 
     const withPoster = mediaItem({ id: "ep-2", image_tag: "img2" });
     expect(posterUrl(withPoster)).toContain("/poster/ep-2?tag=img2");
 
-    expect(episodeThumbnailUrl(withBackdrop)).toContain("/backdrop/ep-1?tag=bg1");
+    expect(episodeThumbnailUrl(withBackdrop)).toContain(
+      "/backdrop/ep-1?tag=bg1",
+    );
   });
 });

@@ -81,7 +81,9 @@ export function filterSuppressedNextUp(items: MediaItem[]): MediaItem[] {
 
 function safeMediaItems(items: MediaItem[] | null | undefined): MediaItem[] {
   if (!Array.isArray(items)) return [];
-  return items.filter((item) => typeof item?.id === "string" && item.id.length > 0);
+  return items.filter(
+    (item) => typeof item?.id === "string" && item.id.length > 0,
+  );
 }
 
 export function applyEpisodeCompletionToHomepageCache(

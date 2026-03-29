@@ -2,9 +2,9 @@ import type { Page } from "@playwright/test";
 
 export async function installTauriMock(page: Page): Promise<void> {
   await page.addInitScript(() => {
-        const shouldAutologin =
-          (globalThis as { __TAURI_MOCK_AUTOLOGIN__?: boolean })
-            .__TAURI_MOCK_AUTOLOGIN__ === true;
+    const shouldAutologin =
+      (globalThis as { __TAURI_MOCK_AUTOLOGIN__?: boolean })
+        .__TAURI_MOCK_AUTOLOGIN__ === true;
 
     type ListenerMap = Map<string, Set<number>>;
 
@@ -99,7 +99,10 @@ export async function installTauriMock(page: Page): Promise<void> {
       run_time_ticks: 43_200_000_000,
     });
 
-    const libraryLatest: Record<string, Array<ReturnType<typeof createMediaItem>>> = {
+    const libraryLatest: Record<
+      string,
+      Array<ReturnType<typeof createMediaItem>>
+    > = {
       "lib-1": [series, movie],
     };
 
@@ -148,7 +151,10 @@ export async function installTauriMock(page: Page): Promise<void> {
       }
     };
 
-    const handleInvoke = async (cmd: string, args: Record<string, unknown> = {}) => {
+    const handleInvoke = async (
+      cmd: string,
+      args: Record<string, unknown> = {},
+    ) => {
       switch (cmd) {
         case "plugin:event|listen": {
           const event = String(args.event ?? "");
@@ -218,7 +224,9 @@ export async function installTauriMock(page: Page): Promise<void> {
         case "search_items": {
           const query = String(args.query ?? "").toLowerCase();
           const allItems = [episode1, episode2, series, season, movie];
-          const items = allItems.filter((item) => item.name.toLowerCase().includes(query));
+          const items = allItems.filter((item) =>
+            item.name.toLowerCase().includes(query),
+          );
           return {
             items: clone(items),
             source: "remote",
@@ -240,15 +248,49 @@ export async function installTauriMock(page: Page): Promise<void> {
           return [];
         case "get_media_streams":
           return {
-            video: [{ index: 0, codec: "h264", display_title: "1080p", language: null, is_default: true, height: 1080, width: 1920 }],
-            audio: [{ index: 1, codec: "aac", display_title: "English", language: "eng", is_default: true }],
-            subtitle: [{ index: 2, codec: "srt", display_title: "English (CC)", language: "eng", is_default: true, delivery_method: "embed", is_external: false }],
+            video: [
+              {
+                index: 0,
+                codec: "h264",
+                display_title: "1080p",
+                language: null,
+                is_default: true,
+                height: 1080,
+                width: 1920,
+              },
+            ],
+            audio: [
+              {
+                index: 1,
+                codec: "aac",
+                display_title: "English",
+                language: "eng",
+                is_default: true,
+              },
+            ],
+            subtitle: [
+              {
+                index: 2,
+                codec: "srt",
+                display_title: "English (CC)",
+                language: "eng",
+                is_default: true,
+                delivery_method: "embed",
+                is_external: false,
+              },
+            ],
             video_label: "1080p",
           };
         case "get_item_chapters":
           return [
             { name: "Intro", start_ticks: 0, image_tag: null },
-            { name: "Credits", start_ticks: 10_800_000_000, image_tag: null, marker_type: "Credits", chapter_type: "Credits" },
+            {
+              name: "Credits",
+              start_ticks: 10_800_000_000,
+              image_tag: null,
+              marker_type: "Credits",
+              chapter_type: "Credits",
+            },
           ];
         case "get_external_urls":
           return [];
@@ -306,17 +348,30 @@ export async function installTauriMock(page: Page): Promise<void> {
       }
     };
 
-    const internals = (window as Window & { __TAURI_INTERNALS__?: Record<string, unknown> }).__TAURI_INTERNALS__ ?? {};
+    const internals =
+      (window as Window & { __TAURI_INTERNALS__?: Record<string, unknown> })
+        .__TAURI_INTERNALS__ ?? {};
 
-    (window as Window & { __TAURI_EVENT_PLUGIN_INTERNALS__?: { unregisterListener: (event: string, eventId: number) => void } }).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
+    (
+      window as Window & {
+        __TAURI_EVENT_PLUGIN_INTERNALS__?: {
+          unregisterListener: (event: string, eventId: number) => void;
+        };
+      }
+    ).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
       unregisterListener(event: string, eventId: number) {
         listeners.get(event)?.delete(eventId);
       },
     };
 
-    (window as Window & { __TAURI_INTERNALS__?: Record<string, unknown> }).__TAURI_INTERNALS__ = {
+    (
+      window as Window & { __TAURI_INTERNALS__?: Record<string, unknown> }
+    ).__TAURI_INTERNALS__ = {
       ...internals,
-      transformCallback: (callback: (payload: unknown) => void, once = false): number => {
+      transformCallback: (
+        callback: (payload: unknown) => void,
+        once = false,
+      ): number => {
         const id = callbackId;
         callbackId += 1;
 
@@ -338,7 +393,8 @@ export async function installTauriMock(page: Page): Promise<void> {
         callbacks.get(id)?.(payload);
       },
       convertFileSrc: (filePath: string): string => filePath,
-      invoke: (cmd: string, args?: Record<string, unknown>) => handleInvoke(cmd, args),
+      invoke: (cmd: string, args?: Record<string, unknown>) =>
+        handleInvoke(cmd, args),
     };
   });
 }
