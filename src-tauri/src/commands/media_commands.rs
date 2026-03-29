@@ -8,6 +8,24 @@ use crate::db::media::MediaItem;
 use crate::error::JfgoatError;
 use crate::state::AppState;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlaybackLifecycleEvent {
+    Playing,
+    Progress,
+    Stopped,
+}
+
+impl PlaybackLifecycleEvent {
+    pub fn from_wire(value: &str) -> Option<Self> {
+        match value {
+            "playing" => Some(Self::Playing),
+            "progress" => Some(Self::Progress),
+            "stopped" => Some(Self::Stopped),
+            _ => None,
+        }
+    }
+}
+
 /// A person (actor, director, etc.) associated with a media item.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Person {
@@ -44,17 +62,33 @@ fn row_to_media_item(row: &rusqlite::Row) -> rusqlite::Result<MediaItem> {
         playback_ticks: row.get(21)?,
         is_favorite: row.get::<_, i32>(22)? != 0,
         server_id: row.get(23)?,
+        user_id: row.get(24)?,
     })
+}
+
+fn is_db_lock_contention(err: &rusqlite::Error) -> bool {
+    matches!(
+        err,
+        rusqlite::Error::SqliteFailure(inner, _)
+            if matches!(
+                inner.code,
+                rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked
+            )
+    )
 }
 
 const SELECT_COLUMNS: &str = "id, name, type, parent_id, series_id, series_name,
      season_id, season_name, index_number, production_year,
      overview, image_tag, backdrop_tag, date_created, date_updated,
      community_rating, official_rating, genres, run_time_ticks,
-     played, play_count, playback_ticks, is_favorite, server_id";
+    played, play_count, playback_ticks, is_favorite, server_id, user_id";
 
 /// Convert a Jellyfin API item into our local MediaItem format.
-fn jf_item_to_media_item(item: media_api::JellyfinItem, server_id: &str) -> MediaItem {
+fn jf_item_to_media_item(
+    item: media_api::JellyfinItem,
+    server_id: &str,
+    user_id: &str,
+) -> MediaItem {
     let image_tag = item.image_tags.and_then(|t| t.primary);
     let backdrop_tag = item.backdrop_image_tags.and_then(|v| v.into_iter().next());
     let genres = item.genres.map(|g| g.join(", "));
@@ -97,6 +131,7 @@ fn jf_item_to_media_item(item: media_api::JellyfinItem, server_id: &str) -> Medi
         playback_ticks,
         is_favorite,
         server_id: server_id.to_string(),
+        user_id: user_id.to_string(),
     }
 }
 
@@ -147,6 +182,18 @@ fn get_server_id(state: &AppState) -> Result<String, JfgoatError> {
     Ok(sid)
 }
 
+fn get_active_scope(state: &AppState) -> Result<(String, String), JfgoatError> {
+    let server_id = get_server_id(state)?;
+    let user_id = state
+        .user_id
+        .read()
+        .map_err(|e| JfgoatError::Internal(e.to_string()))?
+        .clone()
+        .ok_or_else(|| JfgoatError::Auth("No user ID".to_string()))?;
+
+    Ok((server_id, user_id))
+}
+
 // ── Local DB queries (used as fallback / for search) ────────────────────
 
 #[tauri::command]
@@ -154,17 +201,18 @@ pub fn get_recent_movies(
     state: State<'_, AppState>,
     limit: u32,
 ) -> Result<Vec<MediaItem>, JfgoatError> {
+    let (server_id, user_id) = get_active_scope(&state)?;
     let db = state
         .db
         .lock()
         .map_err(|e| JfgoatError::Internal(e.to_string()))?;
 
     let sql = format!(
-        "SELECT {} FROM media_items WHERE type = 'Movie' ORDER BY date_created DESC LIMIT ?1",
+        "SELECT {} FROM media_items WHERE type = 'Movie' AND server_id = ?1 AND user_id = ?2 ORDER BY date_created DESC LIMIT ?3",
         SELECT_COLUMNS
     );
     let mut stmt = db.prepare(&sql)?;
-    let rows = stmt.query_map(rusqlite::params![limit], |row| row_to_media_item(row))?;
+    let rows = stmt.query_map(rusqlite::params![server_id, user_id, limit], |row| row_to_media_item(row))?;
 
     let mut items = Vec::new();
     for row in rows {
@@ -178,17 +226,18 @@ pub fn get_recent_series(
     state: State<'_, AppState>,
     limit: u32,
 ) -> Result<Vec<MediaItem>, JfgoatError> {
+    let (server_id, user_id) = get_active_scope(&state)?;
     let db = state
         .db
         .lock()
         .map_err(|e| JfgoatError::Internal(e.to_string()))?;
 
     let sql = format!(
-        "SELECT {} FROM media_items WHERE type = 'Series' ORDER BY date_created DESC LIMIT ?1",
+        "SELECT {} FROM media_items WHERE type = 'Series' AND server_id = ?1 AND user_id = ?2 ORDER BY date_created DESC LIMIT ?3",
         SELECT_COLUMNS
     );
     let mut stmt = db.prepare(&sql)?;
-    let rows = stmt.query_map(rusqlite::params![limit], |row| row_to_media_item(row))?;
+    let rows = stmt.query_map(rusqlite::params![server_id, user_id, limit], |row| row_to_media_item(row))?;
 
     let mut items = Vec::new();
     for row in rows {
@@ -202,6 +251,7 @@ pub fn get_continue_watching(
     state: State<'_, AppState>,
     limit: u32,
 ) -> Result<Vec<MediaItem>, JfgoatError> {
+    let (server_id, user_id) = get_active_scope(&state)?;
     let db = state
         .db
         .lock()
@@ -209,13 +259,13 @@ pub fn get_continue_watching(
 
     let sql = format!(
         "SELECT {} FROM media_items
-         WHERE playback_ticks > 0 AND played = 0
+         WHERE playback_ticks > 0 AND played = 0 AND server_id = ?1 AND user_id = ?2
          ORDER BY date_updated DESC
-         LIMIT ?1",
+         LIMIT ?3",
         SELECT_COLUMNS
     );
     let mut stmt = db.prepare(&sql)?;
-    let rows = stmt.query_map(rusqlite::params![limit], |row| row_to_media_item(row))?;
+    let rows = stmt.query_map(rusqlite::params![server_id, user_id, limit], |row| row_to_media_item(row))?;
 
     let mut items = Vec::new();
     for row in rows {
@@ -229,6 +279,7 @@ pub fn get_latest_media(
     state: State<'_, AppState>,
     limit: u32,
 ) -> Result<Vec<MediaItem>, JfgoatError> {
+    let (server_id, user_id) = get_active_scope(&state)?;
     let db = state
         .db
         .lock()
@@ -236,13 +287,13 @@ pub fn get_latest_media(
 
     let sql = format!(
         "SELECT {} FROM media_items
-         WHERE backdrop_tag IS NOT NULL AND type IN ('Movie', 'Series')
+         WHERE backdrop_tag IS NOT NULL AND type IN ('Movie', 'Series') AND server_id = ?1 AND user_id = ?2
          ORDER BY date_created DESC
-         LIMIT ?1",
+         LIMIT ?3",
         SELECT_COLUMNS
     );
     let mut stmt = db.prepare(&sql)?;
-    let rows = stmt.query_map(rusqlite::params![limit], |row| row_to_media_item(row))?;
+    let rows = stmt.query_map(rusqlite::params![server_id, user_id, limit], |row| row_to_media_item(row))?;
 
     let mut items = Vec::new();
     for row in rows {
@@ -269,6 +320,8 @@ pub struct HomepageCache {
     pub user_libraries: Vec<UserLibrary>,
     pub library_latest: std::collections::HashMap<String, Vec<MediaItem>>,
     pub featured_items: Vec<MediaItem>,
+    #[serde(default)]
+    pub cache_refreshed_at_epoch_ms: Option<u64>,
 }
 
 /// Persist the homepage dashboard data to a JSON file for instant startup.
@@ -359,7 +412,7 @@ pub async fn get_resume_items(
     let items: Vec<MediaItem> = response
         .items
         .into_iter()
-        .map(|item| jf_item_to_media_item(item, &server_id))
+        .map(|item| jf_item_to_media_item(item, &server_id, &user_id))
         .collect();
 
     Ok(items)
@@ -382,7 +435,7 @@ pub async fn get_next_up(
     let items: Vec<MediaItem> = response
         .items
         .into_iter()
-        .map(|item| jf_item_to_media_item(item, &server_id))
+        .map(|item| jf_item_to_media_item(item, &server_id, &user_id))
         .collect();
 
     Ok(items)
@@ -397,6 +450,8 @@ pub async fn get_item_by_id(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<Option<MediaItem>, JfgoatError> {
+    let (scope_server_id, scope_user_id) = get_active_scope(&state)?;
+
     // 1. Try local DB first (fast path)
     {
         let db = state
@@ -405,11 +460,14 @@ pub async fn get_item_by_id(
             .map_err(|e| JfgoatError::Internal(e.to_string()))?;
 
         let sql = format!(
-            "SELECT {} FROM media_items WHERE id = ?1",
+            "SELECT {} FROM media_items WHERE id = ?1 AND server_id = ?2 AND user_id = ?3",
             SELECT_COLUMNS
         );
         let mut stmt = db.prepare(&sql)?;
-        let result = stmt.query_row(rusqlite::params![id], |row| row_to_media_item(row));
+        let result = stmt.query_row(
+            rusqlite::params![id, scope_server_id, scope_user_id],
+            |row| row_to_media_item(row),
+        );
 
         match result {
             Ok(item) => return Ok(Some(item)),
@@ -426,7 +484,7 @@ pub async fn get_item_by_id(
             .with_token(&token);
 
         match media_api::fetch_item_by_id(&jf_client, &user_id, &id).await {
-            Ok(jf_item) => return Ok(Some(jf_item_to_media_item(jf_item, &sid))),
+            Ok(jf_item) => return Ok(Some(jf_item_to_media_item(jf_item, &sid, &user_id))),
             Err(e) => {
                 println!("[detail] API fallback failed for item {}: {}", id, e);
             }
@@ -443,6 +501,8 @@ pub async fn get_series_seasons(
     state: State<'_, AppState>,
     series_id: String,
 ) -> Result<Vec<MediaItem>, JfgoatError> {
+    let (scope_server_id, scope_user_id) = get_active_scope(&state)?;
+
     // 1. Try local DB first
     {
         let db = state
@@ -451,11 +511,14 @@ pub async fn get_series_seasons(
             .map_err(|e| JfgoatError::Internal(e.to_string()))?;
 
         let sql = format!(
-            "SELECT {} FROM media_items WHERE series_id = ?1 AND type = 'Season' ORDER BY index_number ASC",
+            "SELECT {} FROM media_items WHERE series_id = ?1 AND type = 'Season' AND server_id = ?2 AND user_id = ?3 ORDER BY index_number ASC",
             SELECT_COLUMNS
         );
         let mut stmt = db.prepare(&sql)?;
-        let rows = stmt.query_map(rusqlite::params![series_id], |row| row_to_media_item(row))?;
+        let rows = stmt.query_map(
+            rusqlite::params![series_id, scope_server_id, scope_user_id],
+            |row| row_to_media_item(row),
+        )?;
 
         let mut items = Vec::new();
         for row in rows {
@@ -478,7 +541,7 @@ pub async fn get_series_seasons(
                 let items: Vec<MediaItem> = response
                     .items
                     .into_iter()
-                    .map(|item| jf_item_to_media_item(item, &sid))
+                    .map(|item| jf_item_to_media_item(item, &sid, &user_id))
                     .collect();
                 return Ok(items);
             }
@@ -498,6 +561,8 @@ pub async fn get_season_episodes(
     state: State<'_, AppState>,
     season_id: String,
 ) -> Result<Vec<MediaItem>, JfgoatError> {
+    let (scope_server_id, scope_user_id) = get_active_scope(&state)?;
+
     // 1. Try local DB first
     let series_id_for_fallback: Option<String>;
     {
@@ -507,28 +572,56 @@ pub async fn get_season_episodes(
             .map_err(|e| JfgoatError::Internal(e.to_string()))?;
 
         let sql = format!(
-            "SELECT {} FROM media_items WHERE season_id = ?1 AND type = 'Episode' ORDER BY index_number ASC",
+            "SELECT {} FROM media_items WHERE season_id = ?1 AND type = 'Episode' AND server_id = ?2 AND user_id = ?3 ORDER BY index_number ASC",
             SELECT_COLUMNS
         );
-        let mut stmt = db.prepare(&sql)?;
-        let rows = stmt.query_map(rusqlite::params![season_id], |row| row_to_media_item(row))?;
+        let local_items_result: Result<Vec<MediaItem>, rusqlite::Error> = (|| {
+            let mut stmt = db.prepare_cached(&sql)?;
+            let rows = stmt.query_map(
+                rusqlite::params![&season_id, scope_server_id, scope_user_id],
+                row_to_media_item,
+            )?;
 
-        let mut items = Vec::new();
-        for row in rows {
-            items.push(row?);
-        }
-        if !items.is_empty() {
-            return Ok(items);
+            let mut items = Vec::new();
+            for row in rows {
+                items.push(row?);
+            }
+            Ok(items)
+        })();
+
+        match local_items_result {
+            Ok(items) => {
+                if !items.is_empty() {
+                    return Ok(items);
+                }
+            }
+            Err(e) if is_db_lock_contention(&e) => {
+                println!(
+                    "[detail] Local season episode query hit SQLite contention; falling back to API: {}",
+                    e
+                );
+            }
+            Err(e) => return Err(e.into()),
         }
 
-        // For API fallback we need the series_id; try to get it from the season record
-        series_id_for_fallback = db
-            .query_row(
-                "SELECT series_id FROM media_items WHERE id = ?1",
-                rusqlite::params![season_id],
-                |row| row.get::<_, Option<String>>(0),
-            )
-            .unwrap_or(None);
+        // For API fallback we need the series_id; try to get it from the season record.
+        // During sync writes we tolerate transient lock contention and continue with API fallback.
+        series_id_for_fallback = match db.query_row(
+            "SELECT series_id FROM media_items WHERE id = ?1 AND server_id = ?2 AND user_id = ?3",
+            rusqlite::params![&season_id, scope_server_id, scope_user_id],
+            |row| row.get::<_, Option<String>>(0),
+        ) {
+            Ok(value) => value,
+            Err(rusqlite::Error::QueryReturnedNoRows) => None,
+            Err(e) if is_db_lock_contention(&e) => {
+                println!(
+                    "[detail] Local season->series lookup hit SQLite contention; falling back to API: {}",
+                    e
+                );
+                None
+            }
+            Err(e) => return Err(e.into()),
+        };
     }
 
     // 2. Fallback: fetch from Jellyfin API
@@ -559,7 +652,7 @@ pub async fn get_season_episodes(
                     let items: Vec<MediaItem> = response
                         .items
                         .into_iter()
-                        .map(|item| jf_item_to_media_item(item, &sid))
+                        .map(|item| jf_item_to_media_item(item, &sid, &user_id))
                         .collect();
                     return Ok(items);
                 }
@@ -591,7 +684,7 @@ pub async fn get_latest_items(
 
     let items: Vec<MediaItem> = items_raw
         .into_iter()
-        .map(|item| jf_item_to_media_item(item, &server_id))
+        .map(|item| jf_item_to_media_item(item, &server_id, &user_id))
         .collect();
 
     Ok(items)
@@ -642,7 +735,7 @@ pub async fn get_similar_items(
     let items: Vec<MediaItem> = response
         .items
         .into_iter()
-        .map(|item| jf_item_to_media_item(item, &server_id))
+        .map(|item| jf_item_to_media_item(item, &server_id, &user_id))
         .collect();
 
     Ok(items)
@@ -827,6 +920,7 @@ pub async fn toggle_played(
     played: bool,
 ) -> Result<bool, JfgoatError> {
     let (server_url, token, user_id, device_id) = get_connection_params(&state)?;
+    let server_id = get_server_id(&state)?;
     let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
         .with_token(&token);
 
@@ -841,8 +935,10 @@ pub async fn toggle_played(
     {
         let db = state.db.lock().map_err(|e| JfgoatError::Internal(e.to_string()))?;
         let _ = db.execute(
-            "UPDATE media_items SET played = ?1, playback_ticks = CASE WHEN ?1 = 0 THEN 0 ELSE playback_ticks END WHERE id = ?2",
-            rusqlite::params![new_played as i32, id],
+            "UPDATE media_items
+             SET played = ?1, playback_ticks = CASE WHEN ?1 = 0 THEN 0 ELSE playback_ticks END
+             WHERE id = ?2 AND server_id = ?3 AND user_id = ?4",
+            rusqlite::params![new_played as i32, id, server_id, user_id],
         );
     }
 
@@ -858,6 +954,7 @@ pub async fn toggle_favorite(
     is_favorite: bool,
 ) -> Result<bool, JfgoatError> {
     let (server_url, token, user_id, device_id) = get_connection_params(&state)?;
+    let server_id = get_server_id(&state)?;
     let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
         .with_token(&token);
 
@@ -872,32 +969,100 @@ pub async fn toggle_favorite(
     {
         let db = state.db.lock().map_err(|e| JfgoatError::Internal(e.to_string()))?;
         let _ = db.execute(
-            "UPDATE media_items SET is_favorite = ?1 WHERE id = ?2",
-            rusqlite::params![new_favorite as i32, id],
+            "UPDATE media_items SET is_favorite = ?1 WHERE id = ?2 AND server_id = ?3 AND user_id = ?4",
+            rusqlite::params![new_favorite as i32, id, server_id, user_id],
         );
     }
 
     Ok(new_favorite)
 }
 
-/// Report playback stop/progress to Jellyfin and update local playback flags.
-#[tauri::command]
-pub async fn report_playback_stopped(
-    state: State<'_, AppState>,
-    item_id: String,
+pub fn apply_user_data_refresh_batch(
+    state: &AppState,
+    server_id: &str,
+    user_id: &str,
+    items: &[media_api::JellyfinItem],
+) -> Result<u32, JfgoatError> {
+    if items.is_empty() {
+        return Ok(0);
+    }
+
+    let db = state
+        .db
+        .lock()
+        .map_err(|e| JfgoatError::Internal(e.to_string()))?;
+    let tx = db.unchecked_transaction()?;
+    let mut updated = 0u32;
+
+    {
+        let mut stmt = tx.prepare_cached(
+            "UPDATE media_items
+             SET played = ?1,
+                 play_count = ?2,
+                 playback_ticks = ?3,
+                 is_favorite = ?4
+             WHERE id = ?5 AND server_id = ?6 AND user_id = ?7",
+        )?;
+
+        for item in items {
+            let user_data = item.user_data.as_ref();
+            let played = user_data.and_then(|d| d.played).unwrap_or(false) as i32;
+            let play_count = user_data.and_then(|d| d.play_count).unwrap_or(0);
+            let playback_ticks = user_data
+                .and_then(|d| d.playback_position_ticks)
+                .unwrap_or(0)
+                .max(0);
+            let is_favorite = user_data
+                .and_then(|d| d.is_favorite)
+                .unwrap_or(false) as i32;
+
+            let rows = stmt.execute(rusqlite::params![
+                played,
+                play_count,
+                playback_ticks,
+                is_favorite,
+                item.id,
+                server_id,
+                user_id,
+            ])?;
+            updated += rows as u32;
+        }
+    }
+
+    tx.commit()?;
+    Ok(updated)
+}
+
+/// Report playback lifecycle events to Jellyfin and keep local playback flags in sync.
+pub async fn report_playback_lifecycle_internal(
+    state: &AppState,
+    item_id: &str,
     position_ticks: i64,
     duration_ticks: i64,
+    event: PlaybackLifecycleEvent,
 ) -> Result<(), JfgoatError> {
-    let (server_url, token, user_id, device_id) = get_connection_params(&state)?;
+    let (server_url, token, user_id, device_id) = get_connection_params(state)?;
+    let server_id = get_server_id(state)?;
     let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
         .with_token(&token);
 
     let safe_position = position_ticks.max(0);
     let safe_duration = duration_ticks.max(0);
 
-    // Best effort reporting to keep server-side resume/Next Up in sync.
-    if let Err(e) = media_api::report_playback_stopped(&jf_client, &item_id, safe_position).await {
-        println!("[playback] stop report failed for {}: {:?}", item_id, e);
+    let report_result = match event {
+        PlaybackLifecycleEvent::Playing => {
+            media_api::report_playback_playing(&jf_client, item_id, safe_position).await
+        }
+        PlaybackLifecycleEvent::Progress => {
+            media_api::report_playback_progress(&jf_client, item_id, safe_position).await
+        }
+        PlaybackLifecycleEvent::Stopped => {
+            media_api::report_playback_stopped(&jf_client, item_id, safe_position).await
+        }
+    };
+
+    if let Err(e) = report_result {
+        println!("[playback] {:?} report failed for {}: {:?}", event, item_id, e);
     }
 
     let near_end = if safe_duration > 0 {
@@ -909,7 +1074,7 @@ pub async fn report_playback_stopped(
         false
     };
 
-    if near_end {
+    if event == PlaybackLifecycleEvent::Stopped && near_end {
         if let Err(e) = media_api::mark_played(&jf_client, &user_id, &item_id).await {
             println!("[playback] mark played failed for {}: {:?}", item_id, e);
         }
@@ -921,18 +1086,36 @@ pub async fn report_playback_stopped(
             .lock()
             .map_err(|e| JfgoatError::Internal(e.to_string()))?;
 
-        if near_end {
+        if event == PlaybackLifecycleEvent::Stopped && near_end {
             let _ = db.execute(
-                "UPDATE media_items SET played = 1, playback_ticks = 0 WHERE id = ?1",
-                rusqlite::params![item_id],
+                "UPDATE media_items SET played = 1, playback_ticks = 0 WHERE id = ?1 AND server_id = ?2 AND user_id = ?3",
+                rusqlite::params![item_id, server_id, user_id],
             );
         } else {
             let _ = db.execute(
-                "UPDATE media_items SET played = 0, playback_ticks = ?1 WHERE id = ?2",
-                rusqlite::params![safe_position, item_id],
+                "UPDATE media_items SET played = 0, playback_ticks = ?1 WHERE id = ?2 AND server_id = ?3 AND user_id = ?4",
+                rusqlite::params![safe_position, item_id, server_id, user_id],
             );
         }
     }
 
     Ok(())
+}
+
+/// Report playback stop to Jellyfin and update local playback flags.
+#[tauri::command]
+pub async fn report_playback_stopped(
+    state: State<'_, AppState>,
+    item_id: String,
+    position_ticks: i64,
+    duration_ticks: i64,
+) -> Result<(), JfgoatError> {
+    report_playback_lifecycle_internal(
+        &state,
+        &item_id,
+        position_ticks,
+        duration_ticks,
+        PlaybackLifecycleEvent::Stopped,
+    )
+    .await
 }

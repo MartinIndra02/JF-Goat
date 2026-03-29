@@ -17,6 +17,8 @@ pub fn upsert_server(
     name: &str,
     url: &str,
 ) -> Result<(), JfgoatError> {
+    conn.execute("UPDATE servers SET is_active = 0", [])?;
+
     conn.execute(
         "INSERT INTO servers (id, name, url, is_active, connected_at)
          VALUES (?1, ?2, ?3, 1, datetime('now'))
@@ -26,6 +28,15 @@ pub fn upsert_server(
             is_active = 1,
             connected_at = datetime('now')",
         rusqlite::params![id, name, url],
+    )?;
+    Ok(())
+}
+
+pub fn set_active_server(conn: &Connection, server_id: &str) -> Result<(), JfgoatError> {
+    conn.execute("UPDATE servers SET is_active = 0", [])?;
+    conn.execute(
+        "UPDATE servers SET is_active = 1, connected_at = datetime('now') WHERE id = ?1",
+        rusqlite::params![server_id],
     )?;
     Ok(())
 }

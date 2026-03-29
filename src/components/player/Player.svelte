@@ -37,12 +37,19 @@
     mpvSetAudioTrack,
     mpvSetSubtitleTrack,
     mpvStop,
-    reportPlaybackStopped,
+    reportPlaybackLifecycle,
     getItemById,
     getSeasonEpisodes,
     getMediaStreams,
     getItemChapters,
+    loadHomepageCache,
+    saveHomepageCache,
   } from "../../lib/api";
+  import {
+    applyEpisodeCompletionToHomepageCache,
+    emitHomepageCacheUpdated,
+    suppressNextUpItem,
+  } from "../../lib/homepageFreshness";
   import type {
     ChapterInfo,
     MediaItem,
@@ -73,11 +80,15 @@
   let nextEpisode = $state<MediaItem | null>(null);
   let autoplayCountdown = $state<number | null>(null);
   let autoplayTimer: ReturnType<typeof setInterval> | null = null;
+  let playbackLifecycleTimer: ReturnType<typeof setInterval> | null = null;
   let autoplayDismissedForCurrentItem = $state(false);
   let autoplayStateItemId = $state<string | null>(null);
+  let lifecycleStartedForItemId = $state<string | null>(null);
   let endAutoSkipHandledForItemId = $state<string | null>(null);
   let playbackContextItemId = $state<string | null>(null);
+  let playbackContextResolvedItemId = $state<string | null>(null);
   let streamContextItemId = $state<string | null>(null);
+  let deferredPlaybackContextTimer: ReturnType<typeof setTimeout> | null = null;
   let deferredStreamLoadTimer: ReturnType<typeof setTimeout> | null = null;
   let pendingSeekClearTimer: ReturnType<typeof setTimeout> | null = null;
   let selectedAudioIndex = $state<number | null>(null);
@@ -90,6 +101,10 @@
   let isScrubbing = $state(false);
   let scrubSeconds = $state<number | null>(null);
   let pendingSeekSeconds = $state<number | null>(null);
+
+  const PLAYBACK_CONTEXT_DELAY_MS = 2500;
+  const STREAM_CONTEXT_DELAY_MS = 3000;
+  const PLAYBACK_PROGRESS_INTERVAL_MS = 15_000;
 
   // ── Derived values ───────────────────────────────────────────
   const playerVisible = $derived(isPlayerVisible());
@@ -338,10 +353,17 @@
       getItemById(id).catch(() => null),
       getItemChapters(id).catch(() => []),
     ]);
+
+    if (playerItemId !== id) return;
+
+    playbackContextResolvedItemId = id;
     chapters = chapterList;
 
     if (item) {
       const neighbors = await resolveEpisodeNeighbors(item);
+
+      if (playerItemId !== id) return;
+
       previousEpisode = neighbors.previous;
       nextEpisode = neighbors.next;
     } else {
@@ -368,6 +390,40 @@
     }
   }
 
+  function schedulePlaybackContextLoad(id: string) {
+    if (deferredPlaybackContextTimer) {
+      clearTimeout(deferredPlaybackContextTimer);
+    }
+
+    deferredPlaybackContextTimer = setTimeout(() => {
+      deferredPlaybackContextTimer = null;
+      void loadPlaybackContext(id);
+    }, PLAYBACK_CONTEXT_DELAY_MS);
+  }
+
+  function scheduleStreamContextLoad(id: string) {
+    if (deferredStreamLoadTimer) {
+      clearTimeout(deferredStreamLoadTimer);
+    }
+
+    deferredStreamLoadTimer = setTimeout(() => {
+      deferredStreamLoadTimer = null;
+      void loadStreamContext(id);
+    }, STREAM_CONTEXT_DELAY_MS);
+  }
+
+  function ensureStreamContextLoadedNow() {
+    if (!playerItemId) return;
+    if (mediaStreams || streamContextItemId === playerItemId) return;
+
+    if (deferredStreamLoadTimer) {
+      clearTimeout(deferredStreamLoadTimer);
+      deferredStreamLoadTimer = null;
+    }
+
+    void loadStreamContext(playerItemId);
+  }
+
   function clearPendingSeekPreview() {
     pendingSeekSeconds = null;
     if (pendingSeekClearTimer) {
@@ -390,6 +446,10 @@
     audioMenuOpen = openAudio;
     subtitleMenuOpen = openSubtitle;
     overflowMenuOpen = openOverflow;
+
+    if (openAudio || openSubtitle || openOverflow) {
+      ensureStreamContextLoadedNow();
+    }
   }
 
   function subtitleIndexForRequest(value: number | null | undefined): number | null {
@@ -398,15 +458,88 @@
     return value;
   }
 
-  function reportCurrentPlaybackStop() {
+  function isNearPlaybackEnd(positionSeconds: number, durationSeconds: number): boolean {
+    if (durationSeconds <= 0) return false;
+
+    const remaining = Math.max(durationSeconds - positionSeconds, 0);
+    const remainingThreshold = 60;
+    const percent = positionSeconds / durationSeconds;
+
+    return remaining <= remainingThreshold || percent >= 0.95;
+  }
+
+  async function applyOptimisticHomepageUpdate(
+    completedEpisodeId: string,
+    nextEpisodeHint: MediaItem | null,
+  ) {
+    suppressNextUpItem(completedEpisodeId);
+
+    try {
+      const cached = await loadHomepageCache();
+      if (!cached) return;
+
+      const updated = applyEpisodeCompletionToHomepageCache(
+        cached,
+        completedEpisodeId,
+        nextEpisodeHint,
+      );
+      await saveHomepageCache(updated);
+      emitHomepageCacheUpdated(updated);
+    } catch (e) {
+      console.warn("Failed to optimistically update homepage cache:", e);
+    }
+  }
+
+  async function reportCurrentPlaybackStop(nextEpisodeHint: MediaItem | null = null) {
     if (!playerItemId) return;
 
-    const positionTicks = Math.max(0, Math.floor(pos * 10_000_000));
-    const durationTicks = Math.max(0, Math.floor(dur * 10_000_000));
+    const currentItemId = playerItemId;
+    const positionSeconds = Math.max(0, pos);
+    const durationSeconds = Math.max(0, dur);
+    const positionTicks = Math.floor(positionSeconds * 10_000_000);
+    const durationTicks = Math.floor(durationSeconds * 10_000_000);
+    const nearEnd = isNearPlaybackEnd(positionSeconds, durationSeconds);
 
-    void reportPlaybackStopped(playerItemId, positionTicks, durationTicks).catch((e) => {
+    try {
+      await reportPlaybackLifecycle(
+        currentItemId,
+        positionTicks,
+        durationTicks,
+        "stopped",
+      );
+    } catch (e) {
       console.warn("Failed to report playback stop:", e);
-    });
+      return;
+    }
+
+    if (nearEnd) {
+      await applyOptimisticHomepageUpdate(currentItemId, nextEpisodeHint);
+    }
+  }
+
+  async function reportPlaybackHeartbeat(event: "playing" | "progress") {
+    if (!playerItemId) return;
+
+    const positionTicks = Math.floor(Math.max(0, pos) * 10_000_000);
+    const durationTicks = Math.floor(Math.max(0, dur) * 10_000_000);
+
+    try {
+      await reportPlaybackLifecycle(
+        playerItemId,
+        positionTicks,
+        durationTicks,
+        event,
+      );
+    } catch (e) {
+      console.warn(`Failed to report playback ${event}:`, e);
+    }
+  }
+
+  function stopPlaybackLifecycleTimer() {
+    if (playbackLifecycleTimer) {
+      clearInterval(playbackLifecycleTimer);
+      playbackLifecycleTimer = null;
+    }
   }
 
   async function applyQualitySelection(nextQualityKey: string) {
@@ -558,9 +691,8 @@
   async function playNextEpisode() {
     if (!nextEpisode) return;
 
-    reportCurrentPlaybackStop();
-
     const target = nextEpisode;
+    void reportCurrentPlaybackStop(target);
     stopAutoplayCountdown();
 
     showPlayer(target.id, formatEpisodeTitle(target));
@@ -700,7 +832,7 @@
   async function playPreviousEpisode() {
     if (!previousEpisode) return;
 
-    reportCurrentPlaybackStop();
+    void reportCurrentPlaybackStop();
 
     const target = previousEpisode;
     stopAutoplayCountdown();
@@ -768,9 +900,9 @@
     }
   }
 
-  async function stopPlayer() {
+  async function stopPlayer(nextEpisodeHint: MediaItem | null = null) {
     stopAutoplayCountdown();
-    reportCurrentPlaybackStop();
+    await reportCurrentPlaybackStop(nextEpisodeHint);
     await exitFullscreenIfActive();
     await mpvStop();
     hidePlayer();
@@ -866,7 +998,9 @@
 
   onDestroy(() => {
     if (hideTimer) clearTimeout(hideTimer);
+    stopPlaybackLifecycleTimer();
     if (pendingSeekClearTimer) clearTimeout(pendingSeekClearTimer);
+    if (deferredPlaybackContextTimer) clearTimeout(deferredPlaybackContextTimer);
     if (deferredStreamLoadTimer) clearTimeout(deferredStreamLoadTimer);
     stopAutoplayCountdown();
   });
@@ -874,6 +1008,7 @@
   $effect(() => {
     if (!playerVisible || !playerItemId) {
       void exitFullscreenIfActive();
+      stopPlaybackLifecycleTimer();
       mediaStreams = null;
       chapters = [];
       previousEpisode = null;
@@ -885,15 +1020,21 @@
       selectedSubtitleIndex = null;
       selectedQualityKey = "direct-play";
       playbackContextItemId = null;
+      playbackContextResolvedItemId = null;
       streamContextItemId = null;
       if (deferredStreamLoadTimer) {
         clearTimeout(deferredStreamLoadTimer);
         deferredStreamLoadTimer = null;
       }
+      if (deferredPlaybackContextTimer) {
+        clearTimeout(deferredPlaybackContextTimer);
+        deferredPlaybackContextTimer = null;
+      }
       closeTopMenus();
       stopAutoplayCountdown();
       autoplayDismissedForCurrentItem = false;
       autoplayStateItemId = null;
+      lifecycleStartedForItemId = null;
       endAutoSkipHandledForItemId = null;
       return;
     }
@@ -906,6 +1047,8 @@
 
     if (playbackContextItemId !== playerItemId) {
       playbackContextItemId = playerItemId;
+      lifecycleStartedForItemId = null;
+      playbackContextResolvedItemId = null;
       mediaStreams = null;
       streamContextItemId = null;
       selectedQualityKey = "direct-play";
@@ -913,7 +1056,11 @@
         clearTimeout(deferredStreamLoadTimer);
         deferredStreamLoadTimer = null;
       }
-      void loadPlaybackContext(playerItemId);
+      if (deferredPlaybackContextTimer) {
+        clearTimeout(deferredPlaybackContextTimer);
+        deferredPlaybackContextTimer = null;
+      }
+      schedulePlaybackContextLoad(playerItemId);
     }
   });
 
@@ -923,15 +1070,33 @@
     if (mediaStreams || streamContextItemId === playerItemId) return;
     if (deferredStreamLoadTimer) return;
 
-    const targetItemId = playerItemId;
-    deferredStreamLoadTimer = setTimeout(() => {
-      deferredStreamLoadTimer = null;
-      void loadStreamContext(targetItemId);
-    }, 700);
+    scheduleStreamContextLoad(playerItemId);
   });
 
   $effect(() => {
-    if (!playerVisible || !nextEpisode) {
+    if (!playerVisible || !playerItemId || playerStatus !== "playing") {
+      stopPlaybackLifecycleTimer();
+      return;
+    }
+
+    if (lifecycleStartedForItemId !== playerItemId) {
+      lifecycleStartedForItemId = playerItemId;
+      void reportPlaybackHeartbeat("playing");
+    }
+
+    stopPlaybackLifecycleTimer();
+    playbackLifecycleTimer = setInterval(() => {
+      if (!playerVisible || !playerItemId || playerStatus !== "playing") return;
+      void reportPlaybackHeartbeat("progress");
+    }, PLAYBACK_PROGRESS_INTERVAL_MS);
+
+    return () => {
+      stopPlaybackLifecycleTimer();
+    };
+  });
+
+  $effect(() => {
+    if (!playerVisible) {
       stopAutoplayCountdown();
       return;
     }
@@ -939,9 +1104,31 @@
     if (playerStatus === "ended") {
       stopAutoplayCountdown();
       if (playerItemId && endAutoSkipHandledForItemId !== playerItemId) {
+        // Playback context can still be loading near EOF. Resolve once before
+        // deciding there is no next episode.
+        if (!nextEpisode && playbackContextResolvedItemId !== playerItemId) {
+          if (deferredPlaybackContextTimer) {
+            clearTimeout(deferredPlaybackContextTimer);
+            deferredPlaybackContextTimer = null;
+          }
+          void loadPlaybackContext(playerItemId);
+          return;
+        }
+
         endAutoSkipHandledForItemId = playerItemId;
-        void playNextEpisode();
+        if (nextEpisode && !autoplayDismissedForCurrentItem) {
+          void playNextEpisode();
+        } else if (nextEpisode && autoplayDismissedForCurrentItem) {
+          void stopPlayer(nextEpisode);
+        } else {
+          void stopPlayer();
+        }
       }
+      return;
+    }
+
+    if (!nextEpisode) {
+      stopAutoplayCountdown();
       return;
     }
 
@@ -1006,7 +1193,7 @@
       <div class="mx-auto w-full max-w-6xl flex items-center justify-between gap-3">
         <div class="flex items-center gap-2 sm:gap-3 min-w-0">
           <button
-            onclick={stopPlayer}
+            onclick={() => void stopPlayer()}
             aria-label="Close player"
             class="h-10 w-10 grid place-items-center rounded-xl bg-black/45 border border-white/20 backdrop-blur-md text-white hover:bg-black/60 transition-colors"
           >

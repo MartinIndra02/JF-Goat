@@ -1,22 +1,25 @@
 <script lang="ts">
   import { connectToServer } from "../lib/api";
+  import { pushErrorToast, normalizeErrorMessage } from "../lib/stores/toast.svelte";
   import TextInput from "../components/ui/TextInput.svelte";
   import Button from "../components/ui/Button.svelte";
-  import ErrorBanner from "../components/ui/ErrorBanner.svelte";
   import { push } from "svelte-spa-router";
 
   let url = $state("");
-  let error = $state("");
   let loading = $state(false);
 
   async function handleConnect() {
-    error = "";
     loading = true;
     try {
-      const info = await connectToServer(url);
+      await connectToServer(url);
       push("/login");
     } catch (e: any) {
-      error = e?.message || String(e);
+      pushErrorToast(
+        "api",
+        normalizeErrorMessage(e),
+        "Connection failed",
+        "connect-failed",
+      );
     } finally {
       loading = false;
     }
@@ -36,8 +39,6 @@
         placeholder="http://your-server:8096"
         disabled={loading}
       />
-
-      <ErrorBanner message={error} />
 
       <Button type="submit" disabled={loading || !url.trim()}>
         {loading ? "Connecting..." : "Connect"}

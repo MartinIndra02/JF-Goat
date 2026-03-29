@@ -30,6 +30,7 @@ pub struct MediaItem {
     pub playback_ticks: i64,
     pub is_favorite: bool,
     pub server_id: String,
+    pub user_id: String,
 }
 
 /// Insert a chunk of media items in a single transaction for maximum I/O performance.
@@ -46,13 +47,13 @@ pub fn insert_media_chunk(
                 season_id, season_name, index_number, production_year,
                 overview, image_tag, backdrop_tag, date_created, date_updated,
                 community_rating, official_rating, genres, run_time_ticks,
-                played, play_count, playback_ticks, is_favorite, server_id
+                played, play_count, playback_ticks, is_favorite, server_id, user_id
             ) VALUES (
                 ?1, ?2, ?3, ?4, ?5, ?6,
                 ?7, ?8, ?9, ?10,
                 ?11, ?12, ?13, ?14, ?15,
                 ?16, ?17, ?18, ?19,
-                ?20, ?21, ?22, ?23, ?24
+                ?20, ?21, ?22, ?23, ?24, ?25
             )",
         )?;
 
@@ -82,6 +83,7 @@ pub fn insert_media_chunk(
                 item.playback_ticks,
                 item.is_favorite as i32,
                 item.server_id,
+                item.user_id,
             ])?;
         }
     }
@@ -94,6 +96,8 @@ pub fn insert_media_chunk(
 pub fn search_local(
     conn: &Connection,
     query: &str,
+    server_id: &str,
+    user_id: &str,
     limit: u32,
 ) -> Result<Vec<MediaItem>, JfgoatError> {
     // Escape FTS5 special characters and append wildcard for prefix matching
@@ -113,15 +117,17 @@ pub fn search_local(
                 m.season_id, m.season_name, m.index_number, m.production_year,
                 m.overview, m.image_tag, m.backdrop_tag, m.date_created, m.date_updated,
                 m.community_rating, m.official_rating, m.genres, m.run_time_ticks,
-                m.played, m.play_count, m.playback_ticks, m.is_favorite, m.server_id
+                m.played, m.play_count, m.playback_ticks, m.is_favorite, m.server_id, m.user_id
          FROM media_items m
          JOIN media_items_fts fts ON m.rowid = fts.rowid
          WHERE media_items_fts MATCH ?1
+           AND m.server_id = ?2
+           AND m.user_id = ?3
          ORDER BY rank
-         LIMIT ?2",
+         LIMIT ?4",
     )?;
 
-    let rows = stmt.query_map(rusqlite::params![fts_query, limit], |row| {
+    let rows = stmt.query_map(rusqlite::params![fts_query, server_id, user_id, limit], |row| {
         Ok(MediaItem {
             id: row.get(0)?,
             name: row.get(1)?,
@@ -147,6 +153,7 @@ pub fn search_local(
             playback_ticks: row.get(21)?,
             is_favorite: row.get::<_, i32>(22)? != 0,
             server_id: row.get(23)?,
+            user_id: row.get(24)?,
         })
     })?;
 
@@ -159,6 +166,24 @@ pub fn search_local(
 
 /// Get the total count of media items in the local database.
 pub fn get_local_item_count(conn: &Connection) -> Result<u32, JfgoatError> {
+    get_local_item_count_scoped(conn, None, None)
+}
+
+/// Get the total count of media items in the local database for a specific scope.
+pub fn get_local_item_count_scoped(
+    conn: &Connection,
+    server_id: Option<&str>,
+    user_id: Option<&str>,
+) -> Result<u32, JfgoatError> {
+    if let (Some(server_id), Some(user_id)) = (server_id, user_id) {
+        let count: u32 = conn.query_row(
+            "SELECT COUNT(*) FROM media_items WHERE server_id = ?1 AND user_id = ?2",
+            rusqlite::params![server_id, user_id],
+            |row| row.get(0),
+        )?;
+        return Ok(count);
+    }
+
     let count: u32 = conn.query_row(
         "SELECT COUNT(*) FROM media_items",
         [],
@@ -178,10 +203,15 @@ pub enum CheckpointStatus {
 }
 
 /// Read the sync checkpoint for a specific view.
-pub fn get_checkpoint(conn: &Connection, view_id: &str) -> Result<CheckpointStatus, JfgoatError> {
+pub fn get_checkpoint(
+    conn: &Connection,
+    view_id: &str,
+    server_id: &str,
+    user_id: &str,
+) -> Result<CheckpointStatus, JfgoatError> {
     let result = conn.query_row(
-        "SELECT status, last_index FROM sync_checkpoints WHERE view_id = ?1",
-        rusqlite::params![view_id],
+        "SELECT status, last_index FROM sync_checkpoints WHERE view_id = ?1 AND server_id = ?2 AND user_id = ?3",
+        rusqlite::params![view_id, server_id, user_id],
         |row| {
             let status: String = row.get(0)?;
             let last_index: u32 = row.get(1)?;
@@ -203,34 +233,172 @@ pub fn get_checkpoint(conn: &Connection, view_id: &str) -> Result<CheckpointStat
 }
 
 /// Create or reset a checkpoint for a view to IN_PROGRESS at index 0.
-pub fn init_checkpoint(conn: &Connection, view_id: &str) -> Result<(), JfgoatError> {
+pub fn init_checkpoint(
+    conn: &Connection,
+    view_id: &str,
+    server_id: &str,
+    user_id: &str,
+) -> Result<(), JfgoatError> {
     conn.execute(
-        "INSERT OR REPLACE INTO sync_checkpoints (view_id, status, last_index) VALUES (?1, 'IN_PROGRESS', 0)",
-        rusqlite::params![view_id],
+        "INSERT OR REPLACE INTO sync_checkpoints (view_id, status, last_index, server_id, user_id) VALUES (?1, 'IN_PROGRESS', 0, ?2, ?3)",
+        rusqlite::params![view_id, server_id, user_id],
     )?;
     Ok(())
 }
 
 /// Advance the checkpoint's last_index for a view.
-pub fn update_checkpoint_index(conn: &Connection, view_id: &str, last_index: u32) -> Result<(), JfgoatError> {
+pub fn update_checkpoint_index(
+    conn: &Connection,
+    view_id: &str,
+    server_id: &str,
+    user_id: &str,
+    last_index: u32,
+) -> Result<(), JfgoatError> {
     conn.execute(
-        "UPDATE sync_checkpoints SET last_index = ?1 WHERE view_id = ?2",
-        rusqlite::params![last_index, view_id],
+        "UPDATE sync_checkpoints SET last_index = ?1 WHERE view_id = ?2 AND server_id = ?3 AND user_id = ?4",
+        rusqlite::params![last_index, view_id, server_id, user_id],
     )?;
     Ok(())
 }
 
 /// Mark a view's checkpoint as COMPLETED.
-pub fn complete_checkpoint(conn: &Connection, view_id: &str) -> Result<(), JfgoatError> {
+pub fn complete_checkpoint(
+    conn: &Connection,
+    view_id: &str,
+    server_id: &str,
+    user_id: &str,
+) -> Result<(), JfgoatError> {
     conn.execute(
-        "UPDATE sync_checkpoints SET status = 'COMPLETED' WHERE view_id = ?1",
-        rusqlite::params![view_id],
+        "UPDATE sync_checkpoints SET status = 'COMPLETED' WHERE view_id = ?1 AND server_id = ?2 AND user_id = ?3",
+        rusqlite::params![view_id, server_id, user_id],
     )?;
     Ok(())
 }
 
 /// Clear all checkpoints (used when starting a fresh sync).
-pub fn clear_all_checkpoints(conn: &Connection) -> Result<(), JfgoatError> {
-    conn.execute("DELETE FROM sync_checkpoints", [])?;
+pub fn clear_all_checkpoints(
+    conn: &Connection,
+    server_id: &str,
+    user_id: &str,
+) -> Result<(), JfgoatError> {
+    conn.execute(
+        "DELETE FROM sync_checkpoints WHERE server_id = ?1 AND user_id = ?2",
+        rusqlite::params![server_id, user_id],
+    )?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        clear_all_checkpoints, complete_checkpoint, get_checkpoint, init_checkpoint,
+        insert_media_chunk, search_local, update_checkpoint_index, CheckpointStatus,
+        MediaItem,
+    };
+    use crate::db::init_db;
+    use rusqlite::Connection;
+
+    fn sample_item(id: &str, name: &str, item_type: &str) -> MediaItem {
+        MediaItem {
+            id: id.to_string(),
+            name: name.to_string(),
+            item_type: item_type.to_string(),
+            parent_id: None,
+            series_id: Some("series-1".to_string()),
+            series_name: Some("My Show".to_string()),
+            season_id: Some("season-1".to_string()),
+            season_name: Some("Season 1".to_string()),
+            index_number: Some(1),
+            production_year: Some(2024),
+            overview: Some("Test overview".to_string()),
+            image_tag: None,
+            backdrop_tag: None,
+            date_created: Some("2024-01-01T00:00:00.000Z".to_string()),
+            date_updated: Some("2024-01-01T00:00:00.000Z".to_string()),
+            community_rating: Some(8.0),
+            official_rating: Some("TV-14".to_string()),
+            genres: Some("Drama".to_string()),
+            run_time_ticks: Some(12_000_000_000),
+            played: false,
+            play_count: 0,
+            playback_ticks: 0,
+            is_favorite: false,
+            server_id: "srv-1".to_string(),
+            user_id: "user-1".to_string(),
+        }
+    }
+
+    #[test]
+    fn search_local_returns_prefix_matches_and_empty_for_blank_query() {
+        let conn = Connection::open_in_memory().expect("in-memory database should open");
+        init_db(&conn).expect("database schema should initialize");
+
+        let items = vec![
+            sample_item("ep-1", "Pilot", "Episode"),
+            sample_item("ep-2", "Nexus", "Episode"),
+            sample_item("movie-1", "Signal Fire", "Movie"),
+        ];
+        insert_media_chunk(&conn, &items).expect("seed media items should insert");
+
+        let result = search_local(&conn, "Pil", "srv-1", "user-1", 10)
+            .expect("search should succeed");
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].id, "ep-1");
+
+        let empty = search_local(&conn, "   ", "srv-1", "user-1", 10)
+            .expect("blank query should succeed");
+        assert!(empty.is_empty());
+    }
+
+    #[test]
+    fn checkpoint_lifecycle_transitions_correctly() {
+        let conn = Connection::open_in_memory().expect("in-memory database should open");
+        init_db(&conn).expect("database schema should initialize");
+
+        let server_id = "srv-1";
+        let user_id = "user-1";
+
+        match get_checkpoint(&conn, "lib-1", server_id, user_id)
+            .expect("checkpoint lookup should succeed")
+        {
+            CheckpointStatus::NotFound => {}
+            _ => panic!("expected checkpoint to be missing before initialization"),
+        }
+
+        init_checkpoint(&conn, "lib-1", server_id, user_id)
+            .expect("checkpoint should initialize");
+        match get_checkpoint(&conn, "lib-1", server_id, user_id)
+            .expect("checkpoint lookup should succeed")
+        {
+            CheckpointStatus::InProgress(last_index) => assert_eq!(last_index, 0),
+            _ => panic!("expected in-progress checkpoint after initialization"),
+        }
+
+        update_checkpoint_index(&conn, "lib-1", server_id, user_id, 42)
+            .expect("checkpoint index update should succeed");
+        match get_checkpoint(&conn, "lib-1", server_id, user_id)
+            .expect("checkpoint lookup should succeed")
+        {
+            CheckpointStatus::InProgress(last_index) => assert_eq!(last_index, 42),
+            _ => panic!("expected in-progress checkpoint after index update"),
+        }
+
+        complete_checkpoint(&conn, "lib-1", server_id, user_id)
+            .expect("checkpoint completion should succeed");
+        match get_checkpoint(&conn, "lib-1", server_id, user_id)
+            .expect("checkpoint lookup should succeed")
+        {
+            CheckpointStatus::Completed => {}
+            _ => panic!("expected completed checkpoint after completion"),
+        }
+
+        clear_all_checkpoints(&conn, server_id, user_id)
+            .expect("checkpoint clear should succeed");
+        match get_checkpoint(&conn, "lib-1", server_id, user_id)
+            .expect("checkpoint lookup should succeed")
+        {
+            CheckpointStatus::NotFound => {}
+            _ => panic!("expected checkpoint to be removed after clearing"),
+        }
+    }
 }

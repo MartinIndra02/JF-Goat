@@ -8,8 +8,9 @@ use serde::Serialize;
 
 use crate::api::client::JellyfinClient;
 use crate::api::media;
+use crate::commands::media_commands::apply_user_data_refresh_batch;
 use crate::db::media::{
-    insert_media_chunk, get_local_item_count,
+    insert_media_chunk, get_local_item_count_scoped,
     get_checkpoint, init_checkpoint, update_checkpoint_index, complete_checkpoint,
     CheckpointStatus, MediaItem,
 };
@@ -23,6 +24,22 @@ const HIERARCHICAL_RATE_LIMIT_MS: u64 = 250;
 const MAX_RETRIES: u32 = 4;
 const MAX_CONSECUTIVE_FAILURES: u32 = 10;
 const TV_CHUNK_SIZE: usize = 10;
+const INCREMENTAL_REFRESH_INTERVAL_SECS: u64 = 240;
+const INCREMENTAL_REFRESH_BATCH_SIZE: u32 = 1000;
+const INCREMENTAL_REFRESH_MAX_PAGES: u32 = 200;
+
+// Route legacy print-style sync logs into structured tracing without touching every call site.
+macro_rules! println {
+    ($($arg:tt)*) => {
+        tracing::info!(target: "sync", "{}", format_args!($($arg)*))
+    };
+}
+
+macro_rules! eprintln {
+    ($($arg:tt)*) => {
+        tracing::error!(target: "sync", "{}", format_args!($($arg)*))
+    };
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SyncProgress {
@@ -41,7 +58,7 @@ pub struct SyncError {
 }
 
 /// Convert a Jellyfin API item into our local MediaItem struct.
-fn to_media_item(item: media::JellyfinItem, server_id: &str) -> MediaItem {
+fn to_media_item(item: media::JellyfinItem, server_id: &str, user_id: &str) -> MediaItem {
     let image_tag = item.image_tags.and_then(|t| t.primary);
     let backdrop_tag = item.backdrop_image_tags.and_then(|v| v.into_iter().next());
     let genres = item.genres.map(|g| g.join(", "));
@@ -85,6 +102,7 @@ fn to_media_item(item: media::JellyfinItem, server_id: &str) -> MediaItem {
         playback_ticks,
         is_favorite,
         server_id: server_id.to_string(),
+        user_id: user_id.to_string(),
     }
 }
 
@@ -180,12 +198,25 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
         return Ok(());
     }
 
+    // Get server_id for scoped local DB reads/writes.
+    let server_id = {
+        let db = state.db.lock().map_err(|e| e.to_string())?;
+        let sid: String = db
+            .query_row(
+                "SELECT id FROM servers WHERE is_active = 1 ORDER BY connected_at DESC LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        sid
+    };
+
     println!("Grand total item count from server: {}", grand_total);
 
     // Step 2: Initialize global_ingested from DB for accurate resume progress
     let initial_count = {
         let db = state.db.lock().map_err(|e| e.to_string())?;
-        get_local_item_count(&db).map_err(|e| e.to_string())?
+        get_local_item_count_scoped(&db, Some(&server_id), Some(&user_id)).map_err(|e| e.to_string())?
     };
 
     println!("Resuming with {} items already in local DB", initial_count);
@@ -240,19 +271,6 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
 
     println!("Starting sync: {} total items across {} libraries", grand_total, view_totals.len());
 
-    // Get server_id for the media items
-    let server_id = {
-        let db = state.db.lock().map_err(|e| e.to_string())?;
-        let sid: String = db
-            .query_row(
-                "SELECT id FROM servers WHERE is_active = 1 ORDER BY connected_at DESC LIMIT 1",
-                [],
-                |row| row.get(0),
-            )
-            .map_err(|e| e.to_string())?;
-        sid
-    };
-
     // Step 5: Sync each library view with checkpointing
     let global_ingested = Arc::new(AtomicU32::new(initial_count));
     let mut global_failed_batches: u32 = 0;
@@ -282,7 +300,7 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
         // ── Checkpoint: Check if this view was already synced ──
         let start_index = {
             let db = state.db.lock().map_err(|e| e.to_string())?;
-            match get_checkpoint(&db, view_id).map_err(|e| e.to_string())? {
+            match get_checkpoint(&db, view_id, &server_id, &user_id).map_err(|e| e.to_string())? {
                 CheckpointStatus::Completed => {
                     println!("Skipping library '{}' (already completed)", view_name);
                     continue;
@@ -292,7 +310,7 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
                     last_index
                 }
                 CheckpointStatus::NotFound => {
-                    init_checkpoint(&db, view_id).map_err(|e| e.to_string())?;
+                    init_checkpoint(&db, view_id, &server_id, &user_id).map_err(|e| e.to_string())?;
                     println!("Starting library '{}' from index 0", view_name);
                     0
                 }
@@ -350,7 +368,7 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
                         let media: Vec<MediaItem> = response
                             .items
                             .into_iter()
-                            .map(|item| to_media_item(item, &server_id))
+                            .map(|item| to_media_item(item, &server_id, &user_id))
                             .collect();
 
                         // Insert Series into DB
@@ -458,20 +476,18 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
             }
 
             for chunk in remaining_series.chunks(TV_CHUNK_SIZE) {
-                // A. Create tasks for this specific chunk
+                // A. Fetch series episode trees concurrently, but defer DB writes until all network calls finish.
                 let tasks: Vec<_> = chunk.iter().map(|series| {
-                    let ingested = Arc::clone(&global_ingested);
-                    let app_h = app.clone();
                     let jf = JellyfinClient::new(&state.http_client, &server_url, &device_id)
                         .with_token(&token);
                     let uid = user_id.clone();
                     let sid = server_id.clone();
                     let series_id = series.id.clone();
                     let series_name = series.name.clone();
-                    let db_mutex = &state.db;
 
                     async move {
                         let mut ep_start: u32 = 0;
+                        let mut series_buffer: Vec<MediaItem> = Vec::new();
 
                         loop {
                             let mut batch_result = None;
@@ -510,42 +526,9 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
                                     let media_items: Vec<MediaItem> = response
                                         .items
                                         .into_iter()
-                                        .map(|item| to_media_item(item, &sid))
+                                        .map(|item| to_media_item(item, &sid, &uid))
                                         .collect();
-
-                                    // Acquire DB lock, insert, then immediately release
-                                    match db_mutex.lock() {
-                                        Ok(db) => {
-                                            if let Err(e) = insert_media_chunk(&db, &media_items) {
-                                                eprintln!("DB insert failed for episodes of '{}': {}", series_name, e);
-                                            } else {
-                                                let added = chunk_count;
-                                                let current = ingested.fetch_add(added, Ordering::SeqCst) + added;
-
-                                                let percentage = (current as f32 / grand_total as f32) * 100.0;
-                                                println!(
-                                                    "Sync progress: {}/{} ({:.1}%) [episodes: '{}' +{}]",
-                                                    current, grand_total, percentage, series_name, added
-                                                );
-                                                let _ = app_h.emit("sync-progress", SyncProgress {
-                                                    current,
-                                                    total: grand_total,
-                                                    percentage,
-                                                });
-                                            }
-                                        }
-                                        Err(e) => {
-                                            eprintln!("Database mutex poisoned: {}", e);
-                                            let _ = app_h.emit("sync-error", SyncError {
-                                                message: format!("Database lock failed: {}", e),
-                                                batch_start: ep_start,
-                                                batch_size: SERIES_CHILDREN_LIMIT,
-                                                retries_attempted: 0,
-                                                is_fatal: true,
-                                            });
-                                            return; // Exit this series task
-                                        }
-                                    }
+                                    series_buffer.extend(media_items);
 
                                     if chunk_count < SERIES_CHILDREN_LIMIT {
                                         break;
@@ -555,29 +538,102 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
                                     tokio::time::sleep(Duration::from_millis(HIERARCHICAL_RATE_LIMIT_MS)).await;
                                 }
                                 None => {
-                                    eprintln!(
-                                        "Skipping episodes for '{}' at index {} after {} retries",
-                                        series_name, ep_start, MAX_RETRIES
-                                    );
-                                    let _ = app_h.emit("sync-error", SyncError {
-                                        message: last_error,
+                                    return Err(SyncError {
+                                        message: format!(
+                                            "Skipping episodes for '{}' at index {} after {} retries: {}",
+                                            series_name, ep_start, MAX_RETRIES, last_error
+                                        ),
                                         batch_start: ep_start,
                                         batch_size: SERIES_CHILDREN_LIMIT,
                                         retries_attempted: MAX_RETRIES,
                                         is_fatal: false,
                                     });
-                                    break; // Move on to next series
                                 }
                             }
                         }
 
                         // Rate limit so concurrent workers don't overwhelm the server
                         tokio::time::sleep(Duration::from_millis(HIERARCHICAL_RATE_LIMIT_MS)).await;
+                        Ok::<Vec<MediaItem>, SyncError>(series_buffer)
                     }
                 }).collect();
 
-                // B. WAIT for all series in this chunk to completely finish
-                join_all(tasks).await;
+                // B. Wait for all series in this chunk to finish network fetches.
+                let results = join_all(tasks).await;
+
+                let mut chunk_media: Vec<MediaItem> = Vec::new();
+                for result in results {
+                    match result {
+                        Ok(series_items) => {
+                            if !series_items.is_empty() {
+                                chunk_media.extend(series_items);
+                            }
+                        }
+                        Err(err_payload) => {
+                            global_failed_batches += 1;
+                            global_consecutive_failures += 1;
+                            let _ = app.emit("sync-error", err_payload);
+                        }
+                    }
+                }
+
+                if !chunk_media.is_empty() {
+                    match state.db.lock() {
+                        Ok(db) => {
+                            if let Err(e) = insert_media_chunk(&db, &chunk_media) {
+                                eprintln!("DB insert failed for '{}' hierarchical chunk: {}", view_name, e);
+                                global_failed_batches += 1;
+                                global_consecutive_failures += 1;
+                            } else {
+                                let added = chunk_media.len() as u32;
+                                let current = global_ingested.fetch_add(added, Ordering::SeqCst) + added;
+                                global_consecutive_failures = 0;
+
+                                let percentage = (current as f32 / grand_total as f32) * 100.0;
+                                println!(
+                                    "Sync progress: {}/{} ({:.1}%) [{} episodes +{}]",
+                                    current, grand_total, percentage, view_name, added
+                                );
+                                let _ = app.emit("sync-progress", SyncProgress {
+                                    current,
+                                    total: grand_total,
+                                    percentage,
+                                });
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("Database mutex poisoned: {}", e);
+                            let _ = app.emit("sync-error", SyncError {
+                                message: format!("Database lock failed: {}", e),
+                                batch_start: current_series_index as u32,
+                                batch_size: chunk.len() as u32,
+                                retries_attempted: 0,
+                                is_fatal: true,
+                            });
+                            abort = true;
+                            break;
+                        }
+                    }
+                }
+
+                if global_consecutive_failures >= MAX_CONSECUTIVE_FAILURES {
+                    eprintln!(
+                        "Aborting sync after {} consecutive failures in '{}'",
+                        MAX_CONSECUTIVE_FAILURES, view_name
+                    );
+                    let _ = app.emit("sync-error", SyncError {
+                        message: format!(
+                            "Sync aborted after {} consecutive batch failures",
+                            MAX_CONSECUTIVE_FAILURES
+                        ),
+                        batch_start: current_series_index as u32,
+                        batch_size: chunk.len() as u32,
+                        retries_attempted: MAX_RETRIES,
+                        is_fatal: true,
+                    });
+                    abort = true;
+                    break;
+                }
 
                 // C. Safely advance checkpoint ONLY after the whole chunk is in the DB
                 current_series_index += chunk.len();
@@ -585,7 +641,13 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
                 // D. Update SQLite checkpoint
                 match state.db.lock() {
                     Ok(db) => {
-                        if let Err(e) = update_checkpoint_index(&db, view_id, current_series_index as u32) {
+                        if let Err(e) = update_checkpoint_index(
+                            &db,
+                            view_id,
+                            &server_id,
+                            &user_id,
+                            current_series_index as u32,
+                        ) {
                             eprintln!("Failed to update checkpoint for '{}': {}", view_name, e);
                         }
                     }
@@ -601,7 +663,7 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
             if !abort {
                 match state.db.lock() {
                     Ok(db) => {
-                        if let Err(e) = complete_checkpoint(&db, view_id) {
+                        if let Err(e) = complete_checkpoint(&db, view_id, &server_id, &user_id) {
                             eprintln!("Failed to complete checkpoint for '{}': {}", view_name, e);
                         } else {
                             println!("Library '{}' sync completed", view_name);
@@ -659,7 +721,7 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
                         let media_items: Vec<MediaItem> = response
                             .items
                             .into_iter()
-                            .map(|item| to_media_item(item, &server_id))
+                            .map(|item| to_media_item(item, &server_id, &user_id))
                             .collect();
 
                         match state.db.lock() {
@@ -686,7 +748,13 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
 
                                     // Update checkpoint after successful DB insert
                                     let next_index = current_index + CHUNK_SIZE;
-                                    if let Err(e) = update_checkpoint_index(&db, view_id, next_index) {
+                                    if let Err(e) = update_checkpoint_index(
+                                        &db,
+                                        view_id,
+                                        &server_id,
+                                        &user_id,
+                                        next_index,
+                                    ) {
                                         eprintln!("Failed to update checkpoint for '{}': {}", view_name, e);
                                     }
 
@@ -768,7 +836,7 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
             if !abort {
                 match state.db.lock() {
                     Ok(db) => {
-                        if let Err(e) = complete_checkpoint(&db, view_id) {
+                        if let Err(e) = complete_checkpoint(&db, view_id, &server_id, &user_id) {
                             eprintln!("Failed to complete checkpoint for '{}': {}", view_name, e);
                         } else {
                             println!("Library '{}' sync completed", view_name);
@@ -816,5 +884,150 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
         let _ = app.emit("sync-complete", ());
     }
 
+    ensure_incremental_refresh_worker(app);
+
     Ok(())
+}
+
+fn ensure_incremental_refresh_worker(app: &AppHandle) {
+    let Some(state) = app.try_state::<AppState>() else {
+        return;
+    };
+
+    if state
+        .user_data_refresh_running
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return;
+    }
+
+    let app_handle = app.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_secs(INCREMENTAL_REFRESH_INTERVAL_SECS)).await;
+
+            let Some(state) = app_handle.try_state::<AppState>() else {
+                break;
+            };
+
+            let is_ready = match state.sync_status.read() {
+                Ok(status) => *status == SyncStatus::Ready,
+                Err(_) => false,
+            };
+            if !is_ready {
+                continue;
+            }
+
+            match refresh_user_data_once(&state).await {
+                Ok(updated) => {
+                    if updated > 0 {
+                        println!("Incremental user-data refresh updated {} rows", updated);
+                    }
+                }
+                Err(err) => {
+                    eprintln!("Incremental user-data refresh failed: {}", err);
+                }
+            }
+        }
+
+        if let Some(state) = app_handle.try_state::<AppState>() {
+            state.user_data_refresh_running.store(false, Ordering::SeqCst);
+        }
+    });
+}
+
+async fn refresh_user_data_once(state: &AppState) -> Result<u32, String> {
+    let (server_url, token, user_id, device_id) = {
+        let url = state
+            .server_url
+            .read()
+            .map_err(|e| e.to_string())?
+            .clone()
+            .ok_or("No server URL")?;
+        let tok = state
+            .token
+            .read()
+            .map_err(|e| e.to_string())?
+            .clone()
+            .ok_or("No token")?;
+        let uid = state
+            .user_id
+            .read()
+            .map_err(|e| e.to_string())?
+            .clone()
+            .ok_or("No user ID")?;
+
+        let db = state.db.lock().map_err(|e| e.to_string())?;
+        let did: String = db
+            .query_row(
+                "SELECT value FROM metadata WHERE key = 'device_id'",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+
+        (url, tok, uid, did)
+    };
+
+    let server_id = {
+        let db = state.db.lock().map_err(|e| e.to_string())?;
+        db.query_row(
+            "SELECT id FROM servers WHERE is_active = 1 ORDER BY connected_at DESC LIMIT 1",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(|e| e.to_string())?
+    };
+
+    let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
+        .with_token(&token);
+
+    let mut start_index = 0u32;
+    let mut pages = 0u32;
+    let mut total_updated = 0u32;
+    let mut expected_total: Option<u32> = None;
+
+    loop {
+        let enable_total_count = start_index == 0;
+        let response = media::fetch_user_items_userdata(
+            &jf_client,
+            &user_id,
+            start_index,
+            INCREMENTAL_REFRESH_BATCH_SIZE,
+            enable_total_count,
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+
+        if enable_total_count {
+            expected_total = Some(response.total_record_count);
+        }
+
+        if response.items.is_empty() {
+            break;
+        }
+
+        let updated = apply_user_data_refresh_batch(state, &server_id, &user_id, &response.items)
+            .map_err(|e| e.to_string())?;
+        total_updated += updated;
+
+        pages += 1;
+        if pages >= INCREMENTAL_REFRESH_MAX_PAGES {
+            println!(
+                "Incremental user-data refresh reached page cap ({})",
+                INCREMENTAL_REFRESH_MAX_PAGES
+            );
+            break;
+        }
+
+        start_index = start_index.saturating_add(INCREMENTAL_REFRESH_BATCH_SIZE);
+        if let Some(total) = expected_total {
+            if start_index >= total {
+                break;
+            }
+        }
+    }
+
+    Ok(total_updated)
 }

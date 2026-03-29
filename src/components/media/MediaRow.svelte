@@ -92,6 +92,32 @@
     event.stopPropagation();
   }
 
+  function handleScrollerKeyDown(event: KeyboardEvent) {
+    if (!scrollerEl) return;
+
+    const pageStep = Math.max(Math.round(scrollerEl.clientWidth * 0.85), 180);
+    switch (event.key) {
+      case "ArrowRight":
+        scrollerEl.scrollBy({ left: pageStep, behavior: "smooth" });
+        event.preventDefault();
+        break;
+      case "ArrowLeft":
+        scrollerEl.scrollBy({ left: -pageStep, behavior: "smooth" });
+        event.preventDefault();
+        break;
+      case "Home":
+        scrollerEl.scrollTo({ left: 0, behavior: "smooth" });
+        event.preventDefault();
+        break;
+      case "End":
+        scrollerEl.scrollTo({ left: scrollerEl.scrollWidth, behavior: "smooth" });
+        event.preventDefault();
+        break;
+      default:
+        break;
+    }
+  }
+
   onDestroy(() => {
     if (isDragging) {
       stopDragging();
@@ -103,16 +129,22 @@
 </script>
 
 {#if items.length > 0}
-  <section class="mb-6">
+  <section class="mb-6" aria-label={title}>
     <h2 class="text-lg font-semibold text-white mb-3 px-6">{title}</h2>
     <div class="relative">
       <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
       <div
         bind:this={scrollerEl}
         onmousedown={handleMouseDown}
         onmouseleave={handleMouseLeave}
+        onkeydown={handleScrollerKeyDown}
         onclickcapture={handleClickCapture}
-        class="flex gap-3 overflow-x-auto px-6 pb-4 scrollbar-hide select-none cursor-grab active:cursor-grabbing"
+        tabindex="0"
+        role="group"
+        aria-label={`${title} carousel`}
+        class="flex gap-3 overflow-x-auto px-6 pb-4 scrollbar-hide select-none cursor-grab active:cursor-grabbing rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400"
       >
         {#each items as item (item.id)}
           <PosterCard {item} {landscape} />

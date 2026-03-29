@@ -7,6 +7,7 @@ import type {
   MediaItem,
   UserLibrary,
   HomepageCache,
+  UserPreferences,
   Person,
   MediaStreamInfo,
   ChapterInfo,
@@ -91,6 +92,13 @@ export async function getLatestItems(
   return invoke("get_latest_items", { parentId, limit });
 }
 
+export async function getLibraryItems(
+  parentId: string,
+  limit: number,
+): Promise<MediaItem[]> {
+  return invoke("get_latest_items", { parentId, limit });
+}
+
 // ── Detail page commands ─────────────────────────────────────────────
 
 export async function getItemById(id: string): Promise<MediaItem | null> {
@@ -128,10 +136,20 @@ export async function loadHomepageCache(): Promise<HomepageCache | null> {
   return invoke("load_homepage_cache");
 }
 
+export async function getUserPreferences(): Promise<UserPreferences> {
+  return invoke("get_user_preferences");
+}
+
+export async function saveUserPreferences(
+  preferences: UserPreferences,
+): Promise<UserPreferences> {
+  return invoke("save_user_preferences", { preferences });
+}
+
 // ── MPV player commands ─────────────────────────────────────────
 
 export async function mpvPlay(request: PlaybackRequest): Promise<void> {
-  return invoke("mpv_play", request);
+  return invoke("mpv_play", { ...request });
 }
 
 export async function mpvTogglePause(): Promise<void> {
@@ -190,16 +208,28 @@ export async function getExternalUrls(id: string): Promise<ExternalUrl[]> {
   return invoke("get_external_urls", { id });
 }
 
+export type PlaybackLifecycleEvent = "playing" | "progress" | "stopped";
+
+export async function reportPlaybackLifecycle(
+  itemId: string,
+  positionTicks: number,
+  durationTicks: number,
+  event: PlaybackLifecycleEvent,
+): Promise<void> {
+  return invoke("report_playback_lifecycle", {
+    itemId,
+    positionTicks,
+    durationTicks,
+    event,
+  });
+}
+
 export async function reportPlaybackStopped(
   itemId: string,
   positionTicks: number,
   durationTicks: number,
 ): Promise<void> {
-  return invoke("report_playback_stopped", {
-    itemId,
-    positionTicks,
-    durationTicks,
-  });
+  return reportPlaybackLifecycle(itemId, positionTicks, durationTicks, "stopped");
 }
 
 // ── User data mutations ──────────────────────────────────────────────

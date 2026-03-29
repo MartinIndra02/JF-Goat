@@ -1,6 +1,7 @@
 mod api;
 mod commands;
 mod db;
+mod diagnostics;
 mod error;
 mod mpv;
 mod state;
@@ -10,7 +11,11 @@ use rusqlite::Connection;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Mutex, RwLock};
-use tauri::Manager;
+use std::time::{SystemTime, UNIX_EPOCH};
+use tauri::{Emitter, Manager};
+use std::sync::atomic::AtomicBool;
+use serde::Serialize;
+use tracing::{info, warn};
 
 use state::{AppState, SyncStatus};
 
@@ -21,6 +26,78 @@ const TRANSPARENT_PIXEL_WEBP: &[u8] = &[
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 ];
+
+const IMAGE_CACHE_MAX_BYTES: u64 = 512 * 1024 * 1024;
+const IMAGE_CACHE_MAX_FILES: usize = 3_000;
+const IMAGE_CACHED_EVENT: &str = "jfimage-cached";
+
+#[derive(Debug, Clone, Serialize)]
+struct ImageCachedPayload {
+    image_type: String,
+    item_id: String,
+    tag: String,
+}
+
+#[derive(Debug)]
+struct CacheFileEntry {
+    path: PathBuf,
+    modified: SystemTime,
+    size: u64,
+}
+
+/// Keep image cache bounded by file count and total size by deleting oldest files first.
+fn cleanup_image_cache(cache_dir: &std::path::Path) {
+    let read_dir = match fs::read_dir(cache_dir) {
+        Ok(entries) => entries,
+        Err(_) => return,
+    };
+
+    let mut entries: Vec<CacheFileEntry> = Vec::new();
+    let mut total_bytes: u64 = 0;
+
+    for dir_entry in read_dir.flatten() {
+        let path = dir_entry.path();
+        if !path.is_file() {
+            continue;
+        }
+
+        let metadata = match dir_entry.metadata() {
+            Ok(meta) if meta.is_file() => meta,
+            _ => continue,
+        };
+
+        let size = metadata.len();
+        total_bytes = total_bytes.saturating_add(size);
+
+        let modified = metadata.modified().unwrap_or(UNIX_EPOCH);
+        entries.push(CacheFileEntry {
+            path,
+            modified,
+            size,
+        });
+    }
+
+    if entries.len() <= IMAGE_CACHE_MAX_FILES && total_bytes <= IMAGE_CACHE_MAX_BYTES {
+        return;
+    }
+
+    // Oldest files are evicted first.
+    entries.sort_by_key(|entry| entry.modified);
+
+    let mut file_count = entries.len();
+    let mut current_bytes = total_bytes;
+
+    for entry in entries {
+        if file_count <= IMAGE_CACHE_MAX_FILES && current_bytes <= IMAGE_CACHE_MAX_BYTES {
+            break;
+        }
+
+        if fs::remove_file(&entry.path).is_ok() {
+            file_count = file_count.saturating_sub(1);
+            current_bytes = current_bytes.saturating_sub(entry.size);
+        }
+    }
+}
 
 /// Parse a `jfimage://poster/{item_id}?tag={tag}` URI.
 /// Returns (image_type, item_id, tag) on success.
@@ -86,48 +163,78 @@ fn jellyfin_image_url(server_url: &str, image_type: &str, item_id: &str) -> Stri
 
 /// Fetch an image from Jellyfin and save to cache (async, for background use).
 async fn fetch_and_cache_image_async(
+    app_handle: tauri::AppHandle,
     http_client: reqwest::Client,
     server_url: String,
     token: String,
     image_type: String,
     item_id: String,
+    tag: String,
     local_path: PathBuf,
 ) {
     let url = jellyfin_image_url(&server_url, &image_type, &item_id);
 
-    let result = async {
-        let resp = http_client
-            .get(&url)
-            .header("X-Emby-Token", &token)
-            .send()
-            .await
-            .map_err(|e| format!("Image fetch failed: {}", e))?;
-
-        if !resp.status().is_success() {
-            return Err(format!("Jellyfin returned {}", resp.status()));
+    let resp = match http_client
+        .get(&url)
+        .header("X-Emby-Token", &token)
+        .send()
+        .await
+    {
+        Ok(resp) => resp,
+        Err(err) => {
+            warn!(target: "jfimage", item_id = %item_id, error = %err, "Background image fetch failed");
+            return;
         }
+    };
 
-        let bytes = resp
-            .bytes()
-            .await
-            .map(|b| b.to_vec())
-            .map_err(|e| format!("Failed to read image bytes: {}", e))?;
-
-        // Best-effort write to cache
-        let _ = fs::write(&local_path, &bytes);
-        Ok::<(), String>(())
+    if !resp.status().is_success() {
+        warn!(
+            target: "jfimage",
+            item_id = %item_id,
+            status = %resp.status(),
+            "Background image fetch returned non-success status"
+        );
+        return;
     }
-    .await;
 
-    if let Err(err) = result {
-        println!("[jfimage] Background fetch failed for {}: {}", item_id, err);
+    let bytes = match resp.bytes().await {
+        Ok(b) => b.to_vec(),
+        Err(err) => {
+            warn!(target: "jfimage", item_id = %item_id, error = %err, "Failed to read image bytes");
+            return;
+        }
+    };
+
+    if let Err(err) = fs::write(&local_path, &bytes) {
+        warn!(
+            target: "jfimage",
+            item_id = %item_id,
+            path = %local_path.display(),
+            error = %err,
+            "Failed to write image cache file"
+        );
+        return;
     }
+
+    if let Some(cache_dir) = local_path.parent() {
+        cleanup_image_cache(cache_dir);
+    }
+
+    let _ = app_handle.emit(
+        IMAGE_CACHED_EVENT,
+        ImageCachedPayload {
+            image_type,
+            item_id,
+            tag,
+        },
+    );
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .register_uri_scheme_protocol("jfimage", |ctx, request| {
             let uri = request.uri().to_string();
 
@@ -186,13 +293,16 @@ pub fn run() {
 
             if let (Some(server_url), Some(token)) = (server_url, token) {
                 let http_client = state.http_client.clone();
+                let app_handle = ctx.app_handle().clone();
                 // Spawn non-blocking background fetch — image will be cached for next request
                 tauri::async_runtime::spawn(fetch_and_cache_image_async(
+                    app_handle,
                     http_client,
                     server_url,
                     token,
                     image_type,
                     item_id,
+                    tag,
                     local_path,
                 ));
             }
@@ -209,6 +319,22 @@ pub fn run() {
             let app_data_dir = app.path().app_data_dir()?;
             fs::create_dir_all(&app_data_dir)?;
 
+            if let Ok(cache_root) = app.path().app_cache_dir() {
+                let image_cache_dir = cache_root.join("image_cache");
+                let _ = fs::create_dir_all(&image_cache_dir);
+                cleanup_image_cache(&image_cache_dir);
+            }
+
+            let log_dir = app_data_dir.join("logs");
+            let log_file_path = diagnostics::init_logging(&log_dir)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            info!(
+                target: "bootstrap",
+                app_data_dir = %app_data_dir.display(),
+                log_file = %log_file_path.display(),
+                "Application setup started"
+            );
+
             // Initialize SQLite with WAL for concurrent read/write
             let db_path = app_data_dir.join("jfgoat.db");
             let conn = Connection::open(&db_path)?;
@@ -217,7 +343,7 @@ pub fn run() {
             // busy_timeout: wait up to 5s instead of instant SQLITE_BUSY errors.
             let _: i64 = conn.query_row("PRAGMA busy_timeout = 5000", [], |r| r.get(0))?;
             db::init_db(&conn)?;
-            println!("Database initialized at: {:?}", db_path);
+            info!(target: "bootstrap", db_path = %db_path.display(), "Database initialized");
 
             // Create HTTP client with timeouts and pool tuning for large library sync
             let http_client = reqwest::Client::builder()
@@ -238,6 +364,7 @@ pub fn run() {
                 user_id: RwLock::new(None),
                 token: RwLock::new(None),
                 sync_status: RwLock::new(SyncStatus::Ready),
+                user_data_refresh_running: AtomicBool::new(false),
             };
             app.manage(app_state);
 
@@ -250,7 +377,7 @@ pub fn run() {
                 // Set DLL search directory so libmpv2 can find mpv-2.dll
                 if let Ok(resource_dir) = app.path().resource_dir() {
                     mpv::set_mpv_dll_directory(&resource_dir);
-                    println!("[mpv] DLL search dir: {:?}", resource_dir);
+                    info!(target: "mpv", dll_dir = %resource_dir.display(), "Configured MPV DLL search directory");
                 }
 
                 let window = app
@@ -297,6 +424,7 @@ pub fn run() {
             commands::get_sync_status,
             commands::start_sync,
             commands::force_resync,
+            commands::export_diagnostics,
             commands::get_recent_movies,
             commands::get_recent_series,
             commands::get_continue_watching,
@@ -312,6 +440,8 @@ pub fn run() {
             commands::get_similar_items,
             commands::save_homepage_cache,
             commands::load_homepage_cache,
+            commands::get_user_preferences,
+            commands::save_user_preferences,
             commands::mpv_play,
             commands::mpv_toggle_pause,
             commands::mpv_seek,
@@ -327,10 +457,71 @@ pub fn run() {
             commands::get_media_streams,
             commands::get_item_chapters,
             commands::get_external_urls,
+            commands::report_playback_lifecycle,
             commands::report_playback_stopped,
             commands::toggle_played,
             commands::toggle_favorite,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{jellyfin_image_url, parse_jfimage_uri};
+
+    #[test]
+    fn parse_jfimage_uri_supports_protocol_variants() {
+        let direct = parse_jfimage_uri("jfimage://poster/item-1?tag=abc");
+        assert_eq!(
+            direct,
+            Some((
+                "poster".to_string(),
+                "item-1".to_string(),
+                "abc".to_string(),
+            ))
+        );
+
+        let localhost = parse_jfimage_uri("jfimage://localhost/backdrop/item-2?tag=xyz");
+        assert_eq!(
+            localhost,
+            Some((
+                "backdrop".to_string(),
+                "item-2".to_string(),
+                "xyz".to_string(),
+            ))
+        );
+
+        let rewritten = parse_jfimage_uri("http://jfimage.localhost/poster/item-3?tag=tag3");
+        assert_eq!(
+            rewritten,
+            Some((
+                "poster".to_string(),
+                "item-3".to_string(),
+                "tag3".to_string(),
+            ))
+        );
+    }
+
+    #[test]
+    fn parse_jfimage_uri_rejects_invalid_shapes() {
+        assert!(parse_jfimage_uri("jfimage://poster/item").is_none());
+        assert!(parse_jfimage_uri("jfimage://poster/?tag=x").is_none());
+        assert!(parse_jfimage_uri("https://example.com/cover?id=1").is_none());
+    }
+
+    #[test]
+    fn jellyfin_image_url_uses_type_specific_sizes() {
+        let poster = jellyfin_image_url("http://demo.local/", "poster", "item-1");
+        assert_eq!(
+            poster,
+            "http://demo.local/Items/item-1/Images/Primary?maxWidth=400"
+        );
+
+        let backdrop = jellyfin_image_url("http://demo.local", "backdrop", "item-2");
+        assert_eq!(
+            backdrop,
+            "http://demo.local/Items/item-2/Images/Backdrop?maxWidth=1280"
+        );
+    }
 }

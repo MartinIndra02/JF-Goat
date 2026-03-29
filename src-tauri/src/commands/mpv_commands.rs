@@ -1,6 +1,9 @@
 use tauri::State;
 use urlencoding::encode;
 
+use crate::commands::media_commands::{
+    report_playback_lifecycle_internal, PlaybackLifecycleEvent,
+};
 use crate::error::JfgoatError;
 use crate::mpv::{MpvCommand, MpvState};
 use crate::state::AppState;
@@ -117,6 +120,28 @@ pub fn mpv_play(
         .map_err(|e| JfgoatError::Internal(format!("mpv send failed: {}", e)))?;
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn report_playback_lifecycle(
+    state: State<'_, AppState>,
+    item_id: String,
+    position_ticks: i64,
+    duration_ticks: i64,
+    event: String,
+) -> Result<(), JfgoatError> {
+    let event = PlaybackLifecycleEvent::from_wire(event.as_str()).ok_or_else(|| {
+        JfgoatError::Internal(format!("Invalid playback lifecycle event: {}", event))
+    })?;
+
+    report_playback_lifecycle_internal(
+        &state,
+        &item_id,
+        position_ticks,
+        duration_ticks,
+        event,
+    )
+    .await
 }
 
 #[tauri::command]

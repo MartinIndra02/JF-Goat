@@ -1,6 +1,46 @@
 import type { MediaItem } from "../../lib/types";
 
 export const IMAGE_BASE = "http://jfimage.localhost";
+export const IMAGE_CACHED_EVENT = "jfimage-cached";
+
+export type ImageCachedPayload = {
+  image_type: string;
+  item_id: string;
+  tag: string;
+};
+
+export function imageCacheKey(
+  imageType: string,
+  itemId: string,
+  tag: string,
+): string {
+  return `${imageType}:${itemId}:${tag}`;
+}
+
+export function imageCacheKeyFromUrl(src: string): string | null {
+  if (!src) return null;
+
+  try {
+    const url = new URL(src, IMAGE_BASE);
+    const segments = url.pathname.split("/").filter(Boolean);
+    if (segments.length < 2) return null;
+
+    const imageType = segments[segments.length - 2];
+    const itemId = segments[segments.length - 1];
+    const tag = url.searchParams.get("tag");
+    if (!imageType || !itemId || !tag) return null;
+
+    return imageCacheKey(imageType, itemId, tag);
+  } catch {
+    return null;
+  }
+}
+
+export function withCacheBust(src: string, nonce: number): string {
+  if (!src || nonce <= 0) return src;
+  const separator = src.includes("?") ? "&" : "?";
+  return `${src}${separator}r=${nonce}`;
+}
 
 export function seasonNumber(seasonName: string | null | undefined): string {
   return seasonName?.replace("Season ", "") ?? "?";

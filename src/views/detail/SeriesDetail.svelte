@@ -178,8 +178,6 @@
     {/if}
 
     <!-- Media spec badges -->
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
     {#if mediaStreams}
       <div class="flex flex-wrap items-center gap-2 mb-3 justify-center">
         {#if mediaStreams.video_label}
@@ -190,14 +188,14 @@
         {/if}
         {#if mediaStreams.audio.length > 0}
           <div class="relative">
-            <button onclick={() => { subtitleDropdownOpen = false; audioDropdownOpen = !audioDropdownOpen; }} class="inline-flex items-center gap-1.5 text-xs font-medium text-blue-300 bg-blue-500/15 px-3 py-1.5 rounded-lg border border-blue-500/30 hover:bg-blue-500/25 transition-colors cursor-pointer">
+            <button aria-label="Choose audio track" aria-haspopup="listbox" aria-expanded={audioDropdownOpen} onclick={() => { subtitleDropdownOpen = false; audioDropdownOpen = !audioDropdownOpen; }} class="inline-flex items-center gap-1.5 text-xs font-medium text-blue-300 bg-blue-500/15 px-3 py-1.5 rounded-lg border border-blue-500/30 hover:bg-blue-500/25 transition-colors cursor-pointer">
               <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071a1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
               {selectedAudioLabel()}
               <svg class="w-3 h-3" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
             </button>
             {#if audioDropdownOpen}
-              <div onclick={() => audioDropdownOpen = false} class="fixed inset-0 z-40"></div>
-              <div class="absolute left-0 top-full mt-1 w-56 bg-gray-800 border border-white/10 rounded-xl shadow-xl z-50 py-1.5 max-h-64 overflow-y-auto">
+              <button type="button" aria-label="Close audio track menu" onclick={() => audioDropdownOpen = false} class="fixed inset-0 z-40"></button>
+              <div role="listbox" aria-label="Audio tracks" class="absolute left-0 top-full mt-1 w-56 bg-gray-800 border border-white/10 rounded-xl shadow-xl z-50 py-1.5 max-h-64 overflow-y-auto">
                 {#each mediaStreams.audio as track}
                   <button onclick={() => { selectedAudioIndex = track.index; audioDropdownOpen = false; }} class="w-full text-left px-4 py-2 text-sm transition-colors {track.index === selectedAudioIndex ? 'text-blue-400 bg-blue-500/10' : 'text-gray-200 hover:bg-white/10'}">{track.display_title}</button>
                 {/each}
@@ -207,14 +205,14 @@
         {/if}
         {#if mediaStreams.subtitle.length > 0}
           <div class="relative">
-            <button onclick={() => { audioDropdownOpen = false; subtitleDropdownOpen = !subtitleDropdownOpen; }} class="inline-flex items-center gap-1.5 text-xs font-medium text-blue-300 bg-blue-500/15 px-3 py-1.5 rounded-lg border border-blue-500/30 hover:bg-blue-500/25 transition-colors cursor-pointer">
+            <button aria-label="Choose subtitle track" aria-haspopup="listbox" aria-expanded={subtitleDropdownOpen} onclick={() => { audioDropdownOpen = false; subtitleDropdownOpen = !subtitleDropdownOpen; }} class="inline-flex items-center gap-1.5 text-xs font-medium text-blue-300 bg-blue-500/15 px-3 py-1.5 rounded-lg border border-blue-500/30 hover:bg-blue-500/25 transition-colors cursor-pointer">
               <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm2 3a1 1 0 000 2h3a1 1 0 000-2H6zm0 4a1 1 0 000 2h8a1 1 0 100-2H6zm0 4a1 1 0 100 2h5a1 1 0 100-2H6z" clip-rule="evenodd"/></svg>
               {selectedSubtitleLabel() ?? "Subtitles"}
               <svg class="w-3 h-3" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
             </button>
             {#if subtitleDropdownOpen}
-              <div onclick={() => subtitleDropdownOpen = false} class="fixed inset-0 z-40"></div>
-              <div class="absolute left-0 top-full mt-1 w-56 bg-gray-800 border border-white/10 rounded-xl shadow-xl z-50 py-1.5 max-h-64 overflow-y-auto">
+              <button type="button" aria-label="Close subtitle track menu" onclick={() => subtitleDropdownOpen = false} class="fixed inset-0 z-40"></button>
+              <div role="listbox" aria-label="Subtitle tracks" class="absolute left-0 top-full mt-1 w-56 bg-gray-800 border border-white/10 rounded-xl shadow-xl z-50 py-1.5 max-h-64 overflow-y-auto">
                 <button onclick={() => { selectedSubtitleIndex = null; subtitleDropdownOpen = false; }} class="w-full text-left px-4 py-2 text-sm transition-colors {selectedSubtitleIndex === null ? 'text-blue-400 bg-blue-500/10' : 'text-gray-200 hover:bg-white/10'}">None</button>
                 {#each mediaStreams.subtitle as track}
                   <button onclick={() => { selectedSubtitleIndex = track.index; subtitleDropdownOpen = false; }} class="w-full text-left px-4 py-2 text-sm transition-colors {track.index === selectedSubtitleIndex ? 'text-blue-400 bg-blue-500/10' : 'text-gray-200 hover:bg-white/10'}">{track.display_title}</button>
@@ -233,12 +231,10 @@
       <button aria-label="Toggle favorite" onclick={() => onToggleFavorite(item.id, item.is_favorite)} class="p-2.5 rounded-full hover:bg-white/10 transition-colors {item.is_favorite ? 'text-red-400' : 'text-gray-400'}"><svg class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd"/></svg></button>
       <button aria-label="Toggle watched" onclick={() => onTogglePlayed(item.id, item.played)} class="p-2.5 rounded-full hover:bg-white/10 transition-colors {item.played ? 'text-green-400' : 'text-gray-400'}"><svg class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg></button>
       <div class="relative">
-        <button aria-label="More options" onclick={() => contextMenuOpen = !contextMenuOpen} class="p-2.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor"><path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM16 12a2 2 0 100-4 2 2 0 000 4z"/></svg></button>
+        <button aria-label="More options" aria-haspopup="menu" aria-expanded={contextMenuOpen} onclick={() => contextMenuOpen = !contextMenuOpen} class="p-2.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor"><path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM16 12a2 2 0 100-4 2 2 0 000 4z"/></svg></button>
         {#if contextMenuOpen}
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <!-- svelte-ignore a11y_click_events_have_key_events -->
-          <div onclick={closeContextMenu} class="fixed inset-0 z-40"></div>
-          <div class="absolute right-0 top-full mt-1 w-52 bg-gray-800 border border-white/10 rounded-xl shadow-xl z-50 py-1.5">
+          <button type="button" aria-label="Close options menu" onclick={closeContextMenu} class="fixed inset-0 z-40"></button>
+          <div role="menu" aria-label="Item actions" class="absolute right-0 top-full mt-1 w-52 bg-gray-800 border border-white/10 rounded-xl shadow-xl z-50 py-1.5">
             <button onclick={() => { onTogglePlayed(item.id, item.played); closeContextMenu(); }} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5"><svg class="w-4 h-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>{item.played ? "Mark as unwatched" : "Mark as watched"}</button>
             <button onclick={() => { onToggleFavorite(item.id, item.is_favorite); closeContextMenu(); }} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5"><svg class="w-4 h-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd"/></svg>{item.is_favorite ? "Remove from favorites" : "Add to favorites"}</button>
             <button onclick={closeContextMenu} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5"><svg class="w-4 h-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clip-rule="evenodd"/></svg>Add to playlist</button>
@@ -270,6 +266,7 @@
             <select
               onchange={(e) => { const target = e.target as HTMLSelectElement; onLoadSeasonEpisodes(target.value); }}
               value={selectedSeasonId ?? ""}
+              aria-label="Select season"
               class="appearance-none bg-white/10 text-white text-sm px-3 py-1.5 pr-8 rounded-lg border border-white/10 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
             >
               {#each seasons as season (season.id)}
@@ -285,8 +282,8 @@
         {:else if episodes.length > 0}
           <div class="relative">
             <div class="flex items-center justify-end gap-1 mb-2">
-              <button onclick={() => scrollCarousel(episodeScrollEl, 'left')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"/></svg></button>
-              <button onclick={() => scrollCarousel(episodeScrollEl, 'right')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg></button>
+              <button aria-label="Scroll episodes left" onclick={() => scrollCarousel(episodeScrollEl, 'left')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"/></svg></button>
+              <button aria-label="Scroll episodes right" onclick={() => scrollCarousel(episodeScrollEl, 'right')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg></button>
             </div>
             <div bind:this={episodeScrollEl} class="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-5 px-5">
               {#each episodes as episode (episode.id)}
@@ -321,8 +318,8 @@
         <div class="flex items-center justify-between mb-3">
           <h2 class="text-base font-semibold text-white">Seasons</h2>
           <div class="flex items-center gap-1">
-            <button onclick={() => scrollCarousel(seasonScrollEl, 'left')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"/></svg></button>
-            <button onclick={() => scrollCarousel(seasonScrollEl, 'right')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg></button>
+            <button aria-label="Scroll seasons left" onclick={() => scrollCarousel(seasonScrollEl, 'left')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"/></svg></button>
+            <button aria-label="Scroll seasons right" onclick={() => scrollCarousel(seasonScrollEl, 'right')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg></button>
           </div>
         </div>
         <div bind:this={seasonScrollEl} class="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-5 px-5">
@@ -350,8 +347,8 @@
         <div class="flex items-center justify-between mb-3">
           <h2 class="text-base font-semibold text-white">Cast & Crew</h2>
           <div class="flex items-center gap-1">
-            <button onclick={() => scrollCarousel(castScrollEl, 'left')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"/></svg></button>
-            <button onclick={() => scrollCarousel(castScrollEl, 'right')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg></button>
+            <button aria-label="Scroll cast left" onclick={() => scrollCarousel(castScrollEl, 'left')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"/></svg></button>
+            <button aria-label="Scroll cast right" onclick={() => scrollCarousel(castScrollEl, 'right')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg></button>
           </div>
         </div>
         <div bind:this={castScrollEl} class="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-5 px-5">
@@ -376,8 +373,8 @@
         <div class="flex items-center justify-between mb-3">
           <h2 class="text-base font-semibold text-white">Related</h2>
           <div class="flex items-center gap-1">
-            <button onclick={() => scrollCarousel(relatedScrollEl, 'left')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"/></svg></button>
-            <button onclick={() => scrollCarousel(relatedScrollEl, 'right')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg></button>
+            <button aria-label="Scroll related items left" onclick={() => scrollCarousel(relatedScrollEl, 'left')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"/></svg></button>
+            <button aria-label="Scroll related items right" onclick={() => scrollCarousel(relatedScrollEl, 'right')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg></button>
           </div>
         </div>
         <div bind:this={relatedScrollEl} class="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-5 px-5">

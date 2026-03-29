@@ -1,11 +1,84 @@
 <script lang="ts">
-  import { getSyncState, getSyncProgress, getFatalError } from "../../lib/stores/sync.svelte";
+  import {
+    getSyncState,
+    getSyncProgress,
+    getFatalError,
+    getSyncErrors,
+  } from "../../lib/stores/sync.svelte";
+  import {
+    isOnline,
+    isDegraded,
+    getLastNetworkError,
+  } from "../../lib/stores/connectivity.svelte";
+  import { pushToast, pushErrorToast } from "../../lib/stores/toast.svelte";
   import { fade } from "svelte/transition";
 
   const syncState = $derived(getSyncState());
   const progress = $derived(getSyncProgress());
   const fatalError = $derived(getFatalError());
+  const syncErrors = $derived(getSyncErrors());
+  const online = $derived(isOnline());
+  const degraded = $derived(isDegraded());
+  const lastNetworkError = $derived(getLastNetworkError());
+
+  let lastObservedErrorCount = $state(0);
+  let lastFatalNotified = $state("");
+
+  $effect(() => {
+    if (syncErrors.length <= lastObservedErrorCount) return;
+
+    const newErrors = syncErrors.slice(lastObservedErrorCount);
+    lastObservedErrorCount = syncErrors.length;
+
+    for (const err of newErrors) {
+      if (err.is_fatal) continue;
+      pushToast({
+        level: "warning",
+        source: "sync",
+        title: "Sync warning",
+        message: err.message,
+        dismissAfterMs: 5000,
+        dedupeKey: `sync-warning-${err.batch_start}-${err.message}`,
+      });
+    }
+  });
+
+  $effect(() => {
+    if (syncState !== "complete_with_errors") return;
+
+    const message = fatalError || "Library indexed with errors";
+    if (message === lastFatalNotified) return;
+
+    lastFatalNotified = message;
+    pushErrorToast("sync", message, "Sync failed", `sync-fatal-${message}`);
+  });
 </script>
+
+{#if !online || degraded}
+  <div
+    transition:fade={{ duration: 200 }}
+    class="fixed top-0 left-0 right-0 z-[60]"
+  >
+    <div class="bg-orange-900/90 backdrop-blur-sm border-b border-orange-700 px-4 py-2">
+      <div class="flex items-center gap-3 max-w-screen-lg mx-auto">
+        <svg class="w-4 h-4 text-orange-300 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+          <path
+            fill-rule="evenodd"
+            d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+            clip-rule="evenodd"
+          />
+        </svg>
+        <span class="text-sm text-orange-200">
+          {#if !online}
+            Offline mode active. Content may be stale until connection returns.
+          {:else}
+            Degraded network state. {lastNetworkError || "Some live requests failed."}
+          {/if}
+        </span>
+      </div>
+    </div>
+  </div>
+{/if}
 
 {#if syncState === "syncing" && progress}
   <div

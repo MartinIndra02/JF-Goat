@@ -106,6 +106,10 @@ pub async fn connect_to_server(
     state: State<'_, AppState>,
     _app: tauri::AppHandle,
 ) -> Result<ServerPublicInfo, JfgoatError> {
+    // Prevent credential bleed when switching servers/accounts.
+    keyring_clear_token()?;
+    keyring_clear_password()?;
+
     let device_id = get_device_id(&state)?;
 
     let jf_client = JellyfinClient::new(&state.http_client, &url, &device_id);
@@ -121,6 +125,14 @@ pub async fn connect_to_server(
     {
         let mut server_url = state.server_url.write().map_err(|e| JfgoatError::Internal(e.to_string()))?;
         *server_url = Some(info.url.clone());
+    }
+    {
+        let mut cached_token = state.token.write().map_err(|e| JfgoatError::Internal(e.to_string()))?;
+        *cached_token = None;
+    }
+    {
+        let mut cached_uid = state.user_id.write().map_err(|e| JfgoatError::Internal(e.to_string()))?;
+        *cached_uid = None;
     }
 
     Ok(info)
@@ -153,6 +165,7 @@ pub async fn login(
     // Update DB with user info
     {
         let db = state.db.lock().map_err(|e| JfgoatError::Internal(e.to_string()))?;
+        servers::set_active_server(&db, &result.server_id)?;
         servers::update_server_user(&db, &result.server_id, &result.user_id, &result.username)?;
     }
 
@@ -232,6 +245,7 @@ pub async fn check_auth(
             keyring_store_token(&new_token)?;
             {
                 let db = state.db.lock().map_err(|e| JfgoatError::Internal(e.to_string()))?;
+                servers::set_active_server(&db, &result.server_id)?;
                 servers::update_server_user(&db, &result.server_id, &result.user_id, &result.username)?;
             }
             update_app_state_after_auth(&state, new_token, &server.url, &result.user_id)?;

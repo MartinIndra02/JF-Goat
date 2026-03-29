@@ -5,12 +5,35 @@ use std::process::Command;
 
 fn main() {
     tauri_build::build();
+    emit_release_pipeline_hints();
 
     #[cfg(target_os = "windows")]
     {
         if let Err(e) = ensure_mpv_import_lib() {
             panic!("failed to prepare mpv import library: {}", e);
         }
+    }
+}
+
+fn emit_release_pipeline_hints() {
+    let profile = env::var("PROFILE").unwrap_or_default();
+    if profile != "release" {
+        return;
+    }
+
+    if env::var_os("TAURI_SIGNING_PRIVATE_KEY").is_none() {
+        println!(
+            "cargo:warning=TAURI_SIGNING_PRIVATE_KEY is not set; updater signatures will not be produced."
+        );
+    }
+
+    let has_windows_cert_path = env::var_os("WINDOWS_CERTIFICATE_PATH").is_some();
+    let has_windows_cert_password = env::var_os("WINDOWS_CERTIFICATE_PASSWORD").is_some();
+
+    if !(has_windows_cert_path && has_windows_cert_password) {
+        println!(
+            "cargo:warning=WINDOWS_CERTIFICATE_PATH/WINDOWS_CERTIFICATE_PASSWORD not fully set; Windows binaries may remain unsigned."
+        );
     }
 }
 

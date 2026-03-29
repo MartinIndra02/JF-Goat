@@ -1,18 +1,16 @@
 <script lang="ts">
   import { login as loginApi } from "../lib/api";
   import { setAuthenticated } from "../lib/stores/auth.svelte";
+  import { pushErrorToast, normalizeErrorMessage } from "../lib/stores/toast.svelte";
   import TextInput from "../components/ui/TextInput.svelte";
   import Button from "../components/ui/Button.svelte";
-  import ErrorBanner from "../components/ui/ErrorBanner.svelte";
   import { push } from "svelte-spa-router";
 
   let username = $state("");
   let password = $state("");
-  let error = $state("");
   let loading = $state(false);
 
   async function handleLogin() {
-    error = "";
     loading = true;
     try {
       const result = await loginApi(username, password);
@@ -25,7 +23,12 @@
       });
       push("/home");
     } catch (e: any) {
-      error = e?.message || String(e);
+      pushErrorToast(
+        "api",
+        normalizeErrorMessage(e),
+        "Sign-in failed",
+        "login-failed",
+      );
     } finally {
       loading = false;
     }
@@ -51,8 +54,6 @@
         type="password"
         disabled={loading}
       />
-
-      <ErrorBanner message={error} />
 
       <Button type="submit" disabled={loading || !username.trim()}>
         {loading ? "Signing in..." : "Sign In"}

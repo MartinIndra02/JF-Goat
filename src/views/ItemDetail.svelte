@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { push, querystring } from "svelte-spa-router";
+  import { location, push, querystring } from "svelte-spa-router";
   import {
     getItemById,
     getSeriesSeasons,
@@ -35,8 +35,16 @@
   import SeriesDetail from "./detail/SeriesDetail.svelte";
   import SeasonDetail from "./detail/SeasonDetail.svelte";
 
-  // Reactively derive the item ID from the query string
-  const itemId = $derived(new URLSearchParams($querystring).get("id") ?? "");
+  const itemIdFromPath = $derived.by(() => {
+    const path = $location || "";
+    const match = path.match(/^\/item\/([^/?]+)/);
+    return match ? decodeURIComponent(match[1]) : "";
+  });
+
+  // Resolve item ID from either /item?id=... or /item/:id
+  const itemId = $derived(
+    new URLSearchParams($querystring).get("id") ?? itemIdFromPath,
+  );
 
   let item = $state<MediaItem | null>(null);
   let seasons = $state<MediaItem[]>([]);
@@ -274,14 +282,50 @@
 </script>
 
 {#if loading}
-  <main class="min-h-screen bg-gray-900 text-white flex items-center justify-center">
-    <div class="text-center">
-      <svg class="w-8 h-8 text-blue-400 animate-spin mx-auto mb-3" viewBox="0 0 24 24" fill="none">
-        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" class="opacity-25"/>
-        <path d="M4 12a8 8 0 018-8" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
-      </svg>
-      <p class="text-gray-400 text-sm">Loading...</p>
-    </div>
+  <main class="min-h-screen bg-gray-900 text-white" aria-hidden="true">
+    <section class="relative h-[42vh] min-h-[260px] overflow-hidden">
+      <div class="absolute inset-0 skeleton-card rounded-none border-none"></div>
+      <div class="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/45 to-transparent"></div>
+
+      <div class="absolute bottom-0 left-0 right-0 px-6 pb-8 space-y-3">
+        <div class="skeleton-pill w-24"></div>
+        <div class="skeleton-line skeleton-line--title w-72 max-w-[85%]"></div>
+        <div class="skeleton-line skeleton-line--text w-full max-w-2xl"></div>
+        <div class="skeleton-line skeleton-line--text skeleton-line--muted w-3/4 max-w-xl"></div>
+        <div class="flex flex-wrap gap-2 pt-1">
+          {#each Array.from({ length: 4 }) as _}
+            <div class="skeleton-pill w-20"></div>
+          {/each}
+        </div>
+      </div>
+    </section>
+
+    <section class="px-6 py-6 space-y-6">
+      <div class="space-y-3">
+        <div class="skeleton-line skeleton-line--title w-48"></div>
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+          {#each Array.from({ length: 10 }) as _, cardIndex}
+            <div aria-label={`Loading list card ${cardIndex + 1}`}>
+              <div class="skeleton-card aspect-video"></div>
+              <div class="mt-2 skeleton-line skeleton-line--text w-11/12"></div>
+              <div class="mt-1 skeleton-line skeleton-line--text skeleton-line--muted w-2/3"></div>
+            </div>
+          {/each}
+        </div>
+      </div>
+
+      <div class="space-y-3">
+        <div class="skeleton-line skeleton-line--title w-36"></div>
+        <div class="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-7 lg:grid-cols-9 gap-3">
+          {#each Array.from({ length: 9 }) as _, personIndex}
+            <div class="space-y-2" aria-label={`Loading person ${personIndex + 1}`}>
+              <div class="skeleton-card aspect-square rounded-full"></div>
+              <div class="mx-auto skeleton-line skeleton-line--text w-5/6"></div>
+            </div>
+          {/each}
+        </div>
+      </div>
+    </section>
   </main>
 
 {:else if loadError}
@@ -328,7 +372,6 @@
   <SeasonDetail
     {item}
     {episodes}
-    {seasons}
     {people}
     onTogglePlayed={handleTogglePlayed}
     onToggleFavorite={handleToggleFavorite}

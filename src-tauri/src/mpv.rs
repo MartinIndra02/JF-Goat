@@ -37,7 +37,7 @@ pub struct MpvStateChange {
 }
 
 /// Emitted as Tauri event payloads for mutable playback settings.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct MpvPlaybackSettings {
     pub volume: f64,
     pub muted: bool,
@@ -51,6 +51,33 @@ pub struct MpvPlaybackSettings {
 pub struct MpvState {
     pub cmd_tx: mpsc::Sender<MpvCommand>,
     pub child_hwnd: isize,
+}
+
+fn emit_playback_settings_if_changed(
+    app: &tauri::AppHandle,
+    last_emitted: &mut Option<MpvPlaybackSettings>,
+    volume: f64,
+    muted: bool,
+    playback_rate: f64,
+    video_scale_mode: &str,
+    audio_track: Option<i64>,
+    subtitle_track: Option<i64>,
+) {
+    let next = MpvPlaybackSettings {
+        volume,
+        muted,
+        playback_rate,
+        video_scale_mode: video_scale_mode.to_string(),
+        audio_track,
+        subtitle_track,
+    };
+
+    if last_emitted.as_ref() == Some(&next) {
+        return;
+    }
+
+    let _ = app.emit("mpv-playback-settings", next.clone());
+    *last_emitted = Some(next);
 }
 
 // ── Win32 child window management ───────────────────────────────────────
@@ -238,31 +265,13 @@ fn run_mpv_loop(
     let mut video_scale_mode = String::from("contain");
     let mut audio_track: Option<i64> = None;
     let mut subtitle_track: Option<i64> = None;
+    let mut last_emitted_settings: Option<MpvPlaybackSettings> = None;
     let mut last_emit = std::time::Instant::now();
     let emit_interval = std::time::Duration::from_millis(250);
 
-    let emit_settings = |app: &tauri::AppHandle,
-                         volume: f64,
-                         muted: bool,
-                         playback_rate: f64,
-                         video_scale_mode: &str,
-                         audio_track: Option<i64>,
-                         subtitle_track: Option<i64>| {
-        let _ = app.emit(
-            "mpv-playback-settings",
-            MpvPlaybackSettings {
-                volume,
-                muted,
-                playback_rate,
-                video_scale_mode: video_scale_mode.to_string(),
-                audio_track,
-                subtitle_track,
-            },
-        );
-    };
-
-    emit_settings(
+    emit_playback_settings_if_changed(
         &app_handle,
+        &mut last_emitted_settings,
         volume,
         muted,
         playback_rate,
@@ -303,8 +312,9 @@ fn run_mpv_loop(
                         }
                     }
 
-                    emit_settings(
+                    emit_playback_settings_if_changed(
                         &app_handle,
+                        &mut last_emitted_settings,
                         volume,
                         muted,
                         playback_rate,
@@ -326,8 +336,9 @@ fn run_mpv_loop(
                 MpvCommand::SetVolume(vol) => {
                     mpv.set_property("volume", vol).ok();
                     volume = vol;
-                    emit_settings(
+                    emit_playback_settings_if_changed(
                         &app_handle,
+                        &mut last_emitted_settings,
                         volume,
                         muted,
                         playback_rate,
@@ -339,8 +350,9 @@ fn run_mpv_loop(
                 MpvCommand::SetMute(should_mute) => {
                     mpv.set_property("mute", should_mute).ok();
                     muted = should_mute;
-                    emit_settings(
+                    emit_playback_settings_if_changed(
                         &app_handle,
+                        &mut last_emitted_settings,
                         volume,
                         muted,
                         playback_rate,
@@ -357,8 +369,9 @@ fn run_mpv_loop(
                     };
                     mpv.set_property("speed", safe_rate).ok();
                     playback_rate = safe_rate;
-                    emit_settings(
+                    emit_playback_settings_if_changed(
                         &app_handle,
+                        &mut last_emitted_settings,
                         volume,
                         muted,
                         playback_rate,
@@ -389,8 +402,9 @@ fn run_mpv_loop(
                             video_scale_mode = "contain".to_string();
                         }
                     }
-                    emit_settings(
+                    emit_playback_settings_if_changed(
                         &app_handle,
+                        &mut last_emitted_settings,
                         volume,
                         muted,
                         playback_rate,
@@ -402,8 +416,9 @@ fn run_mpv_loop(
                 MpvCommand::SetAudioTrack(track) => {
                     audio_track = Some(track);
                     mpv.set_property("aid", track).ok();
-                    emit_settings(
+                    emit_playback_settings_if_changed(
                         &app_handle,
+                        &mut last_emitted_settings,
                         volume,
                         muted,
                         playback_rate,
@@ -419,8 +434,9 @@ fn run_mpv_loop(
                     } else {
                         mpv.set_property("sid", -1i64).ok();
                     }
-                    emit_settings(
+                    emit_playback_settings_if_changed(
                         &app_handle,
+                        &mut last_emitted_settings,
                         volume,
                         muted,
                         playback_rate,
@@ -454,8 +470,9 @@ fn run_mpv_loop(
                     }
                     ("volume", PropertyData::Double(v)) => {
                         volume = v;
-                        emit_settings(
+                        emit_playback_settings_if_changed(
                             &app_handle,
+                            &mut last_emitted_settings,
                             volume,
                             muted,
                             playback_rate,
@@ -466,8 +483,9 @@ fn run_mpv_loop(
                     }
                     ("mute", PropertyData::Flag(v)) => {
                         muted = v;
-                        emit_settings(
+                        emit_playback_settings_if_changed(
                             &app_handle,
+                            &mut last_emitted_settings,
                             volume,
                             muted,
                             playback_rate,
@@ -478,8 +496,9 @@ fn run_mpv_loop(
                     }
                     ("speed", PropertyData::Double(v)) => {
                         playback_rate = v;
-                        emit_settings(
+                        emit_playback_settings_if_changed(
                             &app_handle,
+                            &mut last_emitted_settings,
                             volume,
                             muted,
                             playback_rate,
@@ -490,8 +509,9 @@ fn run_mpv_loop(
                     }
                     ("aid", PropertyData::Int64(v)) => {
                         audio_track = Some(v);
-                        emit_settings(
+                        emit_playback_settings_if_changed(
                             &app_handle,
+                            &mut last_emitted_settings,
                             volume,
                             muted,
                             playback_rate,
@@ -502,8 +522,9 @@ fn run_mpv_loop(
                     }
                     ("sid", PropertyData::Int64(v)) => {
                         subtitle_track = if v < 0 { None } else { Some(v) };
-                        emit_settings(
+                        emit_playback_settings_if_changed(
                             &app_handle,
+                            &mut last_emitted_settings,
                             volume,
                             muted,
                             playback_rate,

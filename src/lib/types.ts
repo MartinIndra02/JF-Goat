@@ -49,6 +49,7 @@ export interface MediaItem {
   playback_ticks: number;
   is_favorite: boolean;
   server_id: string;
+  user_id: string;
 }
 
 export interface UserLibrary {
@@ -82,7 +83,54 @@ export interface HomepageCache {
   user_libraries: UserLibrary[];
   library_latest: Record<string, MediaItem[]>;
   featured_items: MediaItem[];
+  cache_refreshed_at_epoch_ms?: number;
 }
+
+export interface PlaybackPreferences {
+  autoplay_next_episode: boolean;
+  default_playback_rate: number;
+}
+
+export interface LanguagePreferences {
+  preferred_audio_language: string;
+  preferred_subtitle_language: string;
+}
+
+export interface QualityPreferences {
+  default_quality_key: string;
+}
+
+export interface CachePreferences {
+  enabled: boolean;
+  max_age_minutes: number;
+}
+
+export interface UserPreferences {
+  playback: PlaybackPreferences;
+  language: LanguagePreferences;
+  quality: QualityPreferences;
+  cache: CachePreferences;
+  refresh_interval_seconds: number;
+}
+
+export const DEFAULT_USER_PREFERENCES: UserPreferences = {
+  playback: {
+    autoplay_next_episode: true,
+    default_playback_rate: 1,
+  },
+  language: {
+    preferred_audio_language: "",
+    preferred_subtitle_language: "",
+  },
+  quality: {
+    default_quality_key: "direct-play",
+  },
+  cache: {
+    enabled: true,
+    max_age_minutes: 720,
+  },
+  refresh_interval_seconds: 180,
+};
 
 // ── Player types ────────────────────────────────────────────────
 

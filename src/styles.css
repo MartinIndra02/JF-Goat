@@ -16,3 +16,90 @@ body.carousel-dragging {
   user-select: none;
   cursor: grabbing;
 }
+
+:focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+:root {
+  --skeleton-base: rgba(148, 163, 184, 0.16);
+  --skeleton-highlight: rgba(226, 232, 240, 0.28);
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.skeleton-card,
+.skeleton-line,
+.skeleton-pill {
+  position: relative;
+  overflow: hidden;
+  background: var(--skeleton-base);
+}
+
+.skeleton-card::after,
+.skeleton-line::after,
+.skeleton-pill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(100deg, transparent 0%, var(--skeleton-highlight) 50%, transparent 100%);
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
+.skeleton-card {
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.skeleton-line {
+  height: 0.72rem;
+  border-radius: 9999px;
+}
+
+.skeleton-line--title {
+  height: 1.05rem;
+}
+
+.skeleton-line--text {
+  height: 0.66rem;
+}
+
+.skeleton-line--muted {
+  opacity: 0.72;
+}
+
+.skeleton-pill {
+  height: 1.9rem;
+  border-radius: 9999px;
+}
+
+.skeleton-hero {
+  position: relative;
+  height: clamp(240px, 40vh, 420px);
+  border-radius: 1rem;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    radial-gradient(120% 140% at 0% 100%, rgba(59, 130, 246, 0.22) 0%, rgba(15, 23, 42, 0.9) 65%),
+    var(--skeleton-base);
+}

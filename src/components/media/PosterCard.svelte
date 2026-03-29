@@ -1,4 +1,10 @@
 <script lang="ts">
+  import { onMount } from "svelte";
+  import {
+    listen,
+    type Event as TauriEvent,
+    type UnlistenFn,
+  } from "@tauri-apps/api/event";
   import {
     getSeasonEpisodes,
     getSeriesSeasons,
@@ -9,6 +15,13 @@
     getPreferredSubtitleStreamIndex,
     showPlayer,
   } from "../../lib/stores/player.svelte";
+  import {
+    IMAGE_CACHED_EVENT,
+    imageCacheKey,
+    imageCacheKeyFromUrl,
+    withCacheBust,
+    type ImageCachedPayload,
+  } from "../../views/detail/detailHelpers";
   import { push } from "svelte-spa-router";
   import type { MediaItem } from "../../lib/types";
 
@@ -36,6 +49,10 @@
 
   const progress = $derived(progressPercent(item));
   const aspectClass = $derived(landscape ? "aspect-video" : "aspect-[2/3]");
+  const baseImageSrc = $derived(getCardImageSrc(item, landscape));
+  const trackedImageKey = $derived(imageCacheKeyFromUrl(baseImageSrc));
+  let imageRefreshNonce = $state(0);
+  const renderedImageSrc = $derived(withCacheBust(baseImageSrc, imageRefreshNonce));
   let launchingPlayback = $state(false);
 
   function openDetail() {
@@ -127,6 +144,51 @@
     }
   }
 
+  function getCardImageSrc(target: MediaItem, landscapeMode: boolean): string {
+    if (landscapeMode && target.backdrop_tag) {
+      return `http://jfimage.localhost/backdrop/${target.id}?tag=${target.backdrop_tag}`;
+    }
+    if (target.image_tag) {
+      return `http://jfimage.localhost/poster/${target.id}?tag=${target.image_tag}`;
+    }
+    if (target.series_id) {
+      return `http://jfimage.localhost/poster/${target.series_id}?tag=${target.series_id}`;
+    }
+    return "";
+  }
+
+  function onImageCached(event: TauriEvent<ImageCachedPayload>) {
+    if (!trackedImageKey) return;
+
+    const payload = event.payload;
+    const cachedKey = imageCacheKey(payload.image_type, payload.item_id, payload.tag);
+    if (cachedKey !== trackedImageKey) return;
+
+    imageRefreshNonce = Date.now();
+  }
+
+  onMount(() => {
+    let disposed = false;
+    let unlisten: UnlistenFn | null = null;
+
+    listen<ImageCachedPayload>(IMAGE_CACHED_EVENT, onImageCached)
+      .then((fn) => {
+        if (disposed) {
+          fn();
+          return;
+        }
+        unlisten = fn;
+      })
+      .catch(() => {
+        // Non-tauri contexts can safely ignore event wiring.
+      });
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  });
+
   // Retry loading images that were returned as transparent placeholders (cache miss).
   // The background fetch will populate the cache, so the retry will succeed.
   function handleImageLoad(event: Event) {
@@ -156,28 +218,14 @@
   <button
     type="button"
     onclick={handlePosterClick}
-    class="block w-full text-left relative overflow-hidden rounded-lg shadow-md transition-transform duration-200 group-hover:scale-105 group-hover:shadow-xl cursor-pointer"
+    disabled={launchingPlayback}
+    aria-busy={launchingPlayback}
+    class="block w-full text-left relative overflow-hidden rounded-lg shadow-md transition-transform duration-200 group-hover:scale-105 group-hover:shadow-xl cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400 disabled:opacity-70"
     aria-label="Play {item.name}"
   >
-    {#if landscape && item.backdrop_tag}
+    {#if baseImageSrc}
       <img
-        src={`http://jfimage.localhost/backdrop/${item.id}?tag=${item.backdrop_tag}`}
-        alt={item.name}
-        loading="lazy"
-        onload={handleImageLoad}
-        class="w-full {aspectClass} object-cover transition-opacity duration-300 opacity-0"
-      />
-    {:else if item.image_tag}
-      <img
-        src={`http://jfimage.localhost/poster/${item.id}?tag=${item.image_tag}`}
-        alt={item.name}
-        loading="lazy"
-        onload={handleImageLoad}
-        class="w-full {aspectClass} object-cover transition-opacity duration-300 opacity-0"
-      />
-    {:else if item.series_id}
-      <img
-        src={`http://jfimage.localhost/poster/${item.series_id}?tag=${item.series_id}`}
+        src={renderedImageSrc}
         alt={item.name}
         loading="lazy"
         onload={handleImageLoad}
@@ -215,7 +263,7 @@
   <button
     type="button"
     onclick={openDetail}
-    class="mt-1.5 px-0.5 block w-full text-left cursor-pointer"
+    class="mt-1.5 px-0.5 block w-full text-left cursor-pointer rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400"
     aria-label="Open details for {item.name}"
   >
     <p class="text-sm text-gray-200 truncate font-medium">{item.name}</p>

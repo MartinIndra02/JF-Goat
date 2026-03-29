@@ -137,6 +137,39 @@ pub async fn fetch_view_items_no_count(
     fetch_view_items_inner(client, user_id, view_id, start_index, limit, false).await
 }
 
+/// Fetch a paginated list of user-scoped items with UserData only.
+/// Used by the incremental user data refresh loop after initial sync.
+pub async fn fetch_user_items_userdata(
+    client: &JellyfinClient,
+    user_id: &str,
+    start_index: u32,
+    limit: u32,
+    enable_total_count: bool,
+) -> Result<JellyfinItemsResponse, JfgoatError> {
+    let path = format!(
+        "/Users/{}/Items?StartIndex={}&Limit={}&Recursive=true\
+         &IncludeItemTypes=Movie,Series,Episode,Season,BoxSet,MusicAlbum,MusicArtist,Audio\
+         &Fields=UserData\
+         &EnableTotalRecordCount={}",
+        user_id, start_index, limit, enable_total_count
+    );
+
+    let resp = client.get(&path).await?;
+
+    if !resp.status().is_success() {
+        return Err(JfgoatError::Http(format!(
+            "Failed to fetch user data items: status {}",
+            resp.status()
+        )));
+    }
+
+    let data: JellyfinItemsResponse = resp.json().await.map_err(|e| {
+        JfgoatError::Http(format!("Failed to parse user data items response: {}", e))
+    })?;
+
+    Ok(data)
+}
+
 async fn fetch_view_items_inner(
     client: &JellyfinClient,
     user_id: &str,
@@ -561,9 +594,9 @@ pub async fn mark_unplayed(
     Ok(())
 }
 
-/// Report playback stop/progress to Jellyfin session API.
-pub async fn report_playback_stopped(
+async fn report_playback_state(
     client: &JellyfinClient,
+    path: &str,
     item_id: &str,
     position_ticks: i64,
 ) -> Result<(), JfgoatError> {
@@ -572,16 +605,44 @@ pub async fn report_playback_stopped(
         "PositionTicks": position_ticks,
     });
 
-    let resp = client.post_json("/Sessions/Playing/Stopped", &body).await?;
+    let resp = client.post_json(path, &body).await?;
     if !resp.status().is_success() {
         return Err(JfgoatError::Http(format!(
-            "Failed to report playback stop for {}: status {}",
+            "Failed to report playback state '{}' for {}: status {}",
+            path,
             item_id,
             resp.status()
         )));
     }
 
     Ok(())
+}
+
+/// Report playback start to Jellyfin session API.
+pub async fn report_playback_playing(
+    client: &JellyfinClient,
+    item_id: &str,
+    position_ticks: i64,
+) -> Result<(), JfgoatError> {
+    report_playback_state(client, "/Sessions/Playing", item_id, position_ticks).await
+}
+
+/// Report playback progress heartbeat to Jellyfin session API.
+pub async fn report_playback_progress(
+    client: &JellyfinClient,
+    item_id: &str,
+    position_ticks: i64,
+) -> Result<(), JfgoatError> {
+    report_playback_state(client, "/Sessions/Playing/Progress", item_id, position_ticks).await
+}
+
+/// Report playback stop to Jellyfin session API.
+pub async fn report_playback_stopped(
+    client: &JellyfinClient,
+    item_id: &str,
+    position_ticks: i64,
+) -> Result<(), JfgoatError> {
+    report_playback_state(client, "/Sessions/Playing/Stopped", item_id, position_ticks).await
 }
 
 /// Mark an item as favorite for a user.
