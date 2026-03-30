@@ -1,8 +1,17 @@
 use rusqlite::Connection;
+use std::time::Duration;
 
 use crate::error::JfgoatError;
+use crate::db::SQLITE_BUSY_TIMEOUT_MS;
 
 pub fn init_db(conn: &Connection) -> Result<(), JfgoatError> {
+    conn.execute_batch(
+        "PRAGMA foreign_keys = ON;
+         PRAGMA synchronous = NORMAL;",
+    )?;
+    let _: String = conn.query_row("PRAGMA journal_mode = WAL", [], |row| row.get(0))?;
+    conn.busy_timeout(Duration::from_millis(SQLITE_BUSY_TIMEOUT_MS))?;
+
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS metadata (
             key   TEXT PRIMARY KEY,

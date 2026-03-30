@@ -171,7 +171,7 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
             .clone()
             .ok_or("No user ID")?;
 
-        let db = state.db.lock().map_err(|e| e.to_string())?;
+        let db = state.db.write_conn().map_err(|e| e.to_string())?;
         let did: String = db
             .query_row(
                 "SELECT value FROM metadata WHERE key = 'device_id'",
@@ -200,7 +200,7 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
 
     // Get server_id for scoped local DB reads/writes.
     let server_id = {
-        let db = state.db.lock().map_err(|e| e.to_string())?;
+        let db = state.db.write_conn().map_err(|e| e.to_string())?;
         let sid: String = db
             .query_row(
                 "SELECT id FROM servers WHERE is_active = 1 ORDER BY connected_at DESC LIMIT 1",
@@ -215,7 +215,7 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
 
     // Step 2: Initialize global_ingested from DB for accurate resume progress
     let initial_count = {
-        let db = state.db.lock().map_err(|e| e.to_string())?;
+        let db = state.db.write_conn().map_err(|e| e.to_string())?;
         get_local_item_count_scoped(&db, Some(&server_id), Some(&user_id)).map_err(|e| e.to_string())?
     };
 
@@ -299,7 +299,7 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
 
         // ── Checkpoint: Check if this view was already synced ──
         let start_index = {
-            let db = state.db.lock().map_err(|e| e.to_string())?;
+            let db = state.db.write_conn().map_err(|e| e.to_string())?;
             match get_checkpoint(&db, view_id, &server_id, &user_id).map_err(|e| e.to_string())? {
                 CheckpointStatus::Completed => {
                     println!("Skipping library '{}' (already completed)", view_name);
@@ -372,7 +372,7 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
                             .collect();
 
                         // Insert Series into DB
-                        match state.db.lock() {
+                        match state.db.write_conn() {
                             Ok(db) => {
                                 if let Err(e) = insert_media_chunk(&db, &media) {
                                     eprintln!("DB insert failed for '{}' series batch: {}", view_name, e);
@@ -578,7 +578,7 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
                 }
 
                 if !chunk_media.is_empty() {
-                    match state.db.lock() {
+                    match state.db.write_conn() {
                         Ok(db) => {
                             if let Err(e) = insert_media_chunk(&db, &chunk_media) {
                                 eprintln!("DB insert failed for '{}' hierarchical chunk: {}", view_name, e);
@@ -639,7 +639,7 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
                 current_series_index += chunk.len();
 
                 // D. Update SQLite checkpoint
-                match state.db.lock() {
+                match state.db.write_conn() {
                     Ok(db) => {
                         if let Err(e) = update_checkpoint_index(
                             &db,
@@ -661,7 +661,7 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
 
             // Mark TV library as COMPLETED
             if !abort {
-                match state.db.lock() {
+                match state.db.write_conn() {
                     Ok(db) => {
                         if let Err(e) = complete_checkpoint(&db, view_id, &server_id, &user_id) {
                             eprintln!("Failed to complete checkpoint for '{}': {}", view_name, e);
@@ -724,7 +724,7 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
                             .map(|item| to_media_item(item, &server_id, &user_id))
                             .collect();
 
-                        match state.db.lock() {
+                        match state.db.write_conn() {
                             Ok(db) => {
                                 if let Err(e) = insert_media_chunk(&db, &media_items) {
                                     eprintln!(
@@ -834,7 +834,7 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
 
             // Mark flat library as COMPLETED
             if !abort {
-                match state.db.lock() {
+                match state.db.write_conn() {
                     Ok(db) => {
                         if let Err(e) = complete_checkpoint(&db, view_id, &server_id, &user_id) {
                             eprintln!("Failed to complete checkpoint for '{}': {}", view_name, e);
@@ -958,7 +958,7 @@ async fn refresh_user_data_once(state: &AppState) -> Result<u32, String> {
             .clone()
             .ok_or("No user ID")?;
 
-        let db = state.db.lock().map_err(|e| e.to_string())?;
+        let db = state.db.write_conn().map_err(|e| e.to_string())?;
         let did: String = db
             .query_row(
                 "SELECT value FROM metadata WHERE key = 'device_id'",
@@ -971,7 +971,7 @@ async fn refresh_user_data_once(state: &AppState) -> Result<u32, String> {
     };
 
     let server_id = {
-        let db = state.db.lock().map_err(|e| e.to_string())?;
+        let db = state.db.write_conn().map_err(|e| e.to_string())?;
         db.query_row(
             "SELECT id FROM servers WHERE is_active = 1 ORDER BY connected_at DESC LIMIT 1",
             [],

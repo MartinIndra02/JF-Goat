@@ -11,7 +11,7 @@ const KEYRING_USER: &str = "access_token";
 const KEYRING_USER_PASSWORD: &str = "saved_password";
 
 fn get_device_id(state: &AppState) -> Result<String, JfgoatError> {
-    let db = state.db.lock().map_err(|e| JfgoatError::Internal(e.to_string()))?;
+    let db = state.db.write_conn().map_err(|e| JfgoatError::Internal(e.to_string()))?;
     let device_id: String = db.query_row(
         "SELECT value FROM metadata WHERE key = 'device_id'",
         [],
@@ -117,7 +117,7 @@ pub async fn connect_to_server(
 
     // Store server in DB
     {
-        let db = state.db.lock().map_err(|e| JfgoatError::Internal(e.to_string()))?;
+        let db = state.db.write_conn().map_err(|e| JfgoatError::Internal(e.to_string()))?;
         servers::upsert_server(&db, &info.id, &info.name, &info.url)?;
     }
 
@@ -164,7 +164,7 @@ pub async fn login(
 
     // Update DB with user info
     {
-        let db = state.db.lock().map_err(|e| JfgoatError::Internal(e.to_string()))?;
+        let db = state.db.write_conn().map_err(|e| JfgoatError::Internal(e.to_string()))?;
         servers::set_active_server(&db, &result.server_id)?;
         servers::update_server_user(&db, &result.server_id, &result.user_id, &result.username)?;
     }
@@ -181,7 +181,7 @@ pub async fn check_auth(
 ) -> Result<Option<SessionInfo>, JfgoatError> {
     // Check if we have an active server with user info
     let server = {
-        let db = state.db.lock().map_err(|e| JfgoatError::Internal(e.to_string()))?;
+        let db = state.db.write_conn().map_err(|e| JfgoatError::Internal(e.to_string()))?;
         servers::get_active_server(&db)?
     };
 
@@ -244,7 +244,7 @@ pub async fn check_auth(
             // Auto-login succeeded — store new token and update AppState
             keyring_store_token(&new_token)?;
             {
-                let db = state.db.lock().map_err(|e| JfgoatError::Internal(e.to_string()))?;
+                let db = state.db.write_conn().map_err(|e| JfgoatError::Internal(e.to_string()))?;
                 servers::set_active_server(&db, &result.server_id)?;
                 servers::update_server_user(&db, &result.server_id, &result.user_id, &result.username)?;
             }
@@ -277,7 +277,7 @@ pub async fn check_auth_offline(
     state: State<'_, AppState>,
 ) -> Result<Option<SessionInfo>, JfgoatError> {
     let server = {
-        let db = state.db.lock().map_err(|e| JfgoatError::Internal(e.to_string()))?;
+        let db = state.db.write_conn().map_err(|e| JfgoatError::Internal(e.to_string()))?;
         servers::get_active_server(&db)?
     };
 
@@ -344,7 +344,7 @@ pub async fn logout(
 
     // Clear active server in DB
     {
-        let db = state.db.lock().map_err(|e| JfgoatError::Internal(e.to_string()))?;
+        let db = state.db.write_conn().map_err(|e| JfgoatError::Internal(e.to_string()))?;
         servers::clear_active_server(&db)?;
     }
 

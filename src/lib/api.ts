@@ -28,7 +28,10 @@ function encodeQueryValue(value: string | number): string {
 function toQueryString<T extends object>(query: T): string {
   return Object.entries(query as Record<string, string | number | undefined>)
     .filter(([, value]) => value !== undefined)
-    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeQueryValue(value as string | number)}`)
+    .map(
+      ([key, value]) =>
+        `${encodeURIComponent(key)}=${encodeQueryValue(value as string | number)}`,
+    )
     .join("&");
 }
 
@@ -110,27 +113,22 @@ export async function getLatestItems(
 
 export async function getLibraryItems(
   parentId: string,
+  page: number,
   limit: number,
-): Promise<MediaItem[]> {
-  return invoke("get_latest_items", { parentId, limit });
+): Promise<PaginatedResult<MediaItem>> {
+  const safePage = Math.max(1, Math.trunc(page));
+  const safeLimit = Math.max(1, Math.trunc(limit));
+  return invoke("get_library_items", { parentId, page: safePage, limit: safeLimit });
 }
 
 export async function getLibraryItemsPage(
   parentId: string,
   pagination: PaginationRequest,
 ): Promise<PaginatedResult<MediaItem>> {
-  // Stable DTO stub for feature work until backend paging command is introduced.
   const safeLimit = Math.max(1, Math.trunc(pagination.limit));
   const safeStartIndex = Math.max(0, Math.trunc(pagination.start_index));
-  const items = await getLibraryItems(parentId, safeLimit);
-
-  return {
-    items,
-    total_record_count: safeStartIndex + items.length,
-    start_index: safeStartIndex,
-    limit: safeLimit,
-    has_more: items.length >= safeLimit,
-  };
+  const page = Math.floor(safeStartIndex / safeLimit) + 1;
+  return getLibraryItems(parentId, page, safeLimit);
 }
 
 export function buildPlaybackConfigPayload(
@@ -149,7 +147,10 @@ export function buildPlaybackConfigPayload(
       static: "false",
     };
 
-    if (typeof request.audioStreamIndex === "number" && request.audioStreamIndex >= 0) {
+    if (
+      typeof request.audioStreamIndex === "number" &&
+      request.audioStreamIndex >= 0
+    ) {
       query.AudioStreamIndex = request.audioStreamIndex;
     }
 
@@ -324,7 +325,12 @@ export async function reportPlaybackStopped(
   positionTicks: number,
   durationTicks: number,
 ): Promise<void> {
-  return reportPlaybackLifecycle(itemId, positionTicks, durationTicks, "stopped");
+  return reportPlaybackLifecycle(
+    itemId,
+    positionTicks,
+    durationTicks,
+    "stopped",
+  );
 }
 
 // ── User data mutations ──────────────────────────────────────────────

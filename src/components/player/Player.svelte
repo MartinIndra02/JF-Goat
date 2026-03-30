@@ -646,11 +646,15 @@
     }
 
     if (requireStreamReload) {
+      // Keep the active quality profile when track changes force a stream reload.
+      const quality = selectedQuality;
       await mpvPlay({
         itemId: playerItemId,
         startTicks: Math.max(0, Math.floor(pos * 10_000_000)),
         audioStreamIndex: nextAudioIndex,
         subtitleStreamIndex: subtitleIndexForRequest(nextSubtitleIndex),
+        maxStreamingBitrate: quality.maxStreamingBitrate,
+        targetHeight: quality.targetHeight,
       });
     }
   }

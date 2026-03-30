@@ -15,7 +15,7 @@ pub struct SearchResult {
 }
 
 fn get_device_id(state: &AppState) -> Result<String, JfgoatError> {
-    let db = state.db.lock().map_err(|e| JfgoatError::Internal(e.to_string()))?;
+    let db = state.db.read_conn().map_err(|e| JfgoatError::Internal(e.to_string()))?;
     let device_id: String = db.query_row(
         "SELECT value FROM metadata WHERE key = 'device_id'",
         [],
@@ -35,7 +35,7 @@ fn get_active_scope(state: &AppState) -> Result<(String, String), JfgoatError> {
     let server_id = {
         let db = state
             .db
-            .lock()
+            .read_conn()
             .map_err(|e| JfgoatError::Internal(e.to_string()))?;
         db.query_row(
             "SELECT id FROM servers WHERE is_active = 1 ORDER BY connected_at DESC LIMIT 1",
@@ -83,7 +83,7 @@ pub async fn search_items(
 
             // Get server_id for items
             let server_id = {
-                let db = state.db.lock().map_err(|e| JfgoatError::Internal(e.to_string()))?;
+                let db = state.db.read_conn().map_err(|e| JfgoatError::Internal(e.to_string()))?;
                 let sid: String = db.query_row(
                     "SELECT id FROM servers WHERE is_active = 1 ORDER BY connected_at DESC LIMIT 1",
                     [],
@@ -150,7 +150,7 @@ pub async fn search_items(
         }
         SyncStatus::Ready => {
             // Query local SQLite FTS5 index (sub-millisecond)
-            let db = state.db.lock().map_err(|e| JfgoatError::Internal(e.to_string()))?;
+            let db = state.db.read_conn().map_err(|e| JfgoatError::Internal(e.to_string()))?;
             let (server_id, user_id) = get_active_scope(&state)?;
             let items = media_db::search_local(&db, &query, &server_id, &user_id, 50)?;
 
@@ -200,7 +200,7 @@ pub async fn force_resync(
     // Clear checkpoints and media items
     {
         let (server_id, user_id) = get_active_scope(&state)?;
-        let db = state.db.lock().map_err(|e| JfgoatError::Internal(e.to_string()))?;
+        let db = state.db.write_conn().map_err(|e| JfgoatError::Internal(e.to_string()))?;
         media_db::clear_all_checkpoints(&db, &server_id, &user_id)?;
         db.execute(
             "DELETE FROM media_items WHERE server_id = ?1 AND user_id = ?2",

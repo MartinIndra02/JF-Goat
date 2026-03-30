@@ -7,17 +7,16 @@ mod mpv;
 mod state;
 mod sync;
 
-use rusqlite::Connection;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{Mutex, RwLock};
+use std::sync::RwLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, Manager};
 use std::sync::atomic::AtomicBool;
 use serde::Serialize;
 use tracing::{info, warn};
 
-use state::{AppState, SyncStatus};
+use state::{AppState, DbPool, SyncStatus};
 
 /// 1x1 transparent WebP (lossless) — returned on errors so <img> fails gracefully.
 const TRANSPARENT_PIXEL_WEBP: &[u8] = &[
@@ -335,14 +334,16 @@ pub fn run() {
                 "Application setup started"
             );
 
-            // Initialize SQLite with WAL for concurrent read/write
+            // Initialize SQLite pools with WAL for concurrent read/write.
             let db_path = app_data_dir.join("jfgoat.db");
-            let conn = Connection::open(&db_path)?;
-            // WAL: allows concurrent reads while the sync worker writes.
-            let _: String = conn.query_row("PRAGMA journal_mode = WAL", [], |r| r.get(0))?;
-            // busy_timeout: wait up to 5s instead of instant SQLITE_BUSY errors.
-            let _: i64 = conn.query_row("PRAGMA busy_timeout = 5000", [], |r| r.get(0))?;
-            db::init_db(&conn)?;
+            let db = DbPool::new(&db_path)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            {
+                let write_conn = db
+                    .write_conn()
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+                db::init_db(&write_conn)?;
+            }
             info!(target: "bootstrap", db_path = %db_path.display(), "Database initialized");
 
             // Create HTTP client with timeouts and pool tuning for large library sync
@@ -358,7 +359,7 @@ pub fn run() {
 
             // Create and manage AppState
             let app_state = AppState {
-                db: Mutex::new(conn),
+                db,
                 http_client,
                 server_url: RwLock::new(None),
                 user_id: RwLock::new(None),
@@ -436,6 +437,7 @@ pub fn run() {
             commands::get_resume_items,
             commands::get_next_up,
             commands::get_latest_items,
+            commands::get_library_items,
             commands::get_item_people,
             commands::get_similar_items,
             commands::save_homepage_cache,

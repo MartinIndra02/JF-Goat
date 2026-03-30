@@ -65,7 +65,16 @@
   let libraryItems = $state<MediaItem[]>([]);
   let libraryLoading = $state(false);
   let libraryError = $state("");
+  let libraryLoadMoreError = $state("");
+  let libraryLoadingMore = $state(false);
+  let libraryHasMore = $state(false);
+  let libraryPage = $state(1);
+  let libraryTotalCount = $state<number | null>(null);
+  let libraryScrollSentinel = $state<HTMLDivElement | null>(null);
   let lastLoadedLibraryId = "";
+  let libraryRequestId = 0;
+
+  const LIBRARY_PAGE_SIZE = 120;
 
   let runningResync = $state(false);
   let refreshTimer: ReturnType<typeof setInterval> | null = null;
@@ -253,8 +262,43 @@
     if (!isLibraryRoute) return;
     const viewId = selectedLibraryId;
     if (!viewId) return;
-    if (viewId === lastLoadedLibraryId && libraryItems.length > 0) return;
+    if (viewId === lastLoadedLibraryId) return;
     void loadLibraryItems(viewId);
+  });
+
+  $effect(() => {
+    if (!isLibraryRoute) return;
+    if (!libraryScrollSentinel) return;
+    if (libraryLoading) return;
+    if (!libraryHasMore) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          void loadMoreLibraryItems();
+        }
+      },
+      {
+        root: null,
+        rootMargin: "700px 0px 700px 0px",
+        threshold: 0,
+      },
+    );
+
+    observer.observe(libraryScrollSentinel);
+
+    return () => {
+      observer.disconnect();
+    };
+  });
+
+  $effect(() => {
+    if (!isLibraryRoute) return;
+    if (libraryLoading || libraryLoadingMore) return;
+    if (!libraryHasMore) return;
+    if (filteredLibraryItems.length > 0) return;
+    void loadMoreLibraryItems();
   });
 
   $effect(() => {
@@ -378,21 +422,89 @@
   }
 
   async function loadLibraryItems(viewId: string) {
+    const requestId = ++libraryRequestId;
     libraryLoading = true;
+    libraryLoadingMore = false;
     libraryError = "";
+    libraryLoadMoreError = "";
+    libraryItems = [];
+    libraryPage = 1;
+    libraryHasMore = false;
+    libraryTotalCount = null;
+    lastLoadedLibraryId = "";
 
     try {
-      const items = await getLibraryItems(viewId, 250);
-      libraryItems = items;
+      const result = await getLibraryItems(viewId, 1, LIBRARY_PAGE_SIZE);
+      if (requestId !== libraryRequestId) return;
+
+      libraryItems = dedupeAndAppendLibraryItems([], result.items);
+      libraryPage = 1;
+      libraryHasMore = result.has_more;
+      libraryTotalCount = result.total_record_count;
       lastLoadedLibraryId = viewId;
     } catch (error) {
+      if (requestId !== libraryRequestId) return;
       markDegraded(String(error));
       libraryError = "Could not load this library. Check your connection and try again.";
       libraryItems = [];
       lastLoadedLibraryId = "";
     } finally {
-      libraryLoading = false;
+      if (requestId === libraryRequestId) {
+        libraryLoading = false;
+      }
     }
+  }
+
+  async function loadMoreLibraryItems() {
+    const viewId = selectedLibraryId;
+    if (!viewId) return;
+    if (libraryLoading || libraryLoadingMore) return;
+    if (!libraryHasMore) return;
+
+    const requestId = libraryRequestId;
+    const nextPage = libraryPage + 1;
+
+    libraryLoadingMore = true;
+    libraryLoadMoreError = "";
+
+    try {
+      const result = await getLibraryItems(viewId, nextPage, LIBRARY_PAGE_SIZE);
+      if (requestId !== libraryRequestId) return;
+
+      libraryItems = dedupeAndAppendLibraryItems(libraryItems, result.items);
+      libraryPage = nextPage;
+      libraryHasMore = result.has_more;
+
+      if (nextPage === 1 || libraryTotalCount === null) {
+        libraryTotalCount = result.total_record_count;
+      }
+    } catch (error) {
+      if (requestId !== libraryRequestId) return;
+      markDegraded(String(error));
+      libraryLoadMoreError = "Could not load more items. Scroll to retry.";
+    } finally {
+      if (requestId === libraryRequestId) {
+        libraryLoadingMore = false;
+      }
+    }
+  }
+
+  function dedupeAndAppendLibraryItems(
+    existing: MediaItem[],
+    incoming: MediaItem[],
+  ): MediaItem[] {
+    if (incoming.length === 0) return existing;
+
+    const seenIds = new Set(existing.map((item) => item.id));
+    const merged = [...existing];
+
+    for (const item of incoming) {
+      if (seenIds.has(item.id)) continue;
+      seenIds.add(item.id);
+      merged.push(item);
+    }
+
+    return merged;
   }
 
   async function runSearch(query: string) {
@@ -876,7 +988,10 @@
       <div class="flex flex-wrap items-center gap-3 mb-4">
         <h2 class="text-xl font-semibold">{selectedLibrary?.name ?? "Library"}</h2>
         <span class="text-xs text-gray-400 bg-white/5 rounded-full px-2 py-1">
-          {filteredLibraryItems.length} items
+          {filteredLibraryItems.length} shown
+          {#if libraryTotalCount !== null}
+            · {libraryItems.length}/{libraryTotalCount} loaded
+          {/if}
         </span>
       </div>
 
@@ -983,54 +1098,72 @@
         <div class="bg-red-500/10 border border-red-500/25 rounded-lg p-4 text-sm text-red-200">
           {libraryError}
         </div>
-      {:else if filteredLibraryItems.length === 0}
-        <p class="text-gray-400 text-sm">No items match your current filters.</p>
-      {:else if selectedLibraryLayout === "grid"}
-        <div class="flex flex-wrap gap-3">
-          {#each filteredLibraryItems as item (item.id)}
-            <PosterCard {item} />
-          {/each}
-        </div>
       {:else}
-        <div class="space-y-2">
-          {#each filteredLibraryItems as item (item.id)}
-            <button
-              type="button"
-              onclick={() => push(`/item?id=${item.id}`)}
-              class="w-full rounded-xl p-3 bg-white/5 hover:bg-white/10 transition-colors text-left"
-              aria-label="Open {item.name} details"
-            >
-              <div class="flex items-start gap-3">
-                <div class="w-16 h-24 rounded-lg overflow-hidden bg-gray-800 shrink-0">
-                  {#if item.image_tag}
-                    <img
-                      src={`http://jfimage.localhost/poster/${item.id}?tag=${item.image_tag}`}
-                      alt={item.name}
-                      loading="lazy"
-                      class="w-full h-full object-cover"
-                    />
-                  {:else}
-                    <div class="w-full h-full flex items-center justify-center text-gray-500 text-xs px-1 text-center">
-                      {item.name}
-                    </div>
-                  {/if}
-                </div>
-                <div class="min-w-0 flex-1">
-                  <p class="text-sm text-white font-medium truncate">{item.name}</p>
-                  <p class="text-xs text-gray-400 mt-1">
-                    {item.type}
-                    {#if item.production_year}
-                      · {item.production_year}
+        {#if filteredLibraryItems.length === 0 && !libraryHasMore}
+          <p class="text-gray-400 text-sm">No items match your current filters.</p>
+        {:else if selectedLibraryLayout === "grid"}
+          <div class="flex flex-wrap gap-3">
+            {#each filteredLibraryItems as item (item.id)}
+              <PosterCard {item} />
+            {/each}
+          </div>
+        {:else}
+          <div class="space-y-2">
+            {#each filteredLibraryItems as item (item.id)}
+              <button
+                type="button"
+                onclick={() => push(`/item?id=${item.id}`)}
+                class="w-full rounded-xl p-3 bg-white/5 hover:bg-white/10 transition-colors text-left"
+                aria-label="Open {item.name} details"
+              >
+                <div class="flex items-start gap-3">
+                  <div class="w-16 h-24 rounded-lg overflow-hidden bg-gray-800 shrink-0">
+                    {#if item.image_tag}
+                      <img
+                        src={`http://jfimage.localhost/poster/${item.id}?tag=${item.image_tag}`}
+                        alt={item.name}
+                        loading="lazy"
+                        class="w-full h-full object-cover"
+                      />
+                    {:else}
+                      <div class="w-full h-full flex items-center justify-center text-gray-500 text-xs px-1 text-center">
+                        {item.name}
+                      </div>
                     {/if}
-                    {#if item.run_time_ticks}
-                      · {formatRuntime(item.run_time_ticks)}
-                    {/if}
-                  </p>
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <p class="text-sm text-white font-medium truncate">{item.name}</p>
+                    <p class="text-xs text-gray-400 mt-1">
+                      {item.type}
+                      {#if item.production_year}
+                        · {item.production_year}
+                      {/if}
+                      {#if item.run_time_ticks}
+                        · {formatRuntime(item.run_time_ticks)}
+                      {/if}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            </button>
-          {/each}
-        </div>
+              </button>
+            {/each}
+          </div>
+        {/if}
+
+        {#if filteredLibraryItems.length === 0 && libraryHasMore && !libraryLoadingMore}
+          <p class="text-gray-500 text-sm mt-4">Scanning additional pages for matching items...</p>
+        {/if}
+
+        {#if libraryLoadMoreError}
+          <p class="text-red-300 text-sm mt-4">{libraryLoadMoreError}</p>
+        {/if}
+
+        {#if libraryLoadingMore}
+          <p class="text-gray-400 text-sm mt-4">Loading more items...</p>
+        {/if}
+
+        {#if libraryHasMore}
+          <div bind:this={libraryScrollSentinel} class="h-1 w-full" aria-hidden="true"></div>
+        {/if}
       {/if}
     </section>
   {:else if isSettingsRoute}

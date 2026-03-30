@@ -180,6 +180,47 @@ impl PlaybackConfigPayload {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlayMethod {
+    DirectPlay,
+    DirectStream,
+    Transcode,
+}
+
+impl PlayMethod {
+    pub fn from_wire(value: &str) -> Option<Self> {
+        let normalized = value.trim().to_ascii_lowercase();
+        match normalized.as_str() {
+            "directplay" => Some(Self::DirectPlay),
+            "directstream" => Some(Self::DirectStream),
+            "transcode" => Some(Self::Transcode),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct JellyfinPlaybackInfoResponse {
+    #[serde(alias = "MediaSources", default)]
+    pub media_sources: Vec<JellyfinPlaybackMediaSource>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct JellyfinPlaybackMediaSource {
+    #[serde(alias = "PlayMethod", default)]
+    pub play_method: Option<String>,
+    #[serde(alias = "DirectStreamUrl", default)]
+    pub direct_stream_url: Option<String>,
+    #[serde(alias = "TranscodingUrl", default)]
+    pub transcoding_url: Option<String>,
+    #[serde(alias = "SupportsDirectPlay", default)]
+    pub supports_direct_play: Option<bool>,
+    #[serde(alias = "SupportsDirectStream", default)]
+    pub supports_direct_stream: Option<bool>,
+    #[serde(alias = "SupportsTranscoding", default)]
+    pub supports_transcoding: Option<bool>,
+}
+
 fn build_query_string(query_params: &[(String, String)]) -> String {
     query_params
         .iter()
@@ -279,6 +320,88 @@ pub fn build_playback_config_payload(
         url,
         query,
     }
+}
+
+/// Fetch playback context from Jellyfin to discover the effective play method.
+pub async fn fetch_playback_info(
+    client: &JellyfinClient,
+    user_id: &str,
+    item_id: &str,
+    audio_stream_index: Option<i64>,
+    subtitle_stream_index: Option<i64>,
+    max_streaming_bitrate: Option<i64>,
+    target_height: Option<i64>,
+) -> Result<JellyfinPlaybackInfoResponse, JfgoatError> {
+    let path = format!(
+        "/Items/{}/PlaybackInfo?UserId={}",
+        item_id,
+        encode(user_id)
+    );
+
+    let mut body = serde_json::Map::new();
+    body.insert(
+        "UserId".to_string(),
+        serde_json::Value::String(user_id.to_string()),
+    );
+    body.insert(
+        "StartTimeTicks".to_string(),
+        serde_json::Value::Number(serde_json::Number::from(0)),
+    );
+    body.insert("IsPlayback".to_string(), serde_json::Value::Bool(true));
+    body.insert("AutoOpenLiveStream".to_string(), serde_json::Value::Bool(true));
+
+    if let Some(index) = audio_stream_index {
+        if index >= 0 {
+            body.insert(
+                "AudioStreamIndex".to_string(),
+                serde_json::Value::Number(serde_json::Number::from(index)),
+            );
+        }
+    }
+
+    if let Some(index) = subtitle_stream_index {
+        let normalized = if index >= 0 { index } else { -1 };
+        body.insert(
+            "SubtitleStreamIndex".to_string(),
+            serde_json::Value::Number(serde_json::Number::from(normalized)),
+        );
+    }
+
+    if let Some(bitrate) = max_streaming_bitrate {
+        if bitrate > 0 {
+            body.insert(
+                "MaxStreamingBitrate".to_string(),
+                serde_json::Value::Number(serde_json::Number::from(bitrate)),
+            );
+        }
+    }
+
+    if let Some(height) = target_height {
+        if height > 0 {
+            body.insert(
+                "MaxHeight".to_string(),
+                serde_json::Value::Number(serde_json::Number::from(height)),
+            );
+        }
+    }
+
+    let resp = client
+        .post_json(&path, &serde_json::Value::Object(body))
+        .await?;
+
+    if !resp.status().is_success() {
+        return Err(JfgoatError::Http(format!(
+            "Failed to fetch playback info for {}: status {}",
+            item_id,
+            resp.status()
+        )));
+    }
+
+    let data: JellyfinPlaybackInfoResponse = resp.json().await.map_err(|e| {
+        JfgoatError::Http(format!("Failed to parse playback info response: {}", e))
+    })?;
+
+    Ok(data)
 }
 
 /// Fetch the user's top-level libraries (Views).

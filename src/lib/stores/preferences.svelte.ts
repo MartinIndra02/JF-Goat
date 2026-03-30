@@ -1,8 +1,5 @@
 import { getUserPreferences, saveUserPreferences } from "../api";
-import {
-  DEFAULT_USER_PREFERENCES,
-  type UserPreferences,
-} from "../types";
+import { DEFAULT_USER_PREFERENCES, type UserPreferences } from "../types";
 import { pushErrorToast } from "./toast.svelte";
 
 const LOCAL_PREFS_KEY = "jfgoat.user.preferences.v1";
@@ -52,18 +49,24 @@ function sanitizePreferences(input: UserPreferences): UserPreferences {
       preferred_audio_language: (input.language.preferred_audio_language ?? "")
         .trim()
         .toLowerCase(),
-      preferred_subtitle_language: (input.language.preferred_subtitle_language ?? "")
+      preferred_subtitle_language: (
+        input.language.preferred_subtitle_language ?? ""
+      )
         .trim()
         .toLowerCase(),
     },
     quality: {
-      default_quality_key: (input.quality.default_quality_key ?? "").trim() || "direct-play",
+      default_quality_key:
+        (input.quality.default_quality_key ?? "").trim() || "direct-play",
     },
     cache: {
       enabled: !!input.cache.enabled,
       max_age_minutes: Math.max(5, Math.min(10_080, Math.round(cacheMaxAge))),
     },
-    refresh_interval_seconds: Math.max(30, Math.min(1_800, Math.round(refreshInterval))),
+    refresh_interval_seconds: Math.max(
+      30,
+      Math.min(1_800, Math.round(refreshInterval)),
+    ),
   };
 }
 
@@ -128,7 +131,12 @@ function queuePersist(next: UserPreferences): void {
       preferences = sanitizePreferences(persisted);
       writeLocalFallback(preferences);
     } catch (error) {
-      pushErrorToast("api", error, "Could not save settings", "settings-save-error");
+      pushErrorToast(
+        "api",
+        error,
+        "Could not save settings",
+        "settings-save-error",
+      );
       writeLocalFallback(next);
     } finally {
       saving = false;

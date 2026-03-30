@@ -690,6 +690,50 @@ pub async fn get_latest_items(
     Ok(items)
 }
 
+/// Fetch paginated items for a specific library view from the Jellyfin server.
+#[tauri::command]
+pub async fn get_library_items(
+    state: State<'_, AppState>,
+    parent_id: String,
+    page: u32,
+    limit: u32,
+) -> Result<media_api::PaginatedResult<MediaItem>, JfgoatError> {
+    let safe_page = page.max(1);
+    let safe_limit = limit.clamp(1, 500);
+    let start_index = safe_page.saturating_sub(1).saturating_mul(safe_limit);
+    let enable_total_count = start_index == 0;
+
+    let (server_url, token, user_id, device_id) = get_connection_params(&state)?;
+    let server_id = get_server_id(&state)?;
+
+    let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
+        .with_token(&token);
+
+    let result = media_api::fetch_view_items_paginated(
+        &jf_client,
+        &user_id,
+        &parent_id,
+        start_index,
+        safe_limit,
+        enable_total_count,
+    )
+    .await?;
+
+    let items: Vec<MediaItem> = result
+        .items
+        .into_iter()
+        .map(|item| jf_item_to_media_item(item, &server_id, &user_id))
+        .collect();
+
+    Ok(media_api::PaginatedResult {
+        items,
+        total_record_count: result.total_record_count,
+        start_index: result.start_index,
+        limit: result.limit,
+        has_more: result.has_more,
+    })
+}
+
 /// Fetch cast & crew (people) for a media item from the Jellyfin server.
 #[tauri::command]
 pub async fn get_item_people(
@@ -933,7 +977,7 @@ pub async fn toggle_played(
 
     // Update local DB
     {
-        let db = state.db.lock().map_err(|e| JfgoatError::Internal(e.to_string()))?;
+        let db = state.db.write_conn().map_err(|e| JfgoatError::Internal(e.to_string()))?;
         let _ = db.execute(
             "UPDATE media_items
              SET played = ?1, playback_ticks = CASE WHEN ?1 = 0 THEN 0 ELSE playback_ticks END
@@ -967,7 +1011,7 @@ pub async fn toggle_favorite(
 
     // Update local DB
     {
-        let db = state.db.lock().map_err(|e| JfgoatError::Internal(e.to_string()))?;
+        let db = state.db.write_conn().map_err(|e| JfgoatError::Internal(e.to_string()))?;
         let _ = db.execute(
             "UPDATE media_items SET is_favorite = ?1 WHERE id = ?2 AND server_id = ?3 AND user_id = ?4",
             rusqlite::params![new_favorite as i32, id, server_id, user_id],
