@@ -99,6 +99,12 @@ export interface HomepageCache {
   cache_refreshed_at_epoch_ms?: number;
 }
 
+export interface DiagnosticsExportResult {
+  file_path: string;
+  generated_at_unix_ms: number;
+  recent_log_lines: number;
+}
+
 export interface PlaybackPreferences {
   autoplay_next_episode: boolean;
   default_playback_rate: number;

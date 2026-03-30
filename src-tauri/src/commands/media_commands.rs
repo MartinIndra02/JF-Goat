@@ -4,7 +4,7 @@ use tauri::{Manager, State};
 
 use crate::api::client::JellyfinClient;
 use crate::api::media as media_api;
-use crate::db::media::MediaItem;
+use crate::db::media::{to_paginated_result, MediaItem, PaginationScope};
 use crate::error::JfgoatError;
 use crate::state::AppState;
 
@@ -192,6 +192,130 @@ fn get_active_scope(state: &AppState) -> Result<(String, String), JfgoatError> {
         .ok_or_else(|| JfgoatError::Auth("No user ID".to_string()))?;
 
     Ok((server_id, user_id))
+}
+
+fn query_local_library_items_by_parent(
+    state: &AppState,
+    parent_id: &str,
+    server_id: &str,
+    user_id: &str,
+    start_index: u32,
+    limit: u32,
+) -> Result<media_api::PaginatedResult<MediaItem>, JfgoatError> {
+    let db = state
+        .db
+        .lock()
+        .map_err(|e| JfgoatError::Internal(e.to_string()))?;
+
+    let total_count: u32 = db.query_row(
+        "SELECT COUNT(*) FROM media_items WHERE parent_id = ?1 AND server_id = ?2 AND user_id = ?3",
+        rusqlite::params![parent_id, server_id, user_id],
+        |row| row.get(0),
+    )?;
+
+    let sql = format!(
+        "SELECT {} FROM media_items
+         WHERE parent_id = ?1 AND server_id = ?2 AND user_id = ?3
+         ORDER BY COALESCE(date_updated, date_created) DESC, name ASC
+         LIMIT ?4 OFFSET ?5",
+        SELECT_COLUMNS
+    );
+
+    let mut stmt = db.prepare(&sql)?;
+    let rows = stmt.query_map(
+        rusqlite::params![
+            parent_id,
+            server_id,
+            user_id,
+            limit as i64,
+            start_index as i64
+        ],
+        row_to_media_item,
+    )?;
+
+    let mut items = Vec::new();
+    for row in rows {
+        items.push(row?);
+    }
+
+    Ok(to_paginated_result(
+        items,
+        PaginationScope { start_index, limit },
+        Some(total_count),
+    ))
+}
+
+fn query_local_library_items_by_server_type(
+    state: &AppState,
+    server_id: &str,
+    user_id: &str,
+    start_index: u32,
+    limit: u32,
+) -> Result<media_api::PaginatedResult<MediaItem>, JfgoatError> {
+    let db = state
+        .db
+        .lock()
+        .map_err(|e| JfgoatError::Internal(e.to_string()))?;
+
+    let total_count: u32 = db.query_row(
+        "SELECT COUNT(*) FROM media_items
+         WHERE server_id = ?1
+           AND user_id = ?2
+           AND type IN ('Movie', 'Series', 'Season')",
+        rusqlite::params![server_id, user_id],
+        |row| row.get(0),
+    )?;
+
+    let sql = format!(
+        "SELECT {} FROM media_items
+         WHERE server_id = ?1
+           AND user_id = ?2
+           AND type IN ('Movie', 'Series', 'Season')
+         ORDER BY COALESCE(date_updated, date_created) DESC, name ASC
+         LIMIT ?3 OFFSET ?4",
+        SELECT_COLUMNS
+    );
+
+    let mut stmt = db.prepare(&sql)?;
+    let rows = stmt.query_map(
+        rusqlite::params![server_id, user_id, limit as i64, start_index as i64],
+        row_to_media_item,
+    )?;
+
+    let mut items = Vec::new();
+    for row in rows {
+        items.push(row?);
+    }
+
+    Ok(to_paginated_result(
+        items,
+        PaginationScope { start_index, limit },
+        Some(total_count),
+    ))
+}
+
+fn get_library_items_from_local_fallback(
+    state: &AppState,
+    parent_id: &str,
+    start_index: u32,
+    limit: u32,
+) -> Result<media_api::PaginatedResult<MediaItem>, JfgoatError> {
+    let (server_id, user_id) = get_active_scope(state)?;
+
+    let by_parent = query_local_library_items_by_parent(
+        state,
+        parent_id,
+        &server_id,
+        &user_id,
+        start_index,
+        limit,
+    )?;
+
+    if by_parent.total_record_count > 0 {
+        return Ok(by_parent);
+    }
+
+    query_local_library_items_by_server_type(state, &server_id, &user_id, start_index, limit)
 }
 
 // ── Local DB queries (used as fallback / for search) ────────────────────
@@ -697,11 +821,16 @@ pub async fn get_library_items(
     parent_id: String,
     page: u32,
     limit: u32,
+    prefer_offline: Option<bool>,
 ) -> Result<media_api::PaginatedResult<MediaItem>, JfgoatError> {
     let safe_page = page.max(1);
     let safe_limit = limit.clamp(1, 500);
     let start_index = safe_page.saturating_sub(1).saturating_mul(safe_limit);
     let enable_total_count = start_index == 0;
+
+    if prefer_offline.unwrap_or(false) {
+        return get_library_items_from_local_fallback(&state, &parent_id, start_index, safe_limit);
+    }
 
     let (server_url, token, user_id, device_id) = get_connection_params(&state)?;
     let server_id = get_server_id(&state)?;
@@ -717,7 +846,29 @@ pub async fn get_library_items(
         safe_limit,
         enable_total_count,
     )
-    .await?;
+    .await;
+
+    let result = match result {
+        Ok(result) => result,
+        Err(remote_error) => {
+            println!(
+                "[library] Live fetch failed for view {} page {} (start {}): {}. Falling back to local DB.",
+                parent_id, safe_page, start_index, remote_error
+            );
+
+            match get_library_items_from_local_fallback(&state, &parent_id, start_index, safe_limit)
+            {
+                Ok(local_result) => return Ok(local_result),
+                Err(local_error) => {
+                    println!(
+                        "[library] Local fallback failed for view {}: {}",
+                        parent_id, local_error
+                    );
+                    return Err(remote_error);
+                }
+            }
+        }
+    };
 
     let items: Vec<MediaItem> = result
         .items

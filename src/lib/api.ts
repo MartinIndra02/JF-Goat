@@ -9,6 +9,7 @@ import type {
   PaginationRequest,
   UserLibrary,
   HomepageCache,
+  DiagnosticsExportResult,
   UserPreferences,
   Person,
   MediaStreamInfo,
@@ -33,6 +34,56 @@ function toQueryString<T extends object>(query: T): string {
         `${encodeURIComponent(key)}=${encodeQueryValue(value as string | number)}`,
     )
     .join("&");
+}
+
+type ApiRequestOptions = {
+  signal?: AbortSignal;
+};
+
+function createAbortError(): DOMException {
+  return new DOMException("The operation was aborted", "AbortError");
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw createAbortError();
+  }
+}
+
+async function invokeWithAbort<T>(
+  command: string,
+  args: Record<string, unknown>,
+  signal?: AbortSignal,
+): Promise<T> {
+  throwIfAborted(signal);
+
+  if (!signal) {
+    return invoke(command, args);
+  }
+
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(createAbortError());
+    signal.addEventListener("abort", onAbort, { once: true });
+
+    invoke<T>(command, args).then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        if (signal.aborted) {
+          reject(createAbortError());
+          return;
+        }
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener("abort", onAbort);
+        if (signal.aborted) {
+          reject(createAbortError());
+          return;
+        }
+        reject(error);
+      },
+    );
+  });
 }
 
 export async function connectToServer(url: string): Promise<ServerPublicInfo> {
@@ -118,7 +169,14 @@ export async function getLibraryItems(
 ): Promise<PaginatedResult<MediaItem>> {
   const safePage = Math.max(1, Math.trunc(page));
   const safeLimit = Math.max(1, Math.trunc(limit));
-  return invoke("get_library_items", { parentId, page: safePage, limit: safeLimit });
+  const preferOffline =
+    typeof navigator !== "undefined" && navigator.onLine === false;
+  return invoke("get_library_items", {
+    parentId,
+    page: safePage,
+    limit: safeLimit,
+    preferOffline,
+  });
 }
 
 export async function getLibraryItemsPage(
@@ -197,29 +255,40 @@ export function buildPlaybackConfigPayload(
 
 // ── Detail page commands ─────────────────────────────────────────────
 
-export async function getItemById(id: string): Promise<MediaItem | null> {
-  return invoke("get_item_by_id", { id });
+export async function getItemById(
+  id: string,
+  options: ApiRequestOptions = {},
+): Promise<MediaItem | null> {
+  return invokeWithAbort("get_item_by_id", { id }, options.signal);
 }
 
-export async function getSeriesSeasons(seriesId: string): Promise<MediaItem[]> {
-  return invoke("get_series_seasons", { seriesId });
+export async function getSeriesSeasons(
+  seriesId: string,
+  options: ApiRequestOptions = {},
+): Promise<MediaItem[]> {
+  return invokeWithAbort("get_series_seasons", { seriesId }, options.signal);
 }
 
 export async function getSeasonEpisodes(
   seasonId: string,
+  options: ApiRequestOptions = {},
 ): Promise<MediaItem[]> {
-  return invoke("get_season_episodes", { seasonId });
+  return invokeWithAbort("get_season_episodes", { seasonId }, options.signal);
 }
 
-export async function getItemPeople(id: string): Promise<Person[]> {
-  return invoke("get_item_people", { id });
+export async function getItemPeople(
+  id: string,
+  options: ApiRequestOptions = {},
+): Promise<Person[]> {
+  return invokeWithAbort("get_item_people", { id }, options.signal);
 }
 
 export async function getSimilarItems(
   id: string,
   limit: number,
+  options: ApiRequestOptions = {},
 ): Promise<MediaItem[]> {
-  return invoke("get_similar_items", { id, limit });
+  return invokeWithAbort("get_similar_items", { id, limit }, options.signal);
 }
 
 // ── Homepage cache commands ─────────────────────────────────────────────
@@ -240,6 +309,10 @@ export async function saveUserPreferences(
   preferences: UserPreferences,
 ): Promise<UserPreferences> {
   return invoke("save_user_preferences", { preferences });
+}
+
+export async function exportDiagnostics(): Promise<DiagnosticsExportResult> {
+  return invoke("export_diagnostics");
 }
 
 // ── MPV player commands ─────────────────────────────────────────
@@ -292,16 +365,22 @@ export async function mpvStop(): Promise<void> {
   return invoke("mpv_stop");
 }
 
-export async function getMediaStreams(id: string): Promise<MediaStreamInfo> {
-  return invoke("get_media_streams", { id });
+export async function getMediaStreams(
+  id: string,
+  options: ApiRequestOptions = {},
+): Promise<MediaStreamInfo> {
+  return invokeWithAbort("get_media_streams", { id }, options.signal);
 }
 
 export async function getItemChapters(id: string): Promise<ChapterInfo[]> {
   return invoke("get_item_chapters", { id });
 }
 
-export async function getExternalUrls(id: string): Promise<ExternalUrl[]> {
-  return invoke("get_external_urls", { id });
+export async function getExternalUrls(
+  id: string,
+  options: ApiRequestOptions = {},
+): Promise<ExternalUrl[]> {
+  return invokeWithAbort("get_external_urls", { id }, options.signal);
 }
 
 export type PlaybackLifecycleEvent = "playing" | "progress" | "stopped";

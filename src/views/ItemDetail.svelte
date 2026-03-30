@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from "svelte";
   import { location, push, querystring } from "svelte-spa-router";
   import {
     getItemById,
@@ -54,6 +55,10 @@
   let loading = $state(true);
   let loadError = $state(false);
   let episodesLoading = $state(false);
+  let detailContentAnchor = $state<HTMLDivElement | null>(null);
+  let focusedDetailItemId = $state("");
+  let activeDetailController: AbortController | null = null;
+  let activeSeasonController: AbortController | null = null;
 
   // For episode detail: sibling episodes from same season
   let siblingEpisodes = $state<MediaItem[]>([]);
@@ -63,6 +68,10 @@
 
   // Similar/Related items
   let similarItems = $state<MediaItem[]>([]);
+
+  function isAbortError(error: unknown): boolean {
+    return error instanceof DOMException && error.name === "AbortError";
+  }
 
   async function handlePlay(
     target: MediaItem,
@@ -128,43 +137,90 @@
   let mediaStreams = $state<MediaStreamInfo | null>(null);
   let externalUrls = $state<ExternalUrl[]>([]);
 
-  async function loadSeasonEpisodes(seasonId: string) {
+  async function loadSeasonEpisodes(
+    seasonId: string,
+    signal?: AbortSignal,
+  ) {
     selectedSeasonId = seasonId;
     if (allSeasonEpisodes[seasonId]) {
       episodes = allSeasonEpisodes[seasonId];
       return;
     }
+
+    let requestSignal = signal;
+    if (!requestSignal) {
+      activeSeasonController?.abort();
+      const seasonController = new AbortController();
+      activeSeasonController = seasonController;
+      requestSignal = seasonController.signal;
+    }
+
     episodesLoading = true;
     try {
-      const eps = await getSeasonEpisodes(seasonId);
+      const eps = await getSeasonEpisodes(seasonId, { signal: requestSignal });
+      if (requestSignal.aborted) return;
       allSeasonEpisodes[seasonId] = eps;
       episodes = eps;
     } catch (e) {
+      if (requestSignal.aborted || isAbortError(e)) return;
       console.error("Failed to load episodes:", e);
       episodes = [];
     } finally {
-      episodesLoading = false;
+      if (!requestSignal.aborted) {
+        episodesLoading = false;
+      }
+      if (activeSeasonController?.signal === requestSignal) {
+        activeSeasonController = null;
+      }
     }
   }
 
-  async function loadPeople(id: string) {
-    try { people = await getItemPeople(id); }
-    catch { people = []; }
+  async function loadPeople(id: string, signal: AbortSignal) {
+    try {
+      const result = await getItemPeople(id, { signal });
+      if (signal.aborted) return;
+      people = result;
+    }
+    catch (e) {
+      if (signal.aborted || isAbortError(e)) return;
+      people = [];
+    }
   }
 
-  async function loadSimilarItems(id: string) {
-    try { similarItems = await getSimilarItems(id, 12); }
-    catch { similarItems = []; }
+  async function loadSimilarItems(id: string, signal: AbortSignal) {
+    try {
+      const result = await getSimilarItems(id, 12, { signal });
+      if (signal.aborted) return;
+      similarItems = result;
+    }
+    catch (e) {
+      if (signal.aborted || isAbortError(e)) return;
+      similarItems = [];
+    }
   }
 
-  async function loadMediaStreams(id: string) {
-    try { mediaStreams = await getMediaStreams(id); }
-    catch { mediaStreams = null; }
+  async function loadMediaStreams(id: string, signal: AbortSignal) {
+    try {
+      const result = await getMediaStreams(id, { signal });
+      if (signal.aborted) return;
+      mediaStreams = result;
+    }
+    catch (e) {
+      if (signal.aborted || isAbortError(e)) return;
+      mediaStreams = null;
+    }
   }
 
-  async function loadExternalUrls(id: string) {
-    try { externalUrls = await getExternalUrls(id); }
-    catch { externalUrls = []; }
+  async function loadExternalUrls(id: string, signal: AbortSignal) {
+    try {
+      const result = await getExternalUrls(id, { signal });
+      if (signal.aborted) return;
+      externalUrls = result;
+    }
+    catch (e) {
+      if (signal.aborted || isAbortError(e)) return;
+      externalUrls = [];
+    }
   }
 
   async function handleTogglePlayed(id: string, currentPlayed: boolean) {
@@ -207,9 +263,16 @@
     const id = itemId;
     if (!id) { push("/home"); return; }
 
+    const detailController = new AbortController();
+    activeDetailController?.abort();
+    activeSeasonController?.abort();
+    activeDetailController = detailController;
+    activeSeasonController = null;
+
     // Reset state for new item
     loading = true;
     loadError = false;
+    episodesLoading = false;
     item = null;
     seasons = [];
     episodes = [];
@@ -221,48 +284,107 @@
     mediaStreams = null;
     externalUrls = [];
 
-    loadItem(id);
+    loadItem(id, detailController.signal);
+
+    return () => {
+      detailController.abort();
+      if (activeDetailController === detailController) {
+        activeDetailController = null;
+      }
+    };
   });
 
-  async function loadItem(id: string) {
+  $effect(() => {
+    if (loading || !item) return;
+    if (focusedDetailItemId === item.id) return;
+
+    focusedDetailItemId = item.id;
+    void tick().then(() => {
+      detailContentAnchor?.focus();
+    });
+  });
+
+  function retryLoadItem() {
+    const id = itemId;
+    if (!id) return;
+
+    const detailController = new AbortController();
+    activeDetailController?.abort();
+    activeSeasonController?.abort();
+    activeDetailController = detailController;
+    activeSeasonController = null;
+
+    loading = true;
+    loadError = false;
+    episodesLoading = false;
+    item = null;
+    seasons = [];
+    episodes = [];
+    selectedSeasonId = null;
+    allSeasonEpisodes = {};
+    siblingEpisodes = [];
+    people = [];
+    similarItems = [];
+    mediaStreams = null;
+    externalUrls = [];
+
+    loadItem(id, detailController.signal);
+  }
+
+  async function loadItem(id: string, signal: AbortSignal) {
     try {
-      const result = await getItemById(id);
+      const result = await getItemById(id, { signal });
+      if (signal.aborted) return;
       if (!result) { loadError = true; return; }
       item = result;
 
       // Series: load seasons and first season episodes
       if (item.type === "Series") {
-        seasons = await getSeriesSeasons(item.id);
-        if (seasons.length > 0) await loadSeasonEpisodes(seasons[0].id);
-        loadPeople(item.id);
-        loadSimilarItems(item.id);
-        loadExternalUrls(item.id);
+        seasons = await getSeriesSeasons(item.id, { signal });
+        if (signal.aborted) return;
+        if (seasons.length > 0) {
+          await loadSeasonEpisodes(seasons[0].id, signal);
+          if (signal.aborted) return;
+        }
+        loadPeople(item.id, signal);
+        loadSimilarItems(item.id, signal);
+        loadExternalUrls(item.id, signal);
         // Load streams from resume episode if available
         const resumeEp = findResumeEpisode();
-        if (resumeEp) loadMediaStreams(resumeEp.id);
+        if (resumeEp) {
+          loadMediaStreams(resumeEp.id, signal);
+        }
       }
 
       // Season: load episodes for this season
       if (item.type === "Season") {
-        episodes = await getSeasonEpisodes(item.id);
-        if (item.series_id) seasons = await getSeriesSeasons(item.series_id);
-        loadPeople(item.series_id ?? item.id);
+        episodes = await getSeasonEpisodes(item.id, { signal });
+        if (signal.aborted) return;
+        if (item.series_id) {
+          seasons = await getSeriesSeasons(item.series_id, { signal });
+          if (signal.aborted) return;
+        }
+        loadPeople(item.series_id ?? item.id, signal);
       }
 
       // Episode/Movie
       if (item.type === "Episode" || item.type === "Movie") {
         if (item.type === "Episode" && item.season_id) {
-          siblingEpisodes = await getSeasonEpisodes(item.season_id);
+          siblingEpisodes = await getSeasonEpisodes(item.season_id, { signal });
+          if (signal.aborted) return;
         }
-        loadPeople(item.id);
-        loadMediaStreams(item.id);
-        loadExternalUrls(item.id);
+        loadPeople(item.id, signal);
+        loadMediaStreams(item.id, signal);
+        loadExternalUrls(item.id, signal);
       }
     } catch (e) {
+      if (signal.aborted || isAbortError(e)) return;
       console.error("Failed to load item details:", e);
       loadError = true;
     } finally {
-      loading = false;
+      if (!signal.aborted) {
+        loading = false;
+      }
     }
   }
 
@@ -333,49 +455,55 @@
     <div class="text-center">
       <p class="text-gray-400 text-sm mb-4">Could not load this item. It may not be synced yet or the server is unreachable.</p>
       <div class="flex gap-3 justify-center">
-        <button onclick={() => { loadError = false; loading = true; loadItem(itemId); }} class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition-colors">Retry</button>
+        <button onclick={retryLoadItem} class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition-colors">Retry</button>
         <button onclick={() => window.history.length > 1 ? window.history.back() : push("/home")} class="px-4 py-2 bg-white/10 hover:bg-white/15 rounded-lg text-sm font-medium transition-colors">Go back</button>
       </div>
     </div>
   </main>
 
 {:else if item && (item.type === "Episode" || item.type === "Movie")}
-  <EpisodeDetail
-    {item}
-    {siblingEpisodes}
-    {people}
-    {mediaStreams}
-    {externalUrls}
-    onPlay={handlePlay}
-    onTogglePlayed={handleTogglePlayed}
-    onToggleFavorite={handleToggleFavorite}
-  />
+  <div bind:this={detailContentAnchor} tabindex="-1" class="focus:outline-none">
+    <EpisodeDetail
+      {item}
+      {siblingEpisodes}
+      {people}
+      {mediaStreams}
+      {externalUrls}
+      onPlay={handlePlay}
+      onTogglePlayed={handleTogglePlayed}
+      onToggleFavorite={handleToggleFavorite}
+    />
+  </div>
 
 {:else if item && item.type === "Series"}
-  <SeriesDetail
-    {item}
-    {seasons}
-    {episodes}
-    {allSeasonEpisodes}
-    {selectedSeasonId}
-    {people}
-    {similarItems}
-    {mediaStreams}
-    {externalUrls}
-    {episodesLoading}
-    onLoadSeasonEpisodes={loadSeasonEpisodes}
-    onTogglePlayed={handleTogglePlayed}
-    onToggleFavorite={handleToggleFavorite}
-  />
+  <div bind:this={detailContentAnchor} tabindex="-1" class="focus:outline-none">
+    <SeriesDetail
+      {item}
+      {seasons}
+      {episodes}
+      {allSeasonEpisodes}
+      {selectedSeasonId}
+      {people}
+      {similarItems}
+      {mediaStreams}
+      {externalUrls}
+      {episodesLoading}
+      onLoadSeasonEpisodes={loadSeasonEpisodes}
+      onTogglePlayed={handleTogglePlayed}
+      onToggleFavorite={handleToggleFavorite}
+    />
+  </div>
 
 {:else if item && item.type === "Season"}
-  <SeasonDetail
-    {item}
-    {episodes}
-    {people}
-    onTogglePlayed={handleTogglePlayed}
-    onToggleFavorite={handleToggleFavorite}
-  />
+  <div bind:this={detailContentAnchor} tabindex="-1" class="focus:outline-none">
+    <SeasonDetail
+      {item}
+      {episodes}
+      {people}
+      onTogglePlayed={handleTogglePlayed}
+      onToggleFavorite={handleToggleFavorite}
+    />
+  </div>
 
 {:else if item}
   <main class="min-h-screen bg-gray-900 text-white flex items-center justify-center">

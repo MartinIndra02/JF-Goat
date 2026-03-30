@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import { location, push, querystring, replace } from "svelte-spa-router";
   import {
     forceResync,
@@ -9,6 +9,7 @@
     getNextUp,
     getResumeItems,
     getUserViews,
+    exportDiagnostics,
     loadHomepageCache,
     logout as logoutApi,
     saveHomepageCache,
@@ -77,10 +78,17 @@
   const LIBRARY_PAGE_SIZE = 120;
 
   let runningResync = $state(false);
+  let downloadingDiagnostics = $state(false);
   let refreshTimer: ReturnType<typeof setInterval> | null = null;
   let staleClockTimer: ReturnType<typeof setInterval> | null = null;
   let cacheFreshnessNow = $state(Date.now());
   let lastDataRefreshAt = $state<number | null>(null);
+  let activeRouteHeading = $state<HTMLElement | null>(null);
+  let lastFocusedRoute = $state("");
+
+  const SUBTITLE_POSITION_STORAGE_KEY = "jfgoat.player.subtitleBottomPercent";
+  const DEFAULT_SUBTITLE_POSITION_PERCENT = 92;
+  let subtitlePositionPercent = $state(readStoredSubtitlePositionPercent());
 
   const currentPath = $derived($location || "/home");
   const routeQuery = $derived(new URLSearchParams($querystring));
@@ -186,6 +194,8 @@
       cacheFreshnessNow = Date.now();
     }, 30_000);
 
+    subtitlePositionPercent = readStoredSubtitlePositionPercent();
+
     void initializeHome();
 
     return () => {
@@ -225,6 +235,16 @@
   $effect(() => {
     if (!preferencesLoaded) return;
     resetAutoRefreshTimer(preferences.refresh_interval_seconds);
+  });
+
+  $effect(() => {
+    const routePath = currentPath;
+    if (routePath === lastFocusedRoute) return;
+
+    lastFocusedRoute = routePath;
+    void tick().then(() => {
+      activeRouteHeading?.focus();
+    });
   });
 
   $effect(() => {
@@ -826,6 +846,65 @@
       refresh_interval_seconds: Number(target.value),
     });
   }
+
+  function clampSubtitlePositionPercent(value: number): number {
+    return Math.max(70, Math.min(98, Math.round(value)));
+  }
+
+  function readStoredSubtitlePositionPercent(): number {
+    if (typeof localStorage === "undefined") {
+      return DEFAULT_SUBTITLE_POSITION_PERCENT;
+    }
+
+    const raw = localStorage.getItem(SUBTITLE_POSITION_STORAGE_KEY);
+    if (!raw) {
+      return DEFAULT_SUBTITLE_POSITION_PERCENT;
+    }
+
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) {
+      return DEFAULT_SUBTITLE_POSITION_PERCENT;
+    }
+
+    return clampSubtitlePositionPercent(parsed);
+  }
+
+  function setSubtitlePositionPreference(event: Event) {
+    const target = event.target as HTMLInputElement;
+    subtitlePositionPercent = clampSubtitlePositionPercent(Number(target.value));
+
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(
+        SUBTITLE_POSITION_STORAGE_KEY,
+        String(subtitlePositionPercent),
+      );
+    }
+  }
+
+  async function handleDownloadDiagnostics() {
+    if (downloadingDiagnostics) return;
+
+    downloadingDiagnostics = true;
+    try {
+      const result = await exportDiagnostics();
+      pushToast({
+        level: "success",
+        source: "system",
+        title: "Diagnostics exported",
+        message: `Saved to ${result.file_path}`,
+        dedupeKey: `diagnostics-export-${result.generated_at_unix_ms}`,
+      });
+    } catch (error) {
+      pushErrorToast(
+        "system",
+        error,
+        "Diagnostics export failed",
+        "diagnostics-export-failed",
+      );
+    } finally {
+      downloadingDiagnostics = false;
+    }
+  }
 </script>
 
 <main class="min-h-screen bg-gray-900 text-white pb-16">
@@ -926,6 +1005,7 @@
 
   {#if isSearchRoute}
     <section class="px-6 pt-6" aria-label="Search results">
+      <h2 bind:this={activeRouteHeading} tabindex="-1" class="sr-only">Search results</h2>
       {#if !searchQuery.trim()}
         <p class="text-gray-400 text-sm">Type in the search field to browse your media.</p>
       {:else if searching}
@@ -940,9 +1020,11 @@
           {#if movieResults.length > 0}
             <section>
               <h2 class="text-sm font-semibold text-gray-200 mb-3">Movies ({movieResults.length})</h2>
-              <div class="flex flex-wrap gap-3">
+              <div class="flex flex-wrap gap-3" role="list" aria-label="Movie results">
                 {#each movieResults as item (item.id)}
-                  <PosterCard {item} />
+                  <div role="listitem">
+                    <PosterCard {item} />
+                  </div>
                 {/each}
               </div>
             </section>
@@ -951,9 +1033,11 @@
           {#if showResults.length > 0}
             <section>
               <h2 class="text-sm font-semibold text-gray-200 mb-3">Shows ({showResults.length})</h2>
-              <div class="flex flex-wrap gap-3">
+              <div class="flex flex-wrap gap-3" role="list" aria-label="Show results">
                 {#each showResults as item (item.id)}
-                  <PosterCard {item} />
+                  <div role="listitem">
+                    <PosterCard {item} />
+                  </div>
                 {/each}
               </div>
             </section>
@@ -962,9 +1046,11 @@
           {#if episodeResults.length > 0}
             <section>
               <h2 class="text-sm font-semibold text-gray-200 mb-3">Episodes ({episodeResults.length})</h2>
-              <div class="flex flex-wrap gap-3">
+              <div class="flex flex-wrap gap-3" role="list" aria-label="Episode results">
                 {#each episodeResults as item (item.id)}
-                  <PosterCard {item} />
+                  <div role="listitem">
+                    <PosterCard {item} />
+                  </div>
                 {/each}
               </div>
             </section>
@@ -973,9 +1059,11 @@
           {#if otherResults.length > 0}
             <section>
               <h2 class="text-sm font-semibold text-gray-300 mb-3">Other ({otherResults.length})</h2>
-              <div class="flex flex-wrap gap-3">
+              <div class="flex flex-wrap gap-3" role="list" aria-label="Other results">
                 {#each otherResults as item (item.id)}
-                  <PosterCard {item} />
+                  <div role="listitem">
+                    <PosterCard {item} />
+                  </div>
                 {/each}
               </div>
             </section>
@@ -986,7 +1074,7 @@
   {:else if isLibraryRoute}
     <section class="px-6 pt-6 pb-10" aria-label="Library browsing">
       <div class="flex flex-wrap items-center gap-3 mb-4">
-        <h2 class="text-xl font-semibold">{selectedLibrary?.name ?? "Library"}</h2>
+        <h2 bind:this={activeRouteHeading} tabindex="-1" class="text-xl font-semibold">{selectedLibrary?.name ?? "Library"}</h2>
         <span class="text-xs text-gray-400 bg-white/5 rounded-full px-2 py-1">
           {filteredLibraryItems.length} shown
           {#if libraryTotalCount !== null}
@@ -1102,9 +1190,15 @@
         {#if filteredLibraryItems.length === 0 && !libraryHasMore}
           <p class="text-gray-400 text-sm">No items match your current filters.</p>
         {:else if selectedLibraryLayout === "grid"}
-          <div class="flex flex-wrap gap-3">
+          <div
+            class="flex flex-wrap gap-3"
+            role="list"
+            aria-label="{selectedLibrary?.name ?? 'Library'} poster grid"
+          >
             {#each filteredLibraryItems as item (item.id)}
-              <PosterCard {item} />
+              <div role="listitem">
+                <PosterCard {item} />
+              </div>
             {/each}
           </div>
         {:else}
@@ -1169,7 +1263,7 @@
   {:else if isSettingsRoute}
     <section class="px-6 pt-6 pb-10 max-w-3xl" aria-label="Settings">
       <div class="flex items-center justify-between gap-3 mb-4">
-        <h2 class="text-xl font-semibold">Preferences</h2>
+        <h2 bind:this={activeRouteHeading} tabindex="-1" class="text-xl font-semibold">Preferences</h2>
         {#if preferencesSaving}
           <span class="text-xs text-blue-300">Saving...</span>
         {/if}
@@ -1199,6 +1293,21 @@
                 onchange={setPlaybackRatePreference}
                 class="bg-white/8 border border-white/10 rounded-lg px-3 py-2 text-sm"
               />
+            </label>
+
+            <label class="text-sm text-gray-300 flex flex-col gap-1 md:col-span-2">
+              Subtitle position
+              <input
+                type="range"
+                min="70"
+                max="98"
+                step="1"
+                value={subtitlePositionPercent}
+                oninput={setSubtitlePositionPreference}
+                class="accent-blue-500"
+                aria-label="Subtitle vertical position"
+              />
+              <span class="text-xs text-gray-500">{subtitlePositionPercent}% from bottom</span>
             </label>
           </div>
         </div>
@@ -1289,6 +1398,11 @@
         <div class="rounded-xl border border-white/10 bg-white/5 p-4">
           <h3 class="text-sm font-semibold mb-2">Maintenance</h3>
           <div class="flex flex-wrap gap-3">
+            <Button variant="secondary" onclick={handleDownloadDiagnostics}>
+              <span class="text-sm">
+                {downloadingDiagnostics ? "Preparing Diagnostics..." : "Download Diagnostics"}
+              </span>
+            </Button>
             <Button variant="secondary" onclick={handleResync}>
               <span class="text-sm">{runningResync ? "Resyncing..." : "Force Resync"}</span>
             </Button>
@@ -1311,6 +1425,7 @@
     </div>
   {:else}
     <div class="space-y-2">
+      <h2 bind:this={activeRouteHeading} tabindex="-1" class="sr-only">Home</h2>
       <HeroBanner items={featuredItems} />
 
       <MediaRow title="Continue Watching" items={resumeItems} landscape={true} />

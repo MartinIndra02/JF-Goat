@@ -9,6 +9,7 @@
     getSeasonEpisodes,
     getSeriesSeasons,
     mpvPlay,
+    togglePlayed,
   } from "../../lib/api";
   import {
     getPreferredAudioStreamIndex,
@@ -22,6 +23,7 @@
     withCacheBust,
     type ImageCachedPayload,
   } from "../../views/detail/detailHelpers";
+  import { pushErrorToast, pushToast } from "../../lib/stores/toast.svelte";
   import { push } from "svelte-spa-router";
   import type { MediaItem } from "../../lib/types";
 
@@ -47,16 +49,120 @@
     return Math.min((item.playback_ticks / item.run_time_ticks) * 100, 100);
   }
 
+  function hashString(value: string): number {
+    let hash = 0;
+    for (let i = 0; i < value.length; i += 1) {
+      hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0;
+    }
+    return Math.abs(hash);
+  }
+
+  function buildPosterGradient(target: MediaItem): string {
+    const seed = hashString(`${target.id}:${target.name}`);
+    const hueA = seed % 360;
+    const hueB = (hueA + 46 + (seed % 70)) % 360;
+    return `linear-gradient(145deg, hsl(${hueA} 78% 58%), hsl(${hueB} 62% 34%))`;
+  }
+
   const progress = $derived(progressPercent(item));
   const aspectClass = $derived(landscape ? "aspect-video" : "aspect-[2/3]");
   const baseImageSrc = $derived(getCardImageSrc(item, landscape));
   const trackedImageKey = $derived(imageCacheKeyFromUrl(baseImageSrc));
   let imageRefreshNonce = $state(0);
   const renderedImageSrc = $derived(withCacheBust(baseImageSrc, imageRefreshNonce));
+  const posterFallbackStyle = $derived(`--poster-fallback-gradient: ${buildPosterGradient(item)};`);
   let launchingPlayback = $state(false);
+  let imageLoaded = $state(false);
+  let contextMenuOpen = $state(false);
+  let contextMenuX = $state(0);
+  let contextMenuY = $state(0);
+
+  const canTogglePlayed = $derived(item.type === "Movie" || item.type === "Episode");
+  const canGoToShow = $derived(item.type === "Episode" && !!item.series_id);
+  const canGoToSeason = $derived(item.type === "Episode" && !!item.season_id);
+  const canGoToEpisode = $derived(item.type === "Series" || item.type === "Season");
 
   function openDetail() {
+    closeContextMenu();
     push(`/item?id=${item.id}`);
+  }
+
+  function closeContextMenu() {
+    contextMenuOpen = false;
+  }
+
+  function handleContextMenu(event: MouseEvent) {
+    event.preventDefault();
+
+    const menuWidth = 210;
+    const menuHeight = 230;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    contextMenuX = Math.min(event.clientX, viewportWidth - menuWidth - 12);
+    contextMenuY = Math.min(event.clientY, viewportHeight - menuHeight - 12);
+    contextMenuOpen = true;
+  }
+
+  function handleMenuKeyboard(event: KeyboardEvent) {
+    if (!contextMenuOpen) return;
+    if (event.key === "Escape") {
+      closeContextMenu();
+    }
+  }
+
+  async function handleContextTogglePlayed() {
+    if (!canTogglePlayed) return;
+
+    try {
+      const newPlayed = await togglePlayed(item.id, item.played);
+      item = {
+        ...item,
+        played: newPlayed,
+        playback_ticks: newPlayed ? item.playback_ticks : 0,
+      };
+      pushToast({
+        level: "success",
+        source: "api",
+        title: newPlayed ? "Marked as watched" : "Marked as unwatched",
+        message: item.name,
+        dedupeKey: `poster-toggle-played-${item.id}-${newPlayed}`,
+        dismissAfterMs: 2200,
+      });
+    } catch (error) {
+      pushErrorToast(
+        "api",
+        error,
+        "Could not update watched state",
+        `poster-toggle-played-failed-${item.id}`,
+      );
+    } finally {
+      closeContextMenu();
+    }
+  }
+
+  function handleContextGoToShow() {
+    if (!item.series_id) return;
+    closeContextMenu();
+    push(`/item?id=${item.series_id}`);
+  }
+
+  function handleContextGoToSeason() {
+    if (!item.season_id) return;
+    closeContextMenu();
+    push(`/item?id=${item.season_id}`);
+  }
+
+  async function handleContextGoToEpisode() {
+    if (!canGoToEpisode) return;
+    const target = await resolvePlayableItem(item);
+    if (!target) {
+      closeContextMenu();
+      return;
+    }
+
+    closeContextMenu();
+    push(`/item?id=${target.id}`);
   }
 
   function seasonNumber(value: string | null): number | string {
@@ -108,6 +214,8 @@
 
   async function handlePosterClick() {
     if (launchingPlayback) return;
+
+    closeContextMenu();
 
     launchingPlayback = true;
     try {
@@ -189,11 +297,17 @@
     };
   });
 
+  $effect(() => {
+    renderedImageSrc;
+    imageLoaded = false;
+  });
+
   // Retry loading images that were returned as transparent placeholders (cache miss).
   // The background fetch will populate the cache, so the retry will succeed.
   function handleImageLoad(event: Event) {
     const img = event.target as HTMLImageElement;
     if (img.naturalWidth <= 1 && img.naturalHeight <= 1) {
+      imageLoaded = false;
       // Got the transparent placeholder — image is being fetched in background
       const src = img.src;
       const retryCount = parseInt(img.dataset.retry ?? "0");
@@ -206,11 +320,16 @@
         }, 1500 * (retryCount + 1));
       }
     } else {
-      // Real image loaded — fade it in
-      img.classList.add("opacity-100");
+      imageLoaded = true;
     }
   }
+
+  function handleImageError() {
+    imageLoaded = false;
+  }
 </script>
+
+<svelte:window onkeydown={handleMenuKeyboard} />
 
 <div
   class="group flex-shrink-0 {landscape ? 'w-56 sm:w-64' : 'w-32 sm:w-36'}"
@@ -218,24 +337,29 @@
   <button
     type="button"
     onclick={handlePosterClick}
+    oncontextmenu={handleContextMenu}
     disabled={launchingPlayback}
     aria-busy={launchingPlayback}
     class="block w-full text-left relative overflow-hidden rounded-lg shadow-md transition-transform duration-200 group-hover:scale-105 group-hover:shadow-xl cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400 disabled:opacity-70"
     aria-label="Play {item.name}"
   >
-    {#if baseImageSrc}
-      <img
-        src={renderedImageSrc}
-        alt={item.name}
-        loading="lazy"
-        onload={handleImageLoad}
-        class="w-full {aspectClass} object-cover transition-opacity duration-300 opacity-0"
-      />
-    {:else}
-      <div class="w-full {aspectClass} bg-gray-800 flex items-center justify-center">
-        <span class="text-gray-400 text-xs text-center px-2 line-clamp-3">{item.name}</span>
+    <div class="relative w-full {aspectClass}">
+      <div class="poster-fallback">
+        <div class="poster-fallback__surface" style={posterFallbackStyle}>
+        </div>
       </div>
-    {/if}
+
+      {#if baseImageSrc}
+        <img
+          src={renderedImageSrc}
+          alt={item.name}
+          loading="lazy"
+          onload={handleImageLoad}
+          onerror={handleImageError}
+          class="absolute inset-0 w-full h-full object-cover transition-opacity duration-300 {imageLoaded ? 'opacity-100' : 'opacity-0'}"
+        />
+      {/if}
+    </div>
 
     <!-- Background placeholder behind the image -->
     <div class="absolute inset-0 bg-gray-800 -z-10"></div>
@@ -260,9 +384,79 @@
     {/if}
   </button>
 
+  {#if contextMenuOpen}
+    <button
+      type="button"
+      class="fixed inset-0 z-50"
+      aria-label="Close item menu"
+      onclick={closeContextMenu}
+    ></button>
+
+    <div
+      class="fixed z-[60] w-52 overflow-hidden rounded-xl border border-white/10 bg-gray-900/96 shadow-2xl backdrop-blur-md"
+      style="left: {contextMenuX}px; top: {contextMenuY}px;"
+      role="menu"
+      aria-label="Item actions"
+    >
+      <button
+        type="button"
+        role="menuitem"
+        onclick={openDetail}
+        class="w-full px-3 py-2.5 text-left text-sm text-gray-100 hover:bg-white/10 transition-colors"
+      >
+        Open details
+      </button>
+
+      {#if canTogglePlayed}
+        <button
+          type="button"
+          role="menuitem"
+          onclick={handleContextTogglePlayed}
+          class="w-full px-3 py-2.5 text-left text-sm text-gray-100 hover:bg-white/10 transition-colors"
+        >
+          {item.played ? "Mark as unwatched" : "Mark as watched"}
+        </button>
+      {/if}
+
+      {#if canGoToShow}
+        <button
+          type="button"
+          role="menuitem"
+          onclick={handleContextGoToShow}
+          class="w-full px-3 py-2.5 text-left text-sm text-gray-100 hover:bg-white/10 transition-colors"
+        >
+          Go to show
+        </button>
+      {/if}
+
+      {#if canGoToSeason}
+        <button
+          type="button"
+          role="menuitem"
+          onclick={handleContextGoToSeason}
+          class="w-full px-3 py-2.5 text-left text-sm text-gray-100 hover:bg-white/10 transition-colors"
+        >
+          Go to season
+        </button>
+      {/if}
+
+      {#if canGoToEpisode}
+        <button
+          type="button"
+          role="menuitem"
+          onclick={handleContextGoToEpisode}
+          class="w-full px-3 py-2.5 text-left text-sm text-gray-100 hover:bg-white/10 transition-colors"
+        >
+          Go to episode
+        </button>
+      {/if}
+    </div>
+  {/if}
+
   <button
     type="button"
     onclick={openDetail}
+    oncontextmenu={handleContextMenu}
     class="mt-1.5 px-0.5 block w-full text-left cursor-pointer rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400"
     aria-label="Open details for {item.name}"
   >

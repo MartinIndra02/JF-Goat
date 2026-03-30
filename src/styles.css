@@ -112,3 +112,32 @@ body.carousel-dragging {
     ),
     var(--skeleton-base);
 }
+
+.poster-fallback {
+  position: absolute;
+  inset: 0;
+}
+
+.poster-fallback__surface {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: var(
+    --poster-fallback-gradient,
+    linear-gradient(145deg, #334155, #0f172a)
+  );
+}
+
+.poster-fallback__surface::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    130deg,
+    rgba(255, 255, 255, 0.16) 0%,
+    rgba(255, 255, 255, 0.03) 42%,
+    rgba(0, 0, 0, 0.28) 100%
+  );
+}
+

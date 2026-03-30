@@ -105,6 +105,31 @@
   const PLAYBACK_CONTEXT_DELAY_MS = 2500;
   const STREAM_CONTEXT_DELAY_MS = 3000;
   const PLAYBACK_PROGRESS_INTERVAL_MS = 15_000;
+  const SUBTITLE_POSITION_STORAGE_KEY = "jfgoat.player.subtitleBottomPercent";
+  const DEFAULT_SUBTITLE_POSITION_PERCENT = 92;
+  const SUBTITLE_POSITION_CONTROLS_OFFSET = 14;
+
+  function clampSubtitlePositionPercent(value: number): number {
+    return Math.max(70, Math.min(98, Math.round(value)));
+  }
+
+  function getStoredSubtitlePositionPercent(): number {
+    if (typeof localStorage === "undefined") {
+      return DEFAULT_SUBTITLE_POSITION_PERCENT;
+    }
+
+    const raw = localStorage.getItem(SUBTITLE_POSITION_STORAGE_KEY);
+    if (!raw) {
+      return DEFAULT_SUBTITLE_POSITION_PERCENT;
+    }
+
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) {
+      return DEFAULT_SUBTITLE_POSITION_PERCENT;
+    }
+
+    return clampSubtitlePositionPercent(parsed);
+  }
 
   // ── Derived values ───────────────────────────────────────────
   const playerVisible = $derived(isPlayerVisible());
@@ -1169,7 +1194,12 @@
       closeTopMenus();
     }
 
-    const subtitlePosition = controlsVisible ? 82 : 96;
+    const storedSubtitlePosition = getStoredSubtitlePositionPercent();
+    const subtitlePosition = controlsVisible
+      ? clampSubtitlePositionPercent(
+        storedSubtitlePosition - SUBTITLE_POSITION_CONTROLS_OFFSET,
+      )
+      : storedSubtitlePosition;
     void mpvSetSubtitlePosition(subtitlePosition);
   });
 </script>

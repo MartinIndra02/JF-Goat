@@ -278,7 +278,17 @@
         </div>
 
         {#if episodesLoading}
-          <div class="flex items-center justify-center h-24"><svg class="w-6 h-6 text-blue-400 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" class="opacity-25"/><path d="M4 12a8 8 0 018-8" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></div>
+          <div class="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-5 px-5" aria-hidden="true">
+            {#each Array.from({ length: 4 }) as _}
+              <div class="flex-shrink-0 w-48 rounded-xl overflow-hidden">
+                <div class="skeleton-card aspect-video"></div>
+                <div class="p-2.5">
+                  <div class="skeleton-line skeleton-line--text w-3/4"></div>
+                  <div class="mt-2 skeleton-line skeleton-line--text skeleton-line--muted w-11/12"></div>
+                </div>
+              </div>
+            {/each}
+          </div>
         {:else if episodes.length > 0}
           <div class="relative">
             <div class="flex items-center justify-end gap-1 mb-2">
