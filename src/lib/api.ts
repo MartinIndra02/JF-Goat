@@ -5,6 +5,8 @@ import type {
   SessionInfo,
   SearchResult,
   MediaItem,
+  PaginatedResult,
+  PaginationRequest,
   UserLibrary,
   HomepageCache,
   UserPreferences,
@@ -13,8 +15,22 @@ import type {
   ChapterInfo,
   ExternalUrl,
   PlaybackRequest,
+  PlaybackConfigPayload,
+  DirectPlaybackQuery,
+  TranscodePlaybackQuery,
   VideoScaleMode,
 } from "./types";
+
+function encodeQueryValue(value: string | number): string {
+  return encodeURIComponent(String(value));
+}
+
+function toQueryString<T extends object>(query: T): string {
+  return Object.entries(query as Record<string, string | number | undefined>)
+    .filter(([, value]) => value !== undefined)
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeQueryValue(value as string | number)}`)
+    .join("&");
+}
 
 export async function connectToServer(url: string): Promise<ServerPublicInfo> {
   return invoke("connect_to_server", { url });
@@ -97,6 +113,85 @@ export async function getLibraryItems(
   limit: number,
 ): Promise<MediaItem[]> {
   return invoke("get_latest_items", { parentId, limit });
+}
+
+export async function getLibraryItemsPage(
+  parentId: string,
+  pagination: PaginationRequest,
+): Promise<PaginatedResult<MediaItem>> {
+  // Stable DTO stub for feature work until backend paging command is introduced.
+  const safeLimit = Math.max(1, Math.trunc(pagination.limit));
+  const safeStartIndex = Math.max(0, Math.trunc(pagination.start_index));
+  const items = await getLibraryItems(parentId, safeLimit);
+
+  return {
+    items,
+    total_record_count: safeStartIndex + items.length,
+    start_index: safeStartIndex,
+    limit: safeLimit,
+    has_more: items.length >= safeLimit,
+  };
+}
+
+export function buildPlaybackConfigPayload(
+  serverUrl: string,
+  apiKey: string,
+  request: PlaybackRequest,
+): PlaybackConfigPayload {
+  const normalizedServerUrl = serverUrl.replace(/\/+$/, "");
+  const endpoint = `/Videos/${request.itemId}/stream`;
+  const shouldTranscode =
+    (request.maxStreamingBitrate ?? 0) > 0 || (request.targetHeight ?? 0) > 0;
+
+  if (shouldTranscode) {
+    const query: TranscodePlaybackQuery = {
+      api_key: apiKey,
+      static: "false",
+    };
+
+    if (typeof request.audioStreamIndex === "number" && request.audioStreamIndex >= 0) {
+      query.AudioStreamIndex = request.audioStreamIndex;
+    }
+
+    if (typeof request.subtitleStreamIndex === "number") {
+      query.SubtitleStreamIndex =
+        request.subtitleStreamIndex >= 0 ? request.subtitleStreamIndex : -1;
+    }
+
+    if ((request.maxStreamingBitrate ?? 0) > 0) {
+      query.MaxStreamingBitrate = request.maxStreamingBitrate as number;
+    }
+
+    if ((request.targetHeight ?? 0) > 0) {
+      query.MaxHeight = request.targetHeight as number;
+    }
+
+    const url = `${normalizedServerUrl}${endpoint}?${toQueryString(query)}`;
+
+    return {
+      mode: "transcode",
+      item_id: request.itemId,
+      endpoint,
+      url,
+      query,
+    };
+  }
+
+  const query: DirectPlaybackQuery = {
+    api_key: apiKey,
+    static: "true",
+    mediaSourceId: request.itemId,
+  };
+
+  const url = `${normalizedServerUrl}${endpoint}?${toQueryString(query)}`;
+
+  return {
+    mode: "direct",
+    item_id: request.itemId,
+    endpoint,
+    url,
+    query,
+  };
 }
 
 // ── Detail page commands ─────────────────────────────────────────────
@@ -229,12 +324,7 @@ export async function reportPlaybackStopped(
   positionTicks: number,
   durationTicks: number,
 ): Promise<void> {
-  return reportPlaybackLifecycle(
-    itemId,
-    positionTicks,
-    durationTicks,
-    "stopped",
-  );
+  return reportPlaybackLifecycle(itemId, positionTicks, durationTicks, "stopped");
 }
 
 // ── User data mutations ──────────────────────────────────────────────

@@ -1,4 +1,5 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use urlencoding::encode;
 
 use crate::api::client::JellyfinClient;
 use crate::error::JfgoatError;
@@ -91,6 +92,195 @@ pub struct JellyfinUserData {
     pub is_favorite: Option<bool>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PaginatedResult<T> {
+    pub items: Vec<T>,
+    pub total_record_count: u32,
+    pub start_index: u32,
+    pub limit: u32,
+    pub has_more: bool,
+}
+
+impl<T> PaginatedResult<T> {
+    pub fn from_known_total(
+        items: Vec<T>,
+        total_record_count: u32,
+        start_index: u32,
+        limit: u32,
+    ) -> Self {
+        let has_more = start_index.saturating_add(items.len() as u32) < total_record_count;
+        Self {
+            items,
+            total_record_count,
+            start_index,
+            limit,
+            has_more,
+        }
+    }
+
+    pub fn from_page_len(items: Vec<T>, start_index: u32, limit: u32) -> Self {
+        let total_record_count = start_index.saturating_add(items.len() as u32);
+        let has_more = limit > 0 && (items.len() as u32) >= limit;
+        Self {
+            items,
+            total_record_count,
+            start_index,
+            limit,
+            has_more,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DirectPlaybackQuery {
+    pub api_key: String,
+    #[serde(rename = "static")]
+    pub static_mode: String,
+    #[serde(rename = "mediaSourceId")]
+    pub media_source_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TranscodePlaybackQuery {
+    pub api_key: String,
+    #[serde(rename = "static")]
+    pub static_mode: String,
+    #[serde(rename = "AudioStreamIndex", skip_serializing_if = "Option::is_none")]
+    pub audio_stream_index: Option<i64>,
+    #[serde(rename = "SubtitleStreamIndex", skip_serializing_if = "Option::is_none")]
+    pub subtitle_stream_index: Option<i64>,
+    #[serde(rename = "MaxStreamingBitrate", skip_serializing_if = "Option::is_none")]
+    pub max_streaming_bitrate: Option<i64>,
+    #[serde(rename = "MaxHeight", skip_serializing_if = "Option::is_none")]
+    pub max_height: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(tag = "mode", rename_all = "lowercase")]
+pub enum PlaybackConfigPayload {
+    Direct {
+        item_id: String,
+        endpoint: String,
+        url: String,
+        query: DirectPlaybackQuery,
+    },
+    Transcode {
+        item_id: String,
+        endpoint: String,
+        url: String,
+        query: TranscodePlaybackQuery,
+    },
+}
+
+impl PlaybackConfigPayload {
+    pub fn url(&self) -> &str {
+        match self {
+            Self::Direct { url, .. } | Self::Transcode { url, .. } => url,
+        }
+    }
+}
+
+fn build_query_string(query_params: &[(String, String)]) -> String {
+    query_params
+        .iter()
+        .map(|(k, v)| format!("{}={}", encode(k), encode(v)))
+        .collect::<Vec<_>>()
+        .join("&")
+}
+
+pub fn build_playback_config_payload(
+    server_url: &str,
+    token: &str,
+    item_id: &str,
+    audio_stream_index: Option<i64>,
+    subtitle_stream_index: Option<i64>,
+    max_streaming_bitrate: Option<i64>,
+    target_height: Option<i64>,
+) -> PlaybackConfigPayload {
+    let endpoint = format!("/Videos/{}/stream", item_id);
+    let server_base = server_url.trim_end_matches('/');
+    let should_transcode =
+        max_streaming_bitrate.unwrap_or(0) > 0 || target_height.unwrap_or(0) > 0;
+
+    if should_transcode {
+        let mut query = TranscodePlaybackQuery {
+            api_key: token.to_string(),
+            static_mode: "false".to_string(),
+            audio_stream_index: None,
+            subtitle_stream_index: None,
+            max_streaming_bitrate: None,
+            max_height: None,
+        };
+
+        if let Some(idx) = audio_stream_index {
+            if idx >= 0 {
+                query.audio_stream_index = Some(idx);
+            }
+        }
+
+        if let Some(idx) = subtitle_stream_index {
+            query.subtitle_stream_index = Some(if idx >= 0 { idx } else { -1 });
+        }
+
+        if let Some(bitrate) = max_streaming_bitrate {
+            if bitrate > 0 {
+                query.max_streaming_bitrate = Some(bitrate);
+            }
+        }
+
+        if let Some(height) = target_height {
+            if height > 0 {
+                query.max_height = Some(height);
+            }
+        }
+
+        let mut query_params = vec![
+            ("api_key".to_string(), query.api_key.clone()),
+            ("static".to_string(), query.static_mode.clone()),
+        ];
+        if let Some(v) = query.audio_stream_index {
+            query_params.push(("AudioStreamIndex".to_string(), v.to_string()));
+        }
+        if let Some(v) = query.subtitle_stream_index {
+            query_params.push(("SubtitleStreamIndex".to_string(), v.to_string()));
+        }
+        if let Some(v) = query.max_streaming_bitrate {
+            query_params.push(("MaxStreamingBitrate".to_string(), v.to_string()));
+        }
+        if let Some(v) = query.max_height {
+            query_params.push(("MaxHeight".to_string(), v.to_string()));
+        }
+
+        let url = format!("{}{}?{}", server_base, endpoint, build_query_string(&query_params));
+
+        return PlaybackConfigPayload::Transcode {
+            item_id: item_id.to_string(),
+            endpoint,
+            url,
+            query,
+        };
+    }
+
+    let query = DirectPlaybackQuery {
+        api_key: token.to_string(),
+        static_mode: "true".to_string(),
+        media_source_id: item_id.to_string(),
+    };
+    let query_params = vec![
+        ("api_key".to_string(), query.api_key.clone()),
+        ("static".to_string(), query.static_mode.clone()),
+        ("mediaSourceId".to_string(), query.media_source_id.clone()),
+    ];
+    let url = format!("{}{}?{}", server_base, endpoint, build_query_string(&query_params));
+
+    PlaybackConfigPayload::Direct {
+        item_id: item_id.to_string(),
+        endpoint,
+        url,
+        query,
+    }
+}
+
 /// Fetch the user's top-level libraries (Views).
 pub async fn fetch_user_views(
     client: &JellyfinClient,
@@ -135,6 +325,34 @@ pub async fn fetch_view_items_no_count(
     limit: u32,
 ) -> Result<JellyfinItemsResponse, JfgoatError> {
     fetch_view_items_inner(client, user_id, view_id, start_index, limit, false).await
+}
+
+pub async fn fetch_view_items_paginated(
+    client: &JellyfinClient,
+    user_id: &str,
+    view_id: &str,
+    start_index: u32,
+    limit: u32,
+    enable_total_count: bool,
+) -> Result<PaginatedResult<JellyfinItem>, JfgoatError> {
+    let response =
+        fetch_view_items_inner(client, user_id, view_id, start_index, limit, enable_total_count)
+            .await?;
+
+    if enable_total_count {
+        return Ok(PaginatedResult::from_known_total(
+            response.items,
+            response.total_record_count,
+            start_index,
+            limit,
+        ));
+    }
+
+    Ok(PaginatedResult::from_page_len(
+        response.items,
+        start_index,
+        limit,
+    ))
 }
 
 /// Fetch a paginated list of user-scoped items with UserData only.

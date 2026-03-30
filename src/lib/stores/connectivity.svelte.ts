@@ -1,4 +1,6 @@
-let online = $state(typeof navigator === "undefined" ? true : navigator.onLine);
+let online = $state(
+  typeof navigator === "undefined" ? true : navigator.onLine,
+);
 let degraded = $state(false);
 let lastNetworkError = $state<string | null>(null);
 let lastSuccessfulSyncAt = $state<number | null>(null);

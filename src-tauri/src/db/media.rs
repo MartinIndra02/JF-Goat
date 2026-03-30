@@ -1,6 +1,7 @@
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
+use crate::api::media::PaginatedResult as ApiPaginatedResult;
 use crate::error::JfgoatError;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -31,6 +32,35 @@ pub struct MediaItem {
     pub is_favorite: bool,
     pub server_id: String,
     pub user_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+pub struct PaginationScope {
+    pub start_index: u32,
+    pub limit: u32,
+}
+
+pub fn to_paginated_result(
+    items: Vec<MediaItem>,
+    pagination: PaginationScope,
+    total_record_count: Option<u32>,
+) -> ApiPaginatedResult<MediaItem> {
+    let inferred_total = pagination
+        .start_index
+        .saturating_add(items.len() as u32);
+    let total = total_record_count.unwrap_or(inferred_total);
+    let has_more = match total_record_count {
+        Some(known_total) => inferred_total < known_total,
+        None => pagination.limit > 0 && (items.len() as u32) >= pagination.limit,
+    };
+
+    ApiPaginatedResult {
+        items,
+        total_record_count: total,
+        start_index: pagination.start_index,
+        limit: pagination.limit,
+        has_more,
+    }
 }
 
 /// Insert a chunk of media items in a single transaction for maximum I/O performance.

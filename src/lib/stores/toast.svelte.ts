@@ -41,12 +41,9 @@ function compactRecentMap(timestamp: number): void {
 }
 
 function defaultTitle(level: ToastLevel, source: ToastSource): string {
-  if (source === "sync")
-    return level === "error" ? "Sync failed" : "Sync update";
-  if (source === "player")
-    return level === "error" ? "Playback error" : "Playback update";
-  if (source === "api")
-    return level === "error" ? "Request failed" : "Request update";
+  if (source === "sync") return level === "error" ? "Sync failed" : "Sync update";
+  if (source === "player") return level === "error" ? "Playback error" : "Playback update";
+  if (source === "api") return level === "error" ? "Request failed" : "Request update";
   return level === "error" ? "Error" : "Notification";
 }
 
@@ -70,8 +67,8 @@ export function pushToast(input: PushToastInput): string | null {
   compactRecentMap(timestamp);
 
   const dedupeKey =
-    input.dedupeKey ??
-    `${input.source}|${input.level}|${input.title ?? ""}|${message}`;
+    input.dedupeKey
+    ?? `${input.source}|${input.level}|${input.title ?? ""}|${message}`;
   const previouslySeenAt = recentByKey.get(dedupeKey);
 
   if (previouslySeenAt && timestamp - previouslySeenAt < DEDUPE_WINDOW_MS) {
@@ -117,8 +114,8 @@ export function normalizeErrorMessage(error: unknown): string {
     }
 
     if (
-      typeof maybeRecord.kind === "string" &&
-      typeof maybeRecord.message === "string"
+      typeof maybeRecord.kind === "string"
+      && typeof maybeRecord.message === "string"
     ) {
       return `${maybeRecord.kind}: ${maybeRecord.message}`;
     }

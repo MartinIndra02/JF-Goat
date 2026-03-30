@@ -1,6 +1,6 @@
 use tauri::State;
-use urlencoding::encode;
 
+use crate::api::media as media_api;
 use crate::commands::media_commands::{
     report_playback_lifecycle_internal, PlaybackLifecycleEvent,
 };
@@ -33,55 +33,17 @@ fn build_playback_url_with_options(
         .clone()
         .ok_or_else(|| JfgoatError::Auth("No token available".to_string()))?;
 
-    let should_transcode = max_streaming_bitrate.unwrap_or(0) > 0 || target_height.unwrap_or(0) > 0;
-    let mut query_params = vec![
-        ("api_key".to_string(), token),
-        ("static".to_string(), if should_transcode { "false" } else { "true" }.to_string()),
-    ];
-
-    if should_transcode {
-        if let Some(idx) = audio_stream_index {
-            if idx >= 0 {
-                query_params.push(("AudioStreamIndex".to_string(), idx.to_string()));
-            }
-        }
-
-        if let Some(idx) = subtitle_stream_index {
-            if idx >= 0 {
-                query_params.push(("SubtitleStreamIndex".to_string(), idx.to_string()));
-            } else {
-                query_params.push(("SubtitleStreamIndex".to_string(), "-1".to_string()));
-            }
-        }
-    } else {
-        // Keep direct-play requests as lightweight as possible.
-        query_params.push(("mediaSourceId".to_string(), item_id.to_string()));
-    }
-
-    if let Some(bitrate) = max_streaming_bitrate {
-        if bitrate > 0 {
-            query_params.push(("MaxStreamingBitrate".to_string(), bitrate.to_string()));
-        }
-    }
-
-    if let Some(height) = target_height {
-        if height > 0 {
-            query_params.push(("MaxHeight".to_string(), height.to_string()));
-        }
-    }
-
-    let query = query_params
-        .into_iter()
-        .map(|(k, v)| format!("{}={}", encode(&k), encode(&v)))
-        .collect::<Vec<_>>()
-        .join("&");
-
-    Ok(format!(
-        "{}/Videos/{}/stream?{}",
-        server_url.trim_end_matches('/'),
+    let payload = media_api::build_playback_config_payload(
+        &server_url,
+        &token,
         item_id,
-        query
-    ))
+        audio_stream_index,
+        subtitle_stream_index,
+        max_streaming_bitrate,
+        target_height,
+    );
+
+    Ok(payload.url().to_string())
 }
 
 #[tauri::command]

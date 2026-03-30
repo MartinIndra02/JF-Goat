@@ -63,6 +63,19 @@ export interface SearchResult {
   source: "local" | "remote";
 }
 
+export interface PaginatedResult<T> {
+  items: T[];
+  total_record_count: number;
+  start_index: number;
+  limit: number;
+  has_more: boolean;
+}
+
+export interface PaginationRequest {
+  start_index: number;
+  limit: number;
+}
+
 export interface SyncProgress {
   current: number;
   total: number;
@@ -162,6 +175,41 @@ export interface PlaybackRequest {
   maxStreamingBitrate?: number | null;
   targetHeight?: number | null;
 }
+
+export interface DirectPlaybackQuery {
+  api_key: string;
+  static: "true";
+  mediaSourceId: string;
+}
+
+export interface TranscodePlaybackQuery {
+  api_key: string;
+  static: "false";
+  AudioStreamIndex?: number;
+  SubtitleStreamIndex?: number;
+  MaxStreamingBitrate?: number;
+  MaxHeight?: number;
+}
+
+export interface DirectPlaybackConfigPayload {
+  mode: "direct";
+  item_id: string;
+  endpoint: string;
+  url: string;
+  query: DirectPlaybackQuery;
+}
+
+export interface TranscodePlaybackConfigPayload {
+  mode: "transcode";
+  item_id: string;
+  endpoint: string;
+  url: string;
+  query: TranscodePlaybackQuery;
+}
+
+export type PlaybackConfigPayload =
+  | DirectPlaybackConfigPayload
+  | TranscodePlaybackConfigPayload;
 
 export interface PlaybackSelection {
   audioStreamIndex?: number | null;
