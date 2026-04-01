@@ -59,17 +59,42 @@
   // ── Auto-hide logic ──────────────────────────────────────────
   let controlsVisible = $state(true);
   let hideTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastPointerX = $state<number | null>(null);
+  let lastPointerY = $state<number | null>(null);
 
   function resetHideTimer() {
     controlsVisible = true;
     if (hideTimer) clearTimeout(hideTimer);
     hideTimer = setTimeout(() => {
+      if (audioMenuOpen || subtitleMenuOpen || overflowMenuOpen || isScrubbing) {
+        resetHideTimer();
+        return;
+      }
       controlsVisible = false;
     }, 3000);
   }
 
-  function handleMouseMove() {
+  function handleMouseMove(e: MouseEvent) {
+    if (lastPointerX === e.clientX && lastPointerY === e.clientY) {
+      return;
+    }
+
+    lastPointerX = e.clientX;
+    lastPointerY = e.clientY;
+
     resetHideTimer();
+  }
+
+  function handleMouseLeave() {
+    if (hideTimer) {
+      clearTimeout(hideTimer);
+      hideTimer = null;
+    }
+
+    closeTopMenus();
+    controlsVisible = false;
+    lastPointerX = null;
+    lastPointerY = null;
   }
 
   // ── UI state ─────────────────────────────────────────────────
@@ -196,32 +221,6 @@
   const isInOutroWindow = $derived.by(() => {
     if (!nextEpisode || !outroStartSeconds || dur <= 0) return false;
     return pos >= outroStartSeconds && pos < dur;
-  });
-
-  const audioLabel = $derived.by(() => {
-    if (!mediaStreams || mediaStreams.audio.length === 0) {
-      return "Default audio";
-    }
-
-    if (selectedAudioIndex === null) {
-      return "Default audio";
-    }
-
-    const track = mediaStreams.audio.find((s) => s.index === selectedAudioIndex);
-    return track?.display_title ?? `Audio ${selectedAudioIndex}`;
-  });
-
-  const subtitleLabel = $derived.by(() => {
-    if (!mediaStreams || mediaStreams.subtitle.length === 0) {
-      return "No subtitles";
-    }
-
-    if (selectedSubtitleIndex === null) {
-      return "Subtitles Off";
-    }
-
-    const track = mediaStreams.subtitle.find((s) => s.index === selectedSubtitleIndex);
-    return track?.display_title ?? `Subtitle ${selectedSubtitleIndex}`;
   });
 
   const selectedAudioTrack = $derived.by(() =>
@@ -573,6 +572,7 @@
     const quality = qualityOptions.find((option) => option.key === nextQualityKey);
     if (!quality) return;
 
+    closeTopMenus();
     selectedQualityKey = nextQualityKey;
     await mpvPlay({
       itemId: playerItemId,
@@ -746,6 +746,17 @@
     await mpvTogglePause();
   }
 
+  function handleOverlayClick(e: MouseEvent) {
+    if (audioMenuOpen || subtitleMenuOpen || overflowMenuOpen) {
+      e.preventDefault();
+      closeTopMenus();
+      resetHideTimer();
+      return;
+    }
+
+    void togglePause();
+  }
+
   async function seekBack10() {
     await mpvSeek(-10);
   }
@@ -896,6 +907,7 @@
   }
 
   async function setRate(nextRate: number) {
+    closeTopMenus();
     setPlaybackRate(nextRate);
     await mpvSetPlaybackRate(nextRate);
   }
@@ -1217,7 +1229,9 @@
     class="fixed inset-0 z-[9999] flex flex-col justify-between"
     style:background-color={playerStatus === "loading" ? "black" : "transparent"}
     class:cursor-none={!controlsVisible}
+    class:player-cursor-hidden={!controlsVisible}
     onmousemove={handleMouseMove}
+    onmouseleave={handleMouseLeave}
   >
     <div
       class="relative z-10 px-3 sm:px-6 pt-3 sm:pt-5 pb-10 bg-gradient-to-b from-black/80 via-black/45 to-transparent transition-all duration-300 ease-out"
@@ -1238,7 +1252,6 @@
 
           <div class="min-w-0 rounded-xl bg-black/40 border border-white/15 px-3 py-2 backdrop-blur-md">
             <p class="text-white text-sm sm:text-base font-semibold truncate">{playerTitle}</p>
-            <p class="text-[11px] text-gray-300 truncate">{subtitleLabel}</p>
           </div>
         </div>
 
@@ -1256,7 +1269,7 @@
 
     <button
       class="absolute inset-0 z-0 w-full h-full"
-      onclick={togglePause}
+      onclick={handleOverlayClick}
       aria-label={isPaused ? "Resume playback" : "Pause playback"}
     ></button>
 
@@ -1271,8 +1284,6 @@
             <p class="text-white text-sm font-semibold truncate">{playerTitle}</p>
             <div class="flex flex-wrap items-center gap-1.5 mt-1 text-[10px] sm:text-[11px]">
               <span class="px-2 py-0.5 rounded-full bg-cyan-400/15 text-cyan-200 border border-cyan-300/20">{selectedQualityLabel}</span>
-              <span class="px-2 py-0.5 rounded-full bg-white/10 text-gray-200 border border-white/15 truncate max-w-[220px]">{audioLabel}</span>
-              <span class="px-2 py-0.5 rounded-full bg-white/10 text-gray-200 border border-white/15 truncate max-w-[220px]">{subtitleLabel}</span>
               {#if endTimeEstimate()}
                 <span class="text-gray-300">{endTimeEstimate()}</span>
               {/if}
@@ -1293,11 +1304,17 @@
                   </button>
 
                   {#if audioMenuOpen}
-                    <div class="absolute right-0 bottom-10 w-64 max-h-72 overflow-auto rounded-xl border border-white/20 bg-black/82 backdrop-blur-xl shadow-[0_18px_48px_rgba(0,0,0,0.55)] p-1.5">
+                    <div
+                      class="absolute right-0 bottom-10 w-64 max-h-72 overflow-auto rounded-xl border border-white/20 bg-black/82 backdrop-blur-xl shadow-[0_18px_48px_rgba(0,0,0,0.55)] p-1.5"
+                      onpointerdown={(e) => e.stopPropagation()}
+                    >
                       {#each mediaStreams.audio as track}
                         <button
                           type="button"
-                          onclick={() => handleAudioChoice(track.index)}
+                          onclick={(e) => {
+                            e.stopPropagation();
+                            void handleAudioChoice(track.index);
+                          }}
                           class="w-full text-left px-3 py-2 rounded-lg text-xs text-gray-100 hover:bg-white/15 transition-colors"
                           class:bg-cyan-400={selectedAudioIndex === track.index}
                           class:bg-opacity-20={selectedAudioIndex === track.index}
@@ -1322,10 +1339,16 @@
                   </button>
 
                   {#if subtitleMenuOpen}
-                    <div class="absolute right-0 bottom-10 w-64 max-h-72 overflow-auto rounded-xl border border-white/20 bg-black/82 backdrop-blur-xl shadow-[0_18px_48px_rgba(0,0,0,0.55)] p-1.5">
+                    <div
+                      class="absolute right-0 bottom-10 w-64 max-h-72 overflow-auto rounded-xl border border-white/20 bg-black/82 backdrop-blur-xl shadow-[0_18px_48px_rgba(0,0,0,0.55)] p-1.5"
+                      onpointerdown={(e) => e.stopPropagation()}
+                    >
                       <button
                         type="button"
-                        onclick={() => handleSubtitleChoice(null)}
+                        onclick={(e) => {
+                          e.stopPropagation();
+                          void handleSubtitleChoice(null);
+                        }}
                         class="w-full text-left px-3 py-2 rounded-lg text-xs text-gray-100 hover:bg-white/15 transition-colors"
                         class:bg-cyan-400={selectedSubtitleIndex === null}
                         class:bg-opacity-20={selectedSubtitleIndex === null}
@@ -1336,7 +1359,10 @@
                       {#each mediaStreams.subtitle as track}
                         <button
                           type="button"
-                          onclick={() => handleSubtitleChoice(track.index)}
+                          onclick={(e) => {
+                            e.stopPropagation();
+                            void handleSubtitleChoice(track.index);
+                          }}
                           class="w-full text-left px-3 py-2 rounded-lg text-xs text-gray-100 hover:bg-white/15 transition-colors"
                           class:bg-cyan-400={selectedSubtitleIndex === track.index}
                           class:bg-opacity-20={selectedSubtitleIndex === track.index}
@@ -1361,14 +1387,20 @@
                 </button>
 
                 {#if overflowMenuOpen}
-                  <div class="absolute right-0 bottom-10 w-56 rounded-xl border border-white/20 bg-black/82 backdrop-blur-xl shadow-[0_18px_48px_rgba(0,0,0,0.55)] p-2 space-y-3">
+                  <div
+                    class="absolute right-0 bottom-10 w-56 rounded-xl border border-white/20 bg-black/82 backdrop-blur-xl shadow-[0_18px_48px_rgba(0,0,0,0.55)] p-2 space-y-3"
+                    onpointerdown={(e) => e.stopPropagation()}
+                  >
                     <div>
                       <p class="px-2 pb-1 text-[11px] uppercase tracking-wide text-gray-400">Playback Speed</p>
                       <div class="grid grid-cols-3 gap-1">
                         {#each [0.75, 1, 1.25, 1.5, 1.75, 2] as speed}
                           <button
                             type="button"
-                            onclick={() => setRate(speed)}
+                            onclick={(e) => {
+                              e.stopPropagation();
+                              void setRate(speed);
+                            }}
                             class="h-8 rounded-lg text-xs text-gray-100 border border-white/15 hover:bg-white/15 transition-colors"
                             class:bg-cyan-400={Math.abs(rate - speed) < 0.01}
                             class:bg-opacity-20={Math.abs(rate - speed) < 0.01}
@@ -1386,7 +1418,10 @@
                         {#each qualityOptions as option}
                           <button
                             type="button"
-                            onclick={() => applyQualitySelection(option.key)}
+                            onclick={(e) => {
+                              e.stopPropagation();
+                              void applyQualitySelection(option.key);
+                            }}
                             class="h-8 rounded-lg text-xs text-gray-100 border border-white/15 hover:bg-white/15 transition-colors"
                             class:bg-cyan-400={selectedQuality.key === option.key}
                             class:bg-opacity-20={selectedQuality.key === option.key}
@@ -1566,3 +1601,10 @@
     </div>
   </div>
 {/if}
+
+<style>
+  :global(.player-cursor-hidden),
+  :global(.player-cursor-hidden *) {
+    cursor: none !important;
+  }
+</style>

@@ -85,6 +85,9 @@
   let lastDataRefreshAt = $state<number | null>(null);
   let activeRouteHeading = $state<HTMLElement | null>(null);
   let lastFocusedRoute = $state("");
+  let navMenuOpen = $state(false);
+  let navMenuButton = $state<HTMLButtonElement | null>(null);
+  let navMenuPanel = $state<HTMLElement | null>(null);
 
   const SUBTITLE_POSITION_STORAGE_KEY = "jfgoat.player.subtitleBottomPercent";
   const DEFAULT_SUBTITLE_POSITION_PERCENT = 92;
@@ -97,6 +100,20 @@
   const isLibraryRoute = $derived(currentPath === "/library");
   const isSearchRoute = $derived(currentPath === "/search");
   const isSettingsRoute = $derived(currentPath === "/settings");
+
+  const primaryNavItems = [
+    { label: "Home", path: "/home" },
+    { label: "Library", path: "/library" },
+    { label: "Settings", path: "/settings" },
+  ] as const;
+
+  const currentRouteLabel = $derived.by(() => {
+    if (currentPath === "/search") {
+      return "Search";
+    }
+    const match = primaryNavItems.find((item) => item.path === currentPath);
+    return match?.label ?? "Menu";
+  });
 
   const movieResults = $derived(searchResults.filter((item) => item.type === "Movie"));
   const showResults = $derived(
@@ -190,6 +207,27 @@
       onHomepageCacheUpdated as EventListener,
     );
 
+    const onWindowPointerDown = (event: PointerEvent) => {
+      if (!navMenuOpen) return;
+
+      const target = event.target as Node | null;
+      if (!target) return;
+
+      if (navMenuButton?.contains(target) || navMenuPanel?.contains(target)) {
+        return;
+      }
+
+      navMenuOpen = false;
+    };
+
+    const onWindowKeydown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      navMenuOpen = false;
+    };
+
+    window.addEventListener("pointerdown", onWindowPointerDown);
+    window.addEventListener("keydown", onWindowKeydown);
+
     staleClockTimer = setInterval(() => {
       cacheFreshnessNow = Date.now();
     }, 30_000);
@@ -203,6 +241,9 @@
         HOMEPAGE_CACHE_UPDATED_EVENT,
         onHomepageCacheUpdated as EventListener,
       );
+
+      window.removeEventListener("pointerdown", onWindowPointerDown);
+      window.removeEventListener("keydown", onWindowKeydown);
 
       if (searchTimer) clearTimeout(searchTimer);
       if (refreshTimer) clearInterval(refreshTimer);
@@ -581,6 +622,26 @@
     push(path);
   }
 
+  function togglePrimaryMenu() {
+    navMenuOpen = !navMenuOpen;
+  }
+
+  function openItem(item: MediaItem) {
+    if (item.type === "BoxSet") {
+      push(
+        `/library?view=${encodeURIComponent(item.id)}&layout=grid&sort=recent&type=all&status=all`,
+      );
+      return;
+    }
+
+    push(`/item?id=${encodeURIComponent(item.id)}`);
+  }
+
+  function handleMenuNavigate(path: string) {
+    navMenuOpen = false;
+    navigateTo(path);
+  }
+
   function openLibraryView(library: UserLibrary) {
     push(
       `/library?view=${encodeURIComponent(library.id)}&layout=grid&sort=recent&type=all&status=all`,
@@ -910,61 +971,34 @@
 <main class="min-h-screen bg-gray-900 text-white pb-16">
   <header class="sticky top-0 z-40 bg-gray-900/80 backdrop-blur-md border-b border-white/5">
     <div class="flex flex-wrap items-center gap-4 px-4 sm:px-6 py-3">
-      <div class="flex items-center gap-3 min-w-0">
-        <div class="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center shrink-0">
+      <div class="relative flex items-center gap-3 min-w-0">
+        <button
+          bind:this={navMenuButton}
+          type="button"
+          onclick={togglePrimaryMenu}
+          aria-expanded={navMenuOpen}
+          aria-label="Toggle navigation menu"
+          class="w-8 h-8 rounded-lg bg-blue-600 hover:bg-blue-500 transition-colors flex items-center justify-center shrink-0"
+        >
           <svg class="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
             <path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z" />
           </svg>
-        </div>
+        </button>
+
         <div class="min-w-0">
           <h1 class="text-sm font-semibold truncate">
             {session?.server_name ?? "jfFast"}
           </h1>
           <p class="text-xs text-gray-500 truncate">
-            {session?.username ?? ""}
+            {session?.username ?? ""} · {currentRouteLabel}
           </p>
         </div>
       </div>
 
-      <nav class="flex items-center gap-1 sm:gap-2 bg-white/5 rounded-lg p-1" aria-label="Primary">
-        <button
-          type="button"
-          onclick={() => navigateTo("/home")}
-          class="px-3 py-1.5 text-xs sm:text-sm rounded-md transition-colors {isHomeRoute ? 'bg-blue-600 text-white' : 'text-gray-300 hover:text-white hover:bg-white/10'}"
-          aria-current={isHomeRoute ? "page" : undefined}
-        >
-          Home
-        </button>
-        <button
-          type="button"
-          onclick={() => navigateTo("/library")}
-          class="px-3 py-1.5 text-xs sm:text-sm rounded-md transition-colors {isLibraryRoute ? 'bg-blue-600 text-white' : 'text-gray-300 hover:text-white hover:bg-white/10'}"
-          aria-current={isLibraryRoute ? "page" : undefined}
-        >
-          Library
-        </button>
-        <button
-          type="button"
-          onclick={() => navigateTo("/search")}
-          class="px-3 py-1.5 text-xs sm:text-sm rounded-md transition-colors {isSearchRoute ? 'bg-blue-600 text-white' : 'text-gray-300 hover:text-white hover:bg-white/10'}"
-          aria-current={isSearchRoute ? "page" : undefined}
-        >
-          Search
-        </button>
-        <button
-          type="button"
-          onclick={() => navigateTo("/settings")}
-          class="px-3 py-1.5 text-xs sm:text-sm rounded-md transition-colors {isSettingsRoute ? 'bg-blue-600 text-white' : 'text-gray-300 hover:text-white hover:bg-white/10'}"
-          aria-current={isSettingsRoute ? "page" : undefined}
-        >
-          Settings
-        </button>
-      </nav>
-
       <div class="flex-1 min-w-52 max-w-xl ml-auto">
         <div class="relative">
           <svg
-            class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500"
+            class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500"
             viewBox="0 0 20 20"
             fill="currentColor"
             aria-hidden="true"
@@ -979,6 +1013,7 @@
             bind:value={searchQuery}
             placeholder="Search your library..."
             oninput={onSearchInput}
+            inputClass="pl-10"
           />
         </div>
       </div>
@@ -988,6 +1023,55 @@
       </Button>
     </div>
   </header>
+
+  {#if navMenuOpen}
+    <button
+      type="button"
+      class="fixed inset-0 z-50 bg-black/55"
+      aria-label="Close navigation sidebar"
+      onclick={() => {
+        navMenuOpen = false;
+      }}
+    ></button>
+
+    <aside
+      bind:this={navMenuPanel}
+      class="fixed left-0 top-0 bottom-0 z-[60] w-72 border-r border-white/10 bg-gray-950/96 backdrop-blur-md p-4"
+      aria-label="Primary navigation sidebar"
+    >
+      <div class="flex items-center justify-between gap-3 mb-4">
+        <div>
+          <p class="text-xs uppercase tracking-wide text-gray-500">Navigation</p>
+          <p class="text-sm font-semibold text-white">{session?.server_name ?? "jfFast"}</p>
+        </div>
+        <button
+          type="button"
+          class="h-8 w-8 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors"
+          aria-label="Close sidebar"
+          onclick={() => {
+            navMenuOpen = false;
+          }}
+        >
+          <svg class="w-4 h-4 mx-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <nav class="grid gap-1.5" aria-label="Primary">
+        {#each primaryNavItems as navItem}
+          <button
+            type="button"
+            onclick={() => handleMenuNavigate(navItem.path)}
+            class="w-full text-left px-3 py-2.5 rounded-lg text-sm transition-colors {currentPath === navItem.path ? 'bg-blue-600 text-white' : 'text-gray-200 hover:bg-white/10'}"
+            aria-current={currentPath === navItem.path ? "page" : undefined}
+          >
+            {navItem.label}
+          </button>
+        {/each}
+      </nav>
+    </aside>
+  {/if}
 
   {#if statusMessage}
     <div class="px-6 pt-3">
@@ -1206,7 +1290,7 @@
             {#each filteredLibraryItems as item (item.id)}
               <button
                 type="button"
-                onclick={() => push(`/item?id=${item.id}`)}
+                onclick={() => openItem(item)}
                 class="w-full rounded-xl p-3 bg-white/5 hover:bg-white/10 transition-colors text-left"
                 aria-label="Open {item.name} details"
               >

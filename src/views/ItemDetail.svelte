@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from "svelte";
-  import { location, push, querystring } from "svelte-spa-router";
+  import { location, push, querystring, replace } from "svelte-spa-router";
   import {
     getItemById,
     getSeriesSeasons,
@@ -258,6 +258,12 @@
     }
   }
 
+  function redirectToBoxSetLibrary(id: string) {
+    replace(
+      `/library?view=${encodeURIComponent(id)}&layout=grid&sort=recent&type=all&status=all`,
+    );
+  }
+
   // Reactively load item data whenever itemId changes
   $effect(() => {
     const id = itemId;
@@ -336,6 +342,12 @@
       const result = await getItemById(id, { signal });
       if (signal.aborted) return;
       if (!result) { loadError = true; return; }
+
+      if (result.type === "BoxSet") {
+        redirectToBoxSetLibrary(result.id);
+        return;
+      }
+
       item = result;
 
       // Series: load seasons and first season episodes

@@ -81,9 +81,23 @@
   const canGoToShow = $derived(item.type === "Episode" && !!item.series_id);
   const canGoToSeason = $derived(item.type === "Episode" && !!item.season_id);
   const canGoToEpisode = $derived(item.type === "Series" || item.type === "Season");
+  const canQuickPlay = $derived(
+    item.type === "Movie"
+      || item.type === "Episode"
+      || item.type === "Series"
+      || item.type === "Season",
+  );
 
   function openDetail() {
     closeContextMenu();
+
+    if (item.type === "BoxSet") {
+      push(
+        `/library?view=${encodeURIComponent(item.id)}&layout=grid&sort=recent&type=all&status=all`,
+      );
+      return;
+    }
+
     push(`/item?id=${item.id}`);
   }
 
@@ -345,7 +359,7 @@
   >
     <div class="relative w-full {aspectClass}">
       <div class="poster-fallback">
-        <div class="poster-fallback__surface" style={posterFallbackStyle}>
+        <div class="poster-fallback__surface transition-[filter] duration-200 group-hover:blur-[1.5px]" style={posterFallbackStyle}>
         </div>
       </div>
 
@@ -356,7 +370,7 @@
           loading="lazy"
           onload={handleImageLoad}
           onerror={handleImageError}
-          class="absolute inset-0 w-full h-full object-cover transition-opacity duration-300 {imageLoaded ? 'opacity-100' : 'opacity-0'}"
+          class="absolute inset-0 w-full h-full object-cover transition-[opacity,filter] duration-300 group-hover:blur-[1.5px] {imageLoaded ? 'opacity-100' : 'opacity-0'}"
         />
       {/if}
     </div>
@@ -364,7 +378,17 @@
     <!-- Background placeholder behind the image -->
     <div class="absolute inset-0 bg-gray-800 -z-10"></div>
 
-    <div class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors duration-200"></div>
+    <div class="pointer-events-none absolute inset-0 bg-black/0 group-hover:bg-black/35 transition-colors duration-200"></div>
+
+    {#if canQuickPlay}
+      <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
+        <span class="h-11 w-11 rounded-full bg-white/90 text-gray-900 grid place-items-center shadow-lg transition-all duration-200 opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100">
+          <svg class="w-5 h-5 ml-0.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M8 5v14l11-7z" />
+          </svg>
+        </span>
+      </div>
+    {/if}
 
     {#if progress > 0}
       <div class="absolute bottom-0 left-0 right-0 h-1 bg-black/50">
