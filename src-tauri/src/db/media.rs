@@ -130,17 +130,21 @@ pub fn search_local(
     user_id: &str,
     limit: u32,
 ) -> Result<Vec<MediaItem>, JfgoatError> {
-    // Escape FTS5 special characters and append wildcard for prefix matching
-    let sanitized = query
-        .replace('"', "\"\"")
-        .trim()
-        .to_string();
+    // Split by whitespace and construct FTS5 query where each term matches as a prefix wildcard
+    let terms: Vec<String> = query
+        .split_whitespace()
+        .map(|term| {
+            // Escape double quotes inside the term
+            let escaped = term.replace('"', "\"\"");
+            format!("\"{}\"*", escaped)
+        })
+        .collect();
 
-    if sanitized.is_empty() {
+    if terms.is_empty() {
         return Ok(vec![]);
     }
 
-    let fts_query = format!("\"{}\"*", sanitized);
+    let fts_query = terms.join(" AND ");
 
     let mut stmt = conn.prepare(
         "SELECT m.id, m.name, m.type, m.parent_id, m.series_id, m.series_name,

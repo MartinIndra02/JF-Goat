@@ -144,12 +144,6 @@ pub fn start_background_sync(app: AppHandle) -> bool {
 async fn run_sync(app: &AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
 
-    // Set status to INITIAL_SYNC
-    {
-        let mut status = state.sync_status.write().map_err(|e| e.to_string())?;
-        *status = SyncStatus::InitialSync;
-    }
-
     // Read connection parameters from AppState
     let (server_url, token, user_id, device_id) = {
         let url = state
@@ -220,6 +214,107 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
     };
 
     println!("Resuming with {} items already in local DB", initial_count);
+
+    // Set status to INITIAL_SYNC only if this is a fresh sync or sync is not fully complete yet.
+    // If we have already successfully completed the initial sync (all checkpoints Completed),
+    // we can run a fast incremental delta sync in the background without taking the database offline.
+    let all_completed = {
+        let db = state.db.write_conn().map_err(|e| e.to_string())?;
+        let incomplete_count: u32 = db.query_row(
+            "SELECT count(*) FROM sync_checkpoints WHERE status != 'COMPLETED' AND server_id = ?1 AND user_id = ?2",
+            rusqlite::params![server_id, user_id],
+            |row| row.get(0),
+        ).unwrap_or(0);
+        let total_checkpoints: u32 = db.query_row(
+            "SELECT count(*) FROM sync_checkpoints WHERE server_id = ?1 AND user_id = ?2",
+            rusqlite::params![server_id, user_id],
+            |row| row.get(0),
+        ).unwrap_or(0);
+        total_checkpoints > 0 && incomplete_count == 0
+    };
+
+    if all_completed {
+        println!("All checkpoints completed for user. Performing incremental delta sync.");
+        let mut start_index = 0u32;
+        let limit = 300u32;
+        let mut page = 0;
+        let max_pages = 10; // Fetch up to 3000 items if needed
+
+        loop {
+            match media::fetch_recent_items(&jf_client, &user_id, start_index, limit).await {
+                Ok(response) => {
+                    let items_count = response.items.len();
+                    if items_count == 0 {
+                        break;
+                    }
+
+                    // Check which items from this batch are already in the DB
+                    let db = state.db.write_conn().map_err(|e| e.to_string())?;
+                    let mut existing_count = 0;
+                    
+                    {
+                        let mut stmt = db.prepare_cached(
+                            "SELECT 1 FROM media_items WHERE id = ?1 AND server_id = ?2 AND user_id = ?3"
+                        ).map_err(|e| e.to_string())?;
+
+                        for item in &response.items {
+                            let exists = stmt.exists(rusqlite::params![item.id, server_id, user_id]).unwrap_or(false);
+                            if exists {
+                                existing_count += 1;
+                            }
+                        }
+                    }
+
+                    // Convert and insert/replace the items
+                    let media_items: Vec<MediaItem> = response
+                        .items
+                        .into_iter()
+                        .map(|item| to_media_item(item, &server_id, &user_id))
+                        .collect();
+
+                    insert_media_chunk(&db, &media_items).map_err(|e| e.to_string())?;
+                    println!(
+                        "Delta sync page {}: processed {} items ({} new, {} updated)",
+                        page + 1,
+                        items_count,
+                        items_count - existing_count,
+                        existing_count
+                    );
+
+                    // If all items in this batch already exist in the DB, we are fully caught up!
+                    if existing_count == items_count {
+                        println!("Delta sync fully caught up.");
+                        break;
+                    }
+
+                    start_index += limit;
+                    page += 1;
+                    if page >= max_pages {
+                        println!("Delta sync reached max page limit (3000 items).");
+                        break;
+                    }
+
+                    // Tiny pause to be friendly to the server
+                    tokio::time::sleep(Duration::from_millis(250)).await;
+                }
+                Err(e) => {
+                    eprintln!("Delta sync fetch failed: {}", e);
+                    break;
+                }
+            }
+        }
+
+        // Emit sync complete since delta sync is finished
+        let _ = app.emit("sync-complete", ());
+        ensure_incremental_refresh_worker(app);
+        return Ok(());
+    }
+
+    // Otherwise, we are doing a fresh or resume sync, so set status to INITIAL_SYNC.
+    {
+        let mut status = state.sync_status.write().map_err(|e| e.to_string())?;
+        *status = SyncStatus::InitialSync;
+    }
 
     // Step 3: Fetch user views (libraries)
     let views_response = media::fetch_user_views(&jf_client, &user_id)

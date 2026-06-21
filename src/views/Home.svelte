@@ -586,6 +586,7 @@
       if (requestId !== searchRequestId) return;
       searchResults = result.items;
       searchSource = result.source;
+      console.log(`[Search Debug] Query: "${trimmed}" | Source: ${result.source} | Count: ${result.items.length}`);
     } catch (error) {
       if (requestId !== searchRequestId) return;
       pushErrorToast("api", error, "Search failed", "search-failed");
@@ -598,28 +599,40 @@
     }
   }
 
+  function triggerSearchImmediately() {
+    if (searchTimer) {
+      clearTimeout(searchTimer);
+      searchTimer = null;
+    }
+
+    const trimmed = searchQuery.trim();
+    if (!trimmed) {
+      if (isSearchRoute) {
+        replace("/search");
+      }
+      searchResults = [];
+      searchSource = "";
+      lastSearchTerm = "";
+      return;
+    }
+
+    const target = `/search?q=${encodeURIComponent(trimmed)}`;
+    if (isSearchRoute) {
+      replace(target);
+    } else {
+      push(target);
+    }
+  }
+
   function onSearchInput() {
     if (searchTimer) clearTimeout(searchTimer);
+    searchTimer = setTimeout(triggerSearchImmediately, 250);
+  }
 
-    searchTimer = setTimeout(() => {
-      const trimmed = searchQuery.trim();
-      if (!trimmed) {
-        if (isSearchRoute) {
-          replace("/search");
-        }
-        searchResults = [];
-        searchSource = "";
-        lastSearchTerm = "";
-        return;
-      }
-
-      const target = `/search?q=${encodeURIComponent(trimmed)}`;
-      if (isSearchRoute) {
-        replace(target);
-      } else {
-        push(target);
-      }
-    }, 250);
+  function onSearchKeyDown(event: KeyboardEvent) {
+    if (event.key === "Enter") {
+      triggerSearchImmediately();
+    }
   }
 
   function navigateTo(path: string) {
@@ -1019,6 +1032,7 @@
             bind:value={searchQuery}
             placeholder="Search your library..."
             oninput={onSearchInput}
+            onkeydown={onSearchKeyDown}
             inputClass="pl-10"
           />
         </div>
@@ -1142,7 +1156,7 @@
         <p class="app-muted text-sm">No results found.</p>
       {:else}
         <p class="app-faint text-xs mb-4">
-          {searchResults.length} results (from {searchSource === "remote" ? "server" : "local cache"})
+          {searchResults.length} results (from {searchSource === "remote" ? "remote Jellyfin API" : "local SQLite database"})
         </p>
         <div class="space-y-8">
           {#if movieResults.length > 0}

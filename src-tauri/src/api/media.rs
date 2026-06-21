@@ -511,6 +511,38 @@ pub async fn fetch_user_items_userdata(
     Ok(data)
 }
 
+/// Fetch a list of recently created items across the entire library.
+/// Used by the incremental media delta sync loop.
+pub async fn fetch_recent_items(
+    client: &JellyfinClient,
+    user_id: &str,
+    start_index: u32,
+    limit: u32,
+) -> Result<JellyfinItemsResponse, JfgoatError> {
+    let path = format!(
+        "/Users/{}/Items?SortBy=DateCreated&SortOrder=Descending&StartIndex={}&Limit={}&Recursive=true\
+         &IncludeItemTypes=Movie,Series,Episode,Season,BoxSet,MusicAlbum,MusicArtist,Audio\
+         &Fields=Genres,DateCreated,ProductionYear,CommunityRating,OfficialRating,RunTimeTicks,ImageTags,BackdropImageTags,UserData\
+         &EnableTotalRecordCount=false",
+        user_id, start_index, limit
+    );
+
+    let resp = client.get(&path).await?;
+
+    if !resp.status().is_success() {
+        return Err(JfgoatError::Http(format!(
+            "Failed to fetch recent items: status {}",
+            resp.status()
+        )));
+    }
+
+    let data: JellyfinItemsResponse = resp.json().await.map_err(|e| {
+        JfgoatError::Http(format!("Failed to parse recent items response: {}", e))
+    })?;
+
+    Ok(data)
+}
+
 async fn fetch_view_items_inner(
     client: &JellyfinClient,
     user_id: &str,
