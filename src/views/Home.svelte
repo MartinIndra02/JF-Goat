@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
   import { location, push, querystring, replace } from "svelte-spa-router";
   import {
     forceResync,
@@ -54,6 +54,7 @@
   let searchTimer: ReturnType<typeof setTimeout> | null = null;
   let lastSearchTerm = "";
   let searchRequestId = 0;
+  let searchInput = $state<HTMLInputElement | null>(null);
 
   let resumeItems = $state<MediaItem[]>([]);
   let nextUpItems = $state<MediaItem[]>([]);
@@ -284,7 +285,11 @@
 
     lastFocusedRoute = routePath;
     void tick().then(() => {
-      activeRouteHeading?.focus();
+      if (routePath === "/search") {
+        searchInput?.focus();
+      } else {
+        activeRouteHeading?.focus();
+      }
     });
   });
 
@@ -292,7 +297,7 @@
     if (!isSearchRoute) return;
     const routeSearch = (routeQuery.get("q") ?? "").trim();
 
-    if (searchQuery !== routeSearch) {
+    if (untrack(() => searchQuery) !== routeSearch) {
       searchQuery = routeSearch;
     }
 
@@ -1010,6 +1015,7 @@
             />
           </svg>
           <TextInput
+            bind:element={searchInput}
             bind:value={searchQuery}
             placeholder="Search your library..."
             oninput={onSearchInput}

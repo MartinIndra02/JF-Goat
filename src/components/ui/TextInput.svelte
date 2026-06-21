@@ -1,6 +1,7 @@
 <script lang="ts">
   let {
     value = $bindable(""),
+    element = $bindable<HTMLInputElement | null>(null),
     placeholder = "",
     type = "text",
     disabled = false,
@@ -8,6 +9,7 @@
     inputClass = "",
   }: {
     value: string;
+    element?: HTMLInputElement | null;
     placeholder?: string;
     type?: string;
     disabled?: boolean;
@@ -17,6 +19,7 @@
 </script>
 
 <input
+  bind:this={element}
   {type}
   {placeholder}
   {disabled}
