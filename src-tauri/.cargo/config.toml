@@ -1,0 +1,7 @@
+[env]
+# VS 2019 Build Tools environment - needed because the newer VS install
+# at D:\Programy\visual studio new is missing the C++ headers (include dir).
+# The VS 2019 Build Tools at C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools
+# has the complete MSVC headers required for native C/C++ compilation (rusqlite, stronghold, etc).
+INCLUDE = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\include;C:\\Program Files (x86)\\Windows Kits\\NETFXSDK\\4.8\\include\\um;D:\\Windows Kits\\10\\include\\10.0.19041.0\\ucrt;D:\\Windows Kits\\10\\include\\10.0.19041.0\\shared;D:\\Windows Kits\\10\\include\\10.0.19041.0\\um;D:\\Windows Kits\\10\\include\\10.0.19041.0\\winrt;D:\\Windows Kits\\10\\include\\10.0.19041.0\\cppwinrt"
+LIB = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\lib\\x64;C:\\Program Files (x86)\\Windows Kits\\NETFXSDK\\4.8\\lib\\um\\x64;D:\\Windows Kits\\10\\lib\\10.0.19041.0\\ucrt\\x64;D:\\Windows Kits\\10\\lib\\10.0.19041.0\\um\\x64"
