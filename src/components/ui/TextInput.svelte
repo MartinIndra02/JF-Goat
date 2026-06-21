@@ -22,5 +22,5 @@
   {disabled}
   bind:value
   {oninput}
-  class={`w-full px-4 py-2 rounded bg-gray-800 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 disabled:opacity-50 ${inputClass}`}
+  class={`w-full h-10 rounded-xl border border-[rgba(156,176,214,0.24)] bg-[rgba(13,21,35,0.72)] px-4 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-md transition-all duration-200 focus:outline-none focus:border-[rgba(102,216,255,0.45)] focus:bg-[rgba(19,30,49,0.76)] focus:shadow-[0_0_0_2px_rgba(102,216,255,0.17)] disabled:opacity-50 disabled:cursor-not-allowed ${inputClass}`}
 />

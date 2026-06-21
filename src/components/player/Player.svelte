@@ -1234,7 +1234,7 @@
     onmouseleave={handleMouseLeave}
   >
     <div
-      class="relative z-10 px-3 sm:px-6 pt-3 sm:pt-5 pb-10 bg-gradient-to-b from-black/80 via-black/45 to-transparent transition-all duration-300 ease-out"
+      class="relative z-10 px-3 sm:px-6 pt-3 sm:pt-5 pb-10 bg-gradient-to-b from-[rgba(4,7,14,0.88)] via-[rgba(4,7,14,0.52)] to-transparent transition-all duration-300 ease-out"
       class:opacity-0={!controlsVisible}
       class:-translate-y-full={!controlsVisible}
     >
@@ -1243,14 +1243,14 @@
           <button
             onclick={() => void stopPlayer()}
             aria-label="Close player"
-            class="h-10 w-10 grid place-items-center rounded-xl bg-black/45 border border-white/20 backdrop-blur-md text-white hover:bg-black/60 transition-colors"
+            class="h-10 w-10 grid place-items-center rounded-xl bg-[rgba(10,18,31,0.64)] border border-white/22 backdrop-blur-xl text-[var(--text-primary)] hover:bg-[rgba(22,34,54,0.76)] transition-colors"
           >
             <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
             </svg>
           </button>
 
-          <div class="min-w-0 rounded-xl bg-black/40 border border-white/15 px-3 py-2 backdrop-blur-md">
+          <div class="min-w-0 rounded-xl border border-white/20 bg-[linear-gradient(145deg,rgba(255,255,255,0.16),rgba(255,255,255,0.04))] px-3 py-2 backdrop-blur-xl">
             <p class="text-white text-sm sm:text-base font-semibold truncate">{playerTitle}</p>
           </div>
         </div>
@@ -1258,7 +1258,7 @@
         <button
             onclick={toggleFullscreen}
             aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-            class="h-10 w-10 grid place-items-center rounded-xl bg-black/45 border border-white/20 backdrop-blur-md text-white hover:bg-black/60 transition-colors"
+            class="h-10 w-10 grid place-items-center rounded-xl bg-[rgba(10,18,31,0.64)] border border-white/22 backdrop-blur-xl text-[var(--text-primary)] hover:bg-[rgba(22,34,54,0.76)] transition-colors"
           >
             <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M8 3H5a2 2 0 00-2 2v3m16-5h-3m3 0v3M3 16v3a2 2 0 002 2h3m11-5v3a2 2 0 01-2 2h-3"/>
@@ -1274,18 +1274,18 @@
     ></button>
 
     <div
-      class="relative z-10 px-3 sm:px-6 pb-2 sm:pb-3 pt-10 sm:pt-12 bg-gradient-to-t from-black/85 via-black/50 to-transparent transition-all duration-300 ease-out"
+      class="relative z-10 px-3 sm:px-6 pb-2 sm:pb-3 pt-10 sm:pt-12 bg-gradient-to-t from-[rgba(3,6,12,0.92)] via-[rgba(5,9,17,0.62)] to-transparent transition-all duration-300 ease-out"
       class:opacity-0={!controlsVisible}
       class:translate-y-full={!controlsVisible}
     >
-      <div class="mx-auto w-full max-w-6xl rounded-xl border border-white/15 bg-black/45 backdrop-blur-xl shadow-[0_12px_30px_rgba(0,0,0,0.42)] p-2.5 sm:p-3">
+      <div class="mx-auto w-full max-w-6xl rounded-2xl border border-white/22 bg-[linear-gradient(145deg,rgba(255,255,255,0.16),rgba(255,255,255,0.05))] backdrop-blur-2xl shadow-[0_20px_42px_rgba(2,8,20,0.58)] p-2.5 sm:p-3">
         <div class="flex flex-wrap items-center justify-between gap-2 sm:gap-2.5 mb-2">
           <div class="min-w-0">
             <p class="text-white text-sm font-semibold truncate">{playerTitle}</p>
             <div class="flex flex-wrap items-center gap-1.5 mt-1 text-[10px] sm:text-[11px]">
-              <span class="px-2 py-0.5 rounded-full bg-cyan-400/15 text-cyan-200 border border-cyan-300/20">{selectedQualityLabel}</span>
+              <span class="px-2 py-0.5 rounded-full bg-[rgba(102,216,255,0.16)] text-cyan-100 border border-cyan-200/25">{selectedQualityLabel}</span>
               {#if endTimeEstimate()}
-                <span class="text-gray-300">{endTimeEstimate()}</span>
+                <span class="text-slate-300">{endTimeEstimate()}</span>
               {/if}
             </div>
           </div>
@@ -1297,7 +1297,7 @@
                   <button
                     onclick={() => toggleTopMenu("audio")}
                     aria-label="Select audio language"
-                    class="h-8 px-2.5 rounded-lg bg-black/50 border border-white/20 backdrop-blur-md text-white hover:bg-black/65 transition-colors inline-flex items-center gap-1.5 max-w-[170px]"
+                    class="h-8 px-2.5 rounded-lg bg-[rgba(8,16,28,0.7)] border border-white/24 backdrop-blur-xl text-white hover:bg-[rgba(22,35,55,0.78)] transition-colors inline-flex items-center gap-1.5 max-w-[170px]"
                   >
                     <span class="text-[10px] uppercase tracking-wide text-cyan-200">Lang</span>
                     <span class="text-[11px] truncate">{audioMenuLabel}</span>
@@ -1305,7 +1305,7 @@
 
                   {#if audioMenuOpen}
                     <div
-                      class="absolute right-0 bottom-10 w-64 max-h-72 overflow-auto rounded-xl border border-white/20 bg-black/82 backdrop-blur-xl shadow-[0_18px_48px_rgba(0,0,0,0.55)] p-1.5"
+                      class="absolute right-0 bottom-10 w-64 max-h-72 overflow-auto rounded-xl border border-white/22 bg-[rgba(7,14,24,0.88)] backdrop-blur-2xl shadow-[0_20px_50px_rgba(0,0,0,0.58)] p-1.5"
                       onpointerdown={(e) => e.stopPropagation()}
                     >
                       {#each mediaStreams.audio as track}
@@ -1315,7 +1315,7 @@
                             e.stopPropagation();
                             void handleAudioChoice(track.index);
                           }}
-                          class="w-full text-left px-3 py-2 rounded-lg text-xs text-gray-100 hover:bg-white/15 transition-colors"
+                          class="w-full text-left px-3 py-2 rounded-lg text-xs text-gray-100 hover:bg-white/14 transition-colors"
                           class:bg-cyan-400={selectedAudioIndex === track.index}
                           class:bg-opacity-20={selectedAudioIndex === track.index}
                         >
@@ -1332,7 +1332,7 @@
                   <button
                     onclick={() => toggleTopMenu("subtitle")}
                     aria-label="Select subtitle language"
-                    class="h-8 px-2.5 rounded-lg bg-black/50 border border-white/20 backdrop-blur-md text-white hover:bg-black/65 transition-colors inline-flex items-center gap-1.5 max-w-[170px]"
+                    class="h-8 px-2.5 rounded-lg bg-[rgba(8,16,28,0.7)] border border-white/24 backdrop-blur-xl text-white hover:bg-[rgba(22,35,55,0.78)] transition-colors inline-flex items-center gap-1.5 max-w-[170px]"
                   >
                     <span class="text-[10px] uppercase tracking-wide text-emerald-200">Subs</span>
                     <span class="text-[11px] truncate">{subtitleMenuLabel}</span>
@@ -1340,7 +1340,7 @@
 
                   {#if subtitleMenuOpen}
                     <div
-                      class="absolute right-0 bottom-10 w-64 max-h-72 overflow-auto rounded-xl border border-white/20 bg-black/82 backdrop-blur-xl shadow-[0_18px_48px_rgba(0,0,0,0.55)] p-1.5"
+                      class="absolute right-0 bottom-10 w-64 max-h-72 overflow-auto rounded-xl border border-white/22 bg-[rgba(7,14,24,0.88)] backdrop-blur-2xl shadow-[0_20px_50px_rgba(0,0,0,0.58)] p-1.5"
                       onpointerdown={(e) => e.stopPropagation()}
                     >
                       <button
@@ -1349,7 +1349,7 @@
                           e.stopPropagation();
                           void handleSubtitleChoice(null);
                         }}
-                        class="w-full text-left px-3 py-2 rounded-lg text-xs text-gray-100 hover:bg-white/15 transition-colors"
+                        class="w-full text-left px-3 py-2 rounded-lg text-xs text-gray-100 hover:bg-white/14 transition-colors"
                         class:bg-cyan-400={selectedSubtitleIndex === null}
                         class:bg-opacity-20={selectedSubtitleIndex === null}
                       >
@@ -1363,7 +1363,7 @@
                             e.stopPropagation();
                             void handleSubtitleChoice(track.index);
                           }}
-                          class="w-full text-left px-3 py-2 rounded-lg text-xs text-gray-100 hover:bg-white/15 transition-colors"
+                          class="w-full text-left px-3 py-2 rounded-lg text-xs text-gray-100 hover:bg-white/14 transition-colors"
                           class:bg-cyan-400={selectedSubtitleIndex === track.index}
                           class:bg-opacity-20={selectedSubtitleIndex === track.index}
                         >
@@ -1379,7 +1379,7 @@
                 <button
                   onclick={() => toggleTopMenu("overflow")}
                   aria-label="More playback options"
-                  class="h-8 w-8 grid place-items-center rounded-lg bg-black/50 border border-white/20 backdrop-blur-md text-white hover:bg-black/65 transition-colors"
+                  class="h-8 w-8 grid place-items-center rounded-lg bg-[rgba(8,16,28,0.7)] border border-white/24 backdrop-blur-xl text-white hover:bg-[rgba(22,35,55,0.78)] transition-colors"
                 >
                   <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M12 5h.01M12 12h.01M12 19h.01" />
@@ -1388,7 +1388,7 @@
 
                 {#if overflowMenuOpen}
                   <div
-                    class="absolute right-0 bottom-10 w-56 rounded-xl border border-white/20 bg-black/82 backdrop-blur-xl shadow-[0_18px_48px_rgba(0,0,0,0.55)] p-2 space-y-3"
+                    class="absolute right-0 bottom-10 w-56 rounded-xl border border-white/22 bg-[rgba(7,14,24,0.88)] backdrop-blur-2xl shadow-[0_20px_50px_rgba(0,0,0,0.58)] p-2 space-y-3"
                     onpointerdown={(e) => e.stopPropagation()}
                   >
                     <div>
@@ -1401,7 +1401,7 @@
                               e.stopPropagation();
                               void setRate(speed);
                             }}
-                            class="h-8 rounded-lg text-xs text-gray-100 border border-white/15 hover:bg-white/15 transition-colors"
+                            class="h-8 rounded-lg text-xs text-gray-100 border border-white/18 hover:bg-white/15 transition-colors"
                             class:bg-cyan-400={Math.abs(rate - speed) < 0.01}
                             class:bg-opacity-20={Math.abs(rate - speed) < 0.01}
                             class:border-cyan-300={Math.abs(rate - speed) < 0.01}
@@ -1422,7 +1422,7 @@
                               e.stopPropagation();
                               void applyQualitySelection(option.key);
                             }}
-                            class="h-8 rounded-lg text-xs text-gray-100 border border-white/15 hover:bg-white/15 transition-colors"
+                            class="h-8 rounded-lg text-xs text-gray-100 border border-white/18 hover:bg-white/15 transition-colors"
                             class:bg-cyan-400={selectedQuality.key === option.key}
                             class:bg-opacity-20={selectedQuality.key === option.key}
                             class:border-cyan-300={selectedQuality.key === option.key}
@@ -1438,12 +1438,12 @@
             </div>
 
             {#if autoplayCountdown !== null}
-              <span class="h-8 px-3 inline-flex items-center rounded-lg bg-amber-400/15 border border-amber-300/30 text-amber-200 text-xs font-medium">
+              <span class="h-8 px-3 inline-flex items-center rounded-lg bg-amber-400/16 border border-amber-200/35 text-amber-100 text-xs font-medium">
                 Next in {autoplayCountdown}s
               </span>
               <button
                 onclick={cancelAutoplayCountdown}
-                class="h-8 px-3 rounded-lg bg-white/10 border border-white/20 text-gray-100 text-xs font-medium hover:bg-white/20 transition-colors"
+                class="h-8 px-3 rounded-lg bg-white/10 border border-white/24 text-gray-100 text-xs font-medium hover:bg-white/18 transition-colors"
               >
                 Cancel
               </button>
@@ -1464,14 +1464,14 @@
           aria-valuemax={Math.floor(dur)}
           tabindex="0"
         >
-          <div class="w-full h-2 bg-white/18 rounded-full transition-all relative overflow-visible group-hover:shadow-[0_0_0_1px_rgba(56,189,248,0.35)]">
+          <div class="w-full h-2 bg-white/16 rounded-full transition-all relative overflow-visible group-hover:shadow-[0_0_0_1px_rgba(102,216,255,0.35)]">
             <div
-              class="absolute top-0 left-0 h-full bg-gradient-to-r from-cyan-400 to-blue-500 rounded-full"
+              class="absolute top-0 left-0 h-full bg-gradient-to-r from-cyan-300 via-sky-400 to-amber-300 rounded-full"
               style="width: {progressPercent}%"
             ></div>
 
             <div
-              class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 h-4 w-4 rounded-full bg-cyan-300 border border-cyan-100 shadow-[0_0_0_2px_rgba(0,0,0,0.35)] transition-transform"
+              class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 h-4 w-4 rounded-full bg-cyan-200 border border-white/75 shadow-[0_0_0_2px_rgba(0,0,0,0.35)] transition-transform"
               class:scale-125={isScrubbing}
               style="left: {progressPercent}%"
             ></div>
@@ -1479,7 +1479,7 @@
             {#each chapterMarkers as chapter}
               <button
                 type="button"
-                class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-2 h-4 rounded bg-white/75 hover:bg-amber-300 transition-colors"
+                class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-2 h-4 rounded bg-amber-100/80 hover:bg-amber-200 transition-colors"
                 style="left: {chapter.percent}%"
                 onpointerdown={(e) => e.stopPropagation()}
                 onclick={(e) => {
@@ -1517,7 +1517,7 @@
             <button
               onclick={seekBack10}
               aria-label="Seek back 10 seconds"
-              class="h-9 w-9 grid place-items-center rounded-lg bg-white/10 border border-white/15 text-white hover:bg-white/20 transition-colors"
+              class="h-9 w-9 grid place-items-center rounded-lg bg-white/10 border border-white/20 text-white hover:bg-white/18 transition-colors"
             >
               <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M11.92 5.08L4 12l7.92 6.92L10.5 20.5 1 12l9.5-8.5z" />
@@ -1527,7 +1527,7 @@
             <button
               onclick={togglePause}
               aria-label={isPaused ? "Play" : "Pause"}
-              class="h-11 w-11 sm:h-12 sm:w-12 grid place-items-center rounded-full bg-gradient-to-br from-cyan-300 to-blue-500 text-black shadow-[0_8px_24px_rgba(56,189,248,0.4)] hover:scale-[1.03] transition-transform"
+              class="h-11 w-11 sm:h-12 sm:w-12 grid place-items-center rounded-full bg-gradient-to-br from-cyan-200 via-sky-300 to-amber-300 text-slate-950 shadow-[0_10px_26px_rgba(102,216,255,0.38)] hover:scale-[1.03] transition-transform"
             >
               {#if isPaused || playerStatus === "loading"}
                 <svg class="w-7 h-7" viewBox="0 0 24 24" fill="currentColor">
@@ -1543,7 +1543,7 @@
             <button
               onclick={seekForward30}
               aria-label="Seek forward 30 seconds"
-              class="h-9 w-9 grid place-items-center rounded-lg bg-white/10 border border-white/15 text-white hover:bg-white/20 transition-colors"
+              class="h-9 w-9 grid place-items-center rounded-lg bg-white/10 border border-white/20 text-white hover:bg-white/18 transition-colors"
             >
               <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12.08 5.08L20 12l-7.92 6.92L13.5 20.5 23 12l-9.5-8.5z" />
@@ -1569,7 +1569,7 @@
               type="button"
               onclick={toggleMute}
               aria-label={muted ? "Unmute" : "Mute"}
-              class="h-9 w-9 grid place-items-center rounded-lg bg-white/10 border border-white/15 hover:bg-white/20 transition-colors"
+              class="h-9 w-9 grid place-items-center rounded-lg bg-white/10 border border-white/20 hover:bg-white/18 transition-colors"
             >
               {#if muted}
                 <svg class="w-4 h-4 text-gray-300" viewBox="0 0 20 20" fill="currentColor">
@@ -1591,7 +1591,7 @@
               value={vol}
               oninput={handleVolumeInput}
               aria-label="Volume"
-              class="w-24 h-1.5 accent-cyan-400 cursor-pointer"
+              class="w-24 h-1.5 accent-[#66d8ff] cursor-pointer"
             />
             <span class="text-xs w-7 text-right tabular-nums">{vol}</span>
           </div>

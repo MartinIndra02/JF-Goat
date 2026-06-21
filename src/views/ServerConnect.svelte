@@ -26,11 +26,12 @@
   }
 </script>
 
-<main class="min-h-screen bg-gray-900 text-white flex items-center justify-center">
-  <div class="w-full max-w-sm flex flex-col items-center gap-6 p-8">
-    <div class="text-center">
-      <h1 class="text-3xl font-bold mb-1">jfgoat</h1>
-      <p class="text-gray-400 text-sm">Connect to your Jellyfin server</p>
+<main class="app-stage min-h-screen text-[var(--text-primary)] flex items-center justify-center px-4 py-10">
+  <div class="w-full max-w-md glass-panel-strong app-soft-ring rounded-3xl p-7 sm:p-9 flex flex-col items-center gap-6 app-animate-fade-up">
+    <div class="text-center space-y-2">
+      <p class="inline-flex items-center px-3 py-1 app-pill text-[11px] uppercase tracking-[0.18em]">Server Setup</p>
+      <h1 class="text-3xl font-semibold">jfgoat</h1>
+      <p class="app-muted text-sm">Connect to your Jellyfin server</p>
     </div>
 
     <form class="w-full flex flex-col gap-4" onsubmit={(e) => { e.preventDefault(); handleConnect(); }}>
@@ -40,7 +41,7 @@
         disabled={loading}
       />
 
-      <Button type="submit" disabled={loading || !url.trim()}>
+      <Button type="submit" size="lg" disabled={loading || !url.trim()}>
         {loading ? "Connecting..." : "Connect"}
       </Button>
     </form>

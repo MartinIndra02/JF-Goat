@@ -35,11 +35,12 @@
   }
 </script>
 
-<main class="min-h-screen bg-gray-900 text-white flex items-center justify-center">
-  <div class="w-full max-w-sm flex flex-col items-center gap-6 p-8">
-    <div class="text-center">
-      <h1 class="text-3xl font-bold mb-1">Sign In</h1>
-      <p class="text-gray-400 text-sm">Enter your Jellyfin credentials</p>
+<main class="app-stage min-h-screen text-[var(--text-primary)] flex items-center justify-center px-4 py-10">
+  <div class="w-full max-w-md glass-panel-strong app-soft-ring rounded-3xl p-7 sm:p-9 flex flex-col items-center gap-6 app-animate-fade-up">
+    <div class="text-center space-y-2">
+      <p class="inline-flex items-center px-3 py-1 app-pill text-[11px] uppercase tracking-[0.18em]">Account Access</p>
+      <h1 class="text-3xl font-semibold">Sign In</h1>
+      <p class="app-muted text-sm">Enter your Jellyfin credentials</p>
     </div>
 
     <form class="w-full flex flex-col gap-4" onsubmit={(e) => { e.preventDefault(); handleLogin(); }}>
@@ -55,13 +56,13 @@
         disabled={loading}
       />
 
-      <Button type="submit" disabled={loading || !username.trim()}>
+      <Button type="submit" size="lg" disabled={loading || !username.trim()}>
         {loading ? "Signing in..." : "Sign In"}
       </Button>
     </form>
 
     <button
-      class="text-gray-500 text-sm hover:text-gray-300 transition-colors"
+      class="text-sm app-faint hover:text-[var(--text-secondary)] transition-colors"
       onclick={() => push("/connect")}
     >
       &larr; Different server

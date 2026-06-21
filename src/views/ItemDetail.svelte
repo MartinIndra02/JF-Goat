@@ -416,10 +416,10 @@
 </script>
 
 {#if loading}
-  <main class="min-h-screen bg-gray-900 text-white" aria-hidden="true">
+  <main class="app-stage min-h-screen text-[var(--text-primary)]" aria-hidden="true">
     <section class="relative h-[42vh] min-h-[260px] overflow-hidden">
       <div class="absolute inset-0 skeleton-card rounded-none border-none"></div>
-      <div class="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/45 to-transparent"></div>
+      <div class="absolute inset-0 bg-gradient-to-t from-[rgba(6,10,18,0.92)] via-[rgba(6,10,18,0.5)] to-transparent"></div>
 
       <div class="absolute bottom-0 left-0 right-0 px-6 pb-8 space-y-3">
         <div class="skeleton-pill w-24"></div>
@@ -463,12 +463,12 @@
   </main>
 
 {:else if loadError}
-  <main class="min-h-screen bg-gray-900 text-white flex items-center justify-center">
-    <div class="text-center">
-      <p class="text-gray-400 text-sm mb-4">Could not load this item. It may not be synced yet or the server is unreachable.</p>
+  <main class="app-stage min-h-screen text-[var(--text-primary)] flex items-center justify-center px-4">
+    <div class="glass-panel-strong app-soft-ring rounded-2xl p-6 text-center max-w-lg">
+      <p class="app-muted text-sm mb-4">Could not load this item. It may not be synced yet or the server is unreachable.</p>
       <div class="flex gap-3 justify-center">
-        <button onclick={retryLoadItem} class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition-colors">Retry</button>
-        <button onclick={() => window.history.length > 1 ? window.history.back() : push("/home")} class="px-4 py-2 bg-white/10 hover:bg-white/15 rounded-lg text-sm font-medium transition-colors">Go back</button>
+        <button onclick={retryLoadItem} class="h-10 px-4 rounded-xl text-sm font-semibold text-slate-950 bg-[linear-gradient(135deg,#66d8ff_0%,#41b8d5_54%,#f4bc6b_100%)] hover:brightness-110 transition-all">Retry</button>
+        <button onclick={() => window.history.length > 1 ? window.history.back() : push("/home")} class="h-10 px-4 rounded-xl text-sm font-semibold border border-white/20 bg-white/10 hover:bg-white/16 transition-colors">Go back</button>
       </div>
     </div>
   </main>
@@ -518,10 +518,10 @@
   </div>
 
 {:else if item}
-  <main class="min-h-screen bg-gray-900 text-white flex items-center justify-center">
+  <main class="app-stage min-h-screen text-[var(--text-primary)] flex items-center justify-center">
     <div class="text-center">
-      <p class="text-gray-400 text-sm mb-4">Unsupported item type: {item.type}</p>
-      <button onclick={() => window.history.length > 1 ? window.history.back() : push("/home")} class="text-blue-400 hover:text-blue-300 text-sm">Go back</button>
+      <p class="app-muted text-sm mb-4">Unsupported item type: {item.type}</p>
+      <button onclick={() => window.history.length > 1 ? window.history.back() : push("/home")} class="text-cyan-200 hover:text-cyan-100 text-sm">Go back</button>
     </div>
   </main>
 {/if}

@@ -1,8 +1,30 @@
 @import "tailwindcss";
 
 html,
-body {
+body,
+#app {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 100%;
   background: transparent !important;
+}
+
+body {
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  letter-spacing: 0.01em;
+  overflow-x: hidden;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-display);
+  letter-spacing: 0.015em;
 }
 
 .scrollbar-hide::-webkit-scrollbar {
@@ -18,7 +40,7 @@ body.carousel-dragging {
 }
 
 :focus-visible {
-  outline: 2px solid #60a5fa;
+  outline: 2px solid var(--accent-2);
   outline-offset: 2px;
 }
 
@@ -34,8 +56,135 @@ body.carousel-dragging {
 }
 
 :root {
+  --font-display: "Outfit", "Segoe UI", sans-serif;
+  --font-body: "DM Sans", "Segoe UI", sans-serif;
+
+  --bg-0: #05070d;
+  --bg-1: #0b1120;
+  --bg-2: #131b2c;
+  --bg-3: #1b2436;
+
+  --text-primary: #f4f7ff;
+  --text-secondary: #b8c1d9;
+  --text-tertiary: #7f8aa7;
+
+  --accent-1: #41b8d5;
+  --accent-2: #66d8ff;
+  --accent-warm: #f4bc6b;
+
+  --glass-fill: linear-gradient(
+    148deg,
+    rgba(255, 255, 255, 0.14) 0%,
+    rgba(255, 255, 255, 0.04) 46%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
+  --glass-border: rgba(148, 169, 208, 0.28);
+  --glass-shadow: 0 20px 44px rgba(4, 9, 18, 0.5);
+
+  --motion-fast: 120ms;
+  --motion-normal: 260ms;
+
   --skeleton-base: rgba(148, 163, 184, 0.16);
   --skeleton-highlight: rgba(226, 232, 240, 0.28);
+}
+
+.app-stage {
+  min-height: 100vh;
+  background:
+    radial-gradient(
+      130% 120% at 14% -8%,
+      rgba(102, 216, 255, 0.22) 0%,
+      rgba(102, 216, 255, 0) 55%
+    ),
+    radial-gradient(
+      115% 120% at 88% -12%,
+      rgba(244, 188, 107, 0.17) 0%,
+      rgba(244, 188, 107, 0) 60%
+    ),
+    linear-gradient(165deg, var(--bg-0) 0%, var(--bg-1) 52%, #1b1621 100%);
+}
+
+.glass-panel {
+  border: 1px solid var(--glass-border);
+  background: var(--glass-fill);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(18px);
+}
+
+.glass-panel-strong {
+  border: 1px solid rgba(189, 209, 247, 0.32);
+  background:
+    radial-gradient(
+      120% 120% at 10% 0%,
+      rgba(102, 216, 255, 0.18) 0%,
+      rgba(102, 216, 255, 0) 58%
+    ),
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.16) 0%,
+      rgba(255, 255, 255, 0.04) 100%
+    );
+  box-shadow: 0 24px 52px rgba(2, 8, 22, 0.56);
+  backdrop-filter: blur(24px);
+}
+
+.app-soft-ring {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+.app-muted {
+  color: var(--text-secondary);
+}
+
+.app-faint {
+  color: var(--text-tertiary);
+}
+
+.app-pill {
+  border-radius: 9999px;
+  border: 1px solid rgba(164, 182, 216, 0.24);
+  background: rgba(17, 26, 41, 0.66);
+  color: var(--text-secondary);
+}
+
+.app-badge {
+  border-radius: 9999px;
+  border: 1px solid rgba(102, 216, 255, 0.28);
+  background: rgba(102, 216, 255, 0.14);
+  color: #c2f2ff;
+}
+
+.app-grid-sheen {
+  position: relative;
+}
+
+.app-grid-sheen::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 22px 22px;
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.45), transparent 78%);
+}
+
+.app-animate-fade-up {
+  animation: app-fade-up var(--motion-normal) ease-out;
+}
+
+@keyframes app-fade-up {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 12px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
 }
 
 @keyframes skeleton-shimmer {
@@ -140,4 +289,3 @@ body.carousel-dragging {
     rgba(0, 0, 0, 0.28) 100%
   );
 }
-

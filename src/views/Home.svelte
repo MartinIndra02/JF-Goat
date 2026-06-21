@@ -968,9 +968,9 @@
   }
 </script>
 
-<main class="min-h-screen bg-gray-900 text-white pb-16">
-  <header class="sticky top-0 z-40 bg-gray-900/80 backdrop-blur-md border-b border-white/5">
-    <div class="flex flex-wrap items-center gap-4 px-4 sm:px-6 py-3">
+<main class="min-h-screen text-[var(--text-primary)] pb-16">
+  <header class="sticky top-0 z-40 border-b border-white/10 bg-[rgba(6,10,18,0.55)] backdrop-blur-xl">
+    <div class="flex flex-wrap items-center gap-4 px-4 sm:px-6 py-3.5">
       <div class="relative flex items-center gap-3 min-w-0">
         <button
           bind:this={navMenuButton}
@@ -978,18 +978,18 @@
           onclick={togglePrimaryMenu}
           aria-expanded={navMenuOpen}
           aria-label="Toggle navigation menu"
-          class="w-8 h-8 rounded-lg bg-blue-600 hover:bg-blue-500 transition-colors flex items-center justify-center shrink-0"
+          class="w-9 h-9 rounded-xl bg-[linear-gradient(140deg,rgba(102,216,255,0.86),rgba(65,184,213,0.78))] hover:brightness-110 transition-all duration-200 flex items-center justify-center shrink-0 text-slate-950 shadow-[0_10px_24px_rgba(65,184,213,0.35)]"
         >
-          <svg class="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
             <path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z" />
           </svg>
         </button>
 
         <div class="min-w-0">
-          <h1 class="text-sm font-semibold truncate">
+          <h1 class="text-sm font-semibold truncate tracking-[0.02em]">
             {session?.server_name ?? "jfFast"}
           </h1>
-          <p class="text-xs text-gray-500 truncate">
+          <p class="text-xs app-faint truncate">
             {session?.username ?? ""} · {currentRouteLabel}
           </p>
         </div>
@@ -998,7 +998,7 @@
       <div class="flex-1 min-w-52 max-w-xl ml-auto">
         <div class="relative">
           <svg
-            class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500"
+            class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 app-faint"
             viewBox="0 0 20 20"
             fill="currentColor"
             aria-hidden="true"
@@ -1018,7 +1018,7 @@
         </div>
       </div>
 
-      <Button variant="secondary" onclick={handleLogout}>
+      <Button variant="secondary" size="sm" onclick={handleLogout}>
         <span class="text-sm">Log Out</span>
       </Button>
     </div>
@@ -1027,7 +1027,7 @@
   {#if navMenuOpen}
     <button
       type="button"
-      class="fixed inset-0 z-50 bg-black/55"
+      class="fixed inset-0 z-50 bg-black/65 backdrop-blur-[2px]"
       aria-label="Close navigation sidebar"
       onclick={() => {
         navMenuOpen = false;
@@ -1036,50 +1036,88 @@
 
     <aside
       bind:this={navMenuPanel}
-      class="fixed left-0 top-0 bottom-0 z-[60] w-72 border-r border-white/10 bg-gray-950/96 backdrop-blur-md p-4"
+      class="fixed left-0 top-0 bottom-0 z-[60] w-[19rem] overflow-hidden border-r border-white/20 bg-[rgba(6,10,18,0.97)] p-5 shadow-[0_18px_46px_rgba(2,6,16,0.7)]"
       aria-label="Primary navigation sidebar"
     >
-      <div class="flex items-center justify-between gap-3 mb-4">
-        <div>
-          <p class="text-xs uppercase tracking-wide text-gray-500">Navigation</p>
-          <p class="text-sm font-semibold text-white">{session?.server_name ?? "jfFast"}</p>
-        </div>
-        <button
-          type="button"
-          class="h-8 w-8 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors"
-          aria-label="Close sidebar"
-          onclick={() => {
-            navMenuOpen = false;
-          }}
-        >
-          <svg class="w-4 h-4 mx-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
+      <div
+        class="pointer-events-none absolute inset-0"
+        style:background="radial-gradient(100% 60% at 0% 0%, rgba(102,216,255,0.22), transparent 68%), radial-gradient(120% 70% at 100% 100%, rgba(244,188,107,0.12), transparent 74%), linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01))"
+      ></div>
 
-      <nav class="grid gap-1.5" aria-label="Primary">
-        {#each primaryNavItems as navItem}
+      <div class="relative h-full flex flex-col">
+        <div class="flex items-center justify-between gap-3 mb-5">
+          <div>
+            <p class="text-xs uppercase tracking-[0.18em] app-faint">Navigation</p>
+            <p class="text-sm font-semibold text-[var(--text-primary)] mt-1">{session?.server_name ?? "jfFast"}</p>
+          </div>
           <button
             type="button"
-            onclick={() => handleMenuNavigate(navItem.path)}
-            class="w-full text-left px-3 py-2.5 rounded-lg text-sm transition-colors {currentPath === navItem.path ? 'bg-blue-600 text-white' : 'text-gray-200 hover:bg-white/10'}"
-            aria-current={currentPath === navItem.path ? "page" : undefined}
+            class="h-8 w-8 rounded-lg border border-white/20 bg-white/10 text-white hover:bg-white/18 transition-colors"
+            aria-label="Close sidebar"
+            onclick={() => {
+              navMenuOpen = false;
+            }}
           >
-            {navItem.label}
+            <svg class="w-4 h-4 mx-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
           </button>
-        {/each}
-      </nav>
+        </div>
+
+        <nav class="grid gap-2" aria-label="Primary">
+          {#each primaryNavItems as navItem}
+            <button
+              type="button"
+              onclick={() => handleMenuNavigate(navItem.path)}
+              class="w-full text-left px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 {currentPath === navItem.path ? 'bg-[linear-gradient(140deg,rgba(102,216,255,0.3),rgba(65,184,213,0.24))] border border-cyan-200/35 text-cyan-100 shadow-[0_10px_22px_rgba(65,184,213,0.24)]' : 'border border-transparent text-[var(--text-secondary)] hover:border-white/16 hover:bg-white/7 hover:text-[var(--text-primary)]'}"
+              aria-current={currentPath === navItem.path ? "page" : undefined}
+            >
+              {navItem.label}
+            </button>
+          {/each}
+        </nav>
+
+        <div class="mt-auto space-y-3 pt-5">
+          <div class="rounded-2xl border border-white/16 bg-[rgba(10,18,30,0.7)] px-3.5 py-3 backdrop-blur-lg">
+            <p class="text-[11px] uppercase tracking-[0.18em] app-faint mb-1">Session</p>
+            <p class="text-sm font-medium text-[var(--text-primary)] truncate">{session?.username ?? "Guest"}</p>
+            <p class="text-xs app-muted mt-1">
+              {userLibraries.length} libraries · {resumeItems.length} in progress
+            </p>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              class="rounded-xl border border-white/16 bg-white/8 px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-white/14 hover:text-[var(--text-primary)]"
+              onclick={() => handleMenuNavigate("/search")}
+            >
+              Search
+            </button>
+            <button
+              type="button"
+              class="rounded-xl border border-white/16 bg-white/8 px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-white/14 hover:text-[var(--text-primary)] disabled:opacity-50 disabled:cursor-not-allowed"
+              onclick={() => {
+                navMenuOpen = false;
+                void handleResync();
+              }}
+              disabled={runningResync}
+            >
+              {runningResync ? "Syncing..." : "Resync"}
+            </button>
+          </div>
+        </div>
+      </div>
     </aside>
   {/if}
 
   {#if statusMessage}
     <div class="px-6 pt-3">
       <div
-        class={`rounded-lg border px-3 py-2 text-sm ${
+        class={`rounded-xl border px-3.5 py-2.5 text-sm backdrop-blur-md ${
           (!online || staleData)
-            ? "border-yellow-700 bg-yellow-900/35 text-yellow-200"
-            : "border-orange-700 bg-orange-900/35 text-orange-200"
+            ? "border-amber-300/30 bg-amber-500/12 text-amber-100"
+            : "border-orange-300/30 bg-orange-500/12 text-orange-100"
         }`}
       >
         {statusMessage}
@@ -1088,22 +1126,22 @@
   {/if}
 
   {#if isSearchRoute}
-    <section class="px-6 pt-6" aria-label="Search results">
+    <section class="px-6 pt-6 pb-10 app-animate-fade-up" aria-label="Search results">
       <h2 bind:this={activeRouteHeading} tabindex="-1" class="sr-only">Search results</h2>
       {#if !searchQuery.trim()}
-        <p class="text-gray-400 text-sm">Type in the search field to browse your media.</p>
+        <p class="app-muted text-sm">Type in the search field to browse your media.</p>
       {:else if searching}
-        <p class="text-gray-400 text-sm">Searching...</p>
+        <p class="app-muted text-sm">Searching...</p>
       {:else if searchResults.length === 0}
-        <p class="text-gray-400 text-sm">No results found.</p>
+        <p class="app-muted text-sm">No results found.</p>
       {:else}
-        <p class="text-gray-500 text-xs mb-4">
+        <p class="app-faint text-xs mb-4">
           {searchResults.length} results (from {searchSource === "remote" ? "server" : "local cache"})
         </p>
         <div class="space-y-8">
           {#if movieResults.length > 0}
-            <section>
-              <h2 class="text-sm font-semibold text-gray-200 mb-3">Movies ({movieResults.length})</h2>
+            <section class="glass-panel rounded-2xl p-4 sm:p-5">
+              <h2 class="text-sm font-semibold text-[var(--text-primary)] mb-3">Movies ({movieResults.length})</h2>
               <div class="flex flex-wrap gap-3" role="list" aria-label="Movie results">
                 {#each movieResults as item (item.id)}
                   <div role="listitem">
@@ -1115,8 +1153,8 @@
           {/if}
 
           {#if showResults.length > 0}
-            <section>
-              <h2 class="text-sm font-semibold text-gray-200 mb-3">Shows ({showResults.length})</h2>
+            <section class="glass-panel rounded-2xl p-4 sm:p-5">
+              <h2 class="text-sm font-semibold text-[var(--text-primary)] mb-3">Shows ({showResults.length})</h2>
               <div class="flex flex-wrap gap-3" role="list" aria-label="Show results">
                 {#each showResults as item (item.id)}
                   <div role="listitem">
@@ -1128,8 +1166,8 @@
           {/if}
 
           {#if episodeResults.length > 0}
-            <section>
-              <h2 class="text-sm font-semibold text-gray-200 mb-3">Episodes ({episodeResults.length})</h2>
+            <section class="glass-panel rounded-2xl p-4 sm:p-5">
+              <h2 class="text-sm font-semibold text-[var(--text-primary)] mb-3">Episodes ({episodeResults.length})</h2>
               <div class="flex flex-wrap gap-3" role="list" aria-label="Episode results">
                 {#each episodeResults as item (item.id)}
                   <div role="listitem">
@@ -1141,8 +1179,8 @@
           {/if}
 
           {#if otherResults.length > 0}
-            <section>
-              <h2 class="text-sm font-semibold text-gray-300 mb-3">Other ({otherResults.length})</h2>
+            <section class="glass-panel rounded-2xl p-4 sm:p-5">
+              <h2 class="text-sm font-semibold text-[var(--text-secondary)] mb-3">Other ({otherResults.length})</h2>
               <div class="flex flex-wrap gap-3" role="list" aria-label="Other results">
                 {#each otherResults as item (item.id)}
                   <div role="listitem">
@@ -1156,10 +1194,10 @@
       {/if}
     </section>
   {:else if isLibraryRoute}
-    <section class="px-6 pt-6 pb-10" aria-label="Library browsing">
+    <section class="px-6 pt-6 pb-10 app-animate-fade-up" aria-label="Library browsing">
       <div class="flex flex-wrap items-center gap-3 mb-4">
         <h2 bind:this={activeRouteHeading} tabindex="-1" class="text-xl font-semibold">{selectedLibrary?.name ?? "Library"}</h2>
-        <span class="text-xs text-gray-400 bg-white/5 rounded-full px-2 py-1">
+        <span class="text-xs app-pill px-2.5 py-1">
           {filteredLibraryItems.length} shown
           {#if libraryTotalCount !== null}
             · {libraryItems.length}/{libraryTotalCount} loaded
@@ -1167,11 +1205,12 @@
         </span>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3 mb-6">
-        <label class="text-xs text-gray-400 flex flex-col gap-1.5">
+      <div class="glass-panel rounded-2xl p-4 sm:p-5 mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
+        <label class="text-xs app-faint flex flex-col gap-1.5">
           View
           <select
-            class="bg-white/8 border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+            class="h-10 rounded-xl border border-white/14 bg-[rgba(13,21,35,0.72)] px-3 text-sm text-[var(--text-primary)]"
             value={selectedLibraryId}
             onchange={(event) => {
               const target = event.target as HTMLSelectElement;
@@ -1185,10 +1224,10 @@
           </select>
         </label>
 
-        <label class="text-xs text-gray-400 flex flex-col gap-1.5">
+        <label class="text-xs app-faint flex flex-col gap-1.5">
           Sort
           <select
-            class="bg-white/8 border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+            class="h-10 rounded-xl border border-white/14 bg-[rgba(13,21,35,0.72)] px-3 text-sm text-[var(--text-primary)]"
             value={selectedLibrarySort}
             onchange={(event) => {
               const target = event.target as HTMLSelectElement;
@@ -1204,10 +1243,10 @@
           </select>
         </label>
 
-        <label class="text-xs text-gray-400 flex flex-col gap-1.5">
+        <label class="text-xs app-faint flex flex-col gap-1.5">
           Type
           <select
-            class="bg-white/8 border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+            class="h-10 rounded-xl border border-white/14 bg-[rgba(13,21,35,0.72)] px-3 text-sm text-[var(--text-primary)]"
             value={selectedLibraryTypeFilter}
             onchange={(event) => {
               const target = event.target as HTMLSelectElement;
@@ -1223,10 +1262,10 @@
           </select>
         </label>
 
-        <label class="text-xs text-gray-400 flex flex-col gap-1.5">
+        <label class="text-xs app-faint flex flex-col gap-1.5">
           Status
           <select
-            class="bg-white/8 border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+            class="h-10 rounded-xl border border-white/14 bg-[rgba(13,21,35,0.72)] px-3 text-sm text-[var(--text-primary)]"
             value={selectedLibraryStatusFilter}
             onchange={(event) => {
               const target = event.target as HTMLSelectElement;
@@ -1241,13 +1280,13 @@
           </select>
         </label>
 
-        <div class="text-xs text-gray-400 flex flex-col gap-1.5">
+        <div class="text-xs app-faint flex flex-col gap-1.5">
           Layout
-          <div class="inline-flex rounded-lg overflow-hidden border border-white/10 w-fit">
+          <div class="inline-flex rounded-xl overflow-hidden border border-white/14 w-fit">
             <button
               type="button"
               onclick={() => updateLibraryQuery({ layout: "grid" })}
-              class="px-3 py-2 text-sm transition-colors {selectedLibraryLayout === 'grid' ? 'bg-blue-600 text-white' : 'bg-white/8 text-gray-300 hover:text-white'}"
+              class="px-3 py-2 text-sm transition-colors {selectedLibraryLayout === 'grid' ? 'bg-[rgba(102,216,255,0.28)] text-cyan-100' : 'bg-[rgba(13,21,35,0.72)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
               aria-pressed={selectedLibraryLayout === "grid"}
             >
               Grid
@@ -1255,24 +1294,25 @@
             <button
               type="button"
               onclick={() => updateLibraryQuery({ layout: "list" })}
-              class="px-3 py-2 text-sm transition-colors {selectedLibraryLayout === 'list' ? 'bg-blue-600 text-white' : 'bg-white/8 text-gray-300 hover:text-white'}"
+              class="px-3 py-2 text-sm transition-colors {selectedLibraryLayout === 'list' ? 'bg-[rgba(102,216,255,0.28)] text-cyan-100' : 'bg-[rgba(13,21,35,0.72)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
               aria-pressed={selectedLibraryLayout === "list"}
             >
               List
             </button>
           </div>
         </div>
+        </div>
       </div>
 
       {#if libraryLoading}
-        <p class="text-gray-400 text-sm">Loading library...</p>
+        <p class="app-muted text-sm">Loading library...</p>
       {:else if libraryError}
-        <div class="bg-red-500/10 border border-red-500/25 rounded-lg p-4 text-sm text-red-200">
+        <div class="rounded-xl border border-red-300/30 bg-red-500/12 p-4 text-sm text-red-100">
           {libraryError}
         </div>
       {:else}
         {#if filteredLibraryItems.length === 0 && !libraryHasMore}
-          <p class="text-gray-400 text-sm">No items match your current filters.</p>
+          <p class="app-muted text-sm">No items match your current filters.</p>
         {:else if selectedLibraryLayout === "grid"}
           <div
             class="flex flex-wrap gap-3"
@@ -1291,11 +1331,11 @@
               <button
                 type="button"
                 onclick={() => openItem(item)}
-                class="w-full rounded-xl p-3 bg-white/5 hover:bg-white/10 transition-colors text-left"
+                class="w-full rounded-2xl p-3 border border-white/12 bg-[rgba(255,255,255,0.04)] hover:bg-[rgba(255,255,255,0.09)] transition-colors text-left"
                 aria-label="Open {item.name} details"
               >
                 <div class="flex items-start gap-3">
-                  <div class="w-16 h-24 rounded-lg overflow-hidden bg-gray-800 shrink-0">
+                  <div class="w-16 h-24 rounded-lg overflow-hidden bg-[rgba(8,13,24,0.84)] shrink-0 border border-white/10">
                     {#if item.image_tag}
                       <img
                         src={`http://jfimage.localhost/poster/${item.id}?tag=${item.image_tag}`}
@@ -1310,8 +1350,8 @@
                     {/if}
                   </div>
                   <div class="min-w-0 flex-1">
-                    <p class="text-sm text-white font-medium truncate">{item.name}</p>
-                    <p class="text-xs text-gray-400 mt-1">
+                    <p class="text-sm text-[var(--text-primary)] font-medium truncate">{item.name}</p>
+                    <p class="text-xs app-muted mt-1">
                       {item.type}
                       {#if item.production_year}
                         · {item.production_year}
@@ -1328,15 +1368,15 @@
         {/if}
 
         {#if filteredLibraryItems.length === 0 && libraryHasMore && !libraryLoadingMore}
-          <p class="text-gray-500 text-sm mt-4">Scanning additional pages for matching items...</p>
+          <p class="app-faint text-sm mt-4">Scanning additional pages for matching items...</p>
         {/if}
 
         {#if libraryLoadMoreError}
-          <p class="text-red-300 text-sm mt-4">{libraryLoadMoreError}</p>
+          <p class="text-red-200 text-sm mt-4">{libraryLoadMoreError}</p>
         {/if}
 
         {#if libraryLoadingMore}
-          <p class="text-gray-400 text-sm mt-4">Loading more items...</p>
+          <p class="app-muted text-sm mt-4">Loading more items...</p>
         {/if}
 
         {#if libraryHasMore}
@@ -1345,19 +1385,19 @@
       {/if}
     </section>
   {:else if isSettingsRoute}
-    <section class="px-6 pt-6 pb-10 max-w-3xl" aria-label="Settings">
+    <section class="px-6 pt-6 pb-10 max-w-3xl app-animate-fade-up" aria-label="Settings">
       <div class="flex items-center justify-between gap-3 mb-4">
         <h2 bind:this={activeRouteHeading} tabindex="-1" class="text-xl font-semibold">Preferences</h2>
         {#if preferencesSaving}
-          <span class="text-xs text-blue-300">Saving...</span>
+          <span class="text-xs app-badge px-2 py-1">Saving...</span>
         {/if}
       </div>
 
       <div class="space-y-4">
-        <div class="rounded-xl border border-white/10 bg-white/5 p-4">
+        <div class="glass-panel rounded-2xl p-4">
           <h3 class="text-sm font-semibold mb-3">Playback</h3>
           <div class="grid gap-3 md:grid-cols-2">
-            <label class="text-sm text-gray-200 flex items-center gap-2">
+            <label class="text-sm text-[var(--text-secondary)] flex items-center gap-2">
               <input
                 type="checkbox"
                 checked={preferences.playback.autoplay_next_episode}
@@ -1366,7 +1406,7 @@
               Autoplay next episode
             </label>
 
-            <label class="text-sm text-gray-300 flex flex-col gap-1">
+            <label class="text-sm text-[var(--text-secondary)] flex flex-col gap-1">
               Default playback speed
               <input
                 type="number"
@@ -1375,11 +1415,11 @@
                 step="0.1"
                 value={preferences.playback.default_playback_rate}
                 onchange={setPlaybackRatePreference}
-                class="bg-white/8 border border-white/10 rounded-lg px-3 py-2 text-sm"
+                class="h-10 rounded-xl border border-white/14 bg-[rgba(13,21,35,0.72)] px-3 text-sm text-[var(--text-primary)]"
               />
             </label>
 
-            <label class="text-sm text-gray-300 flex flex-col gap-1 md:col-span-2">
+            <label class="text-sm text-[var(--text-secondary)] flex flex-col gap-1 md:col-span-2">
               Subtitle position
               <input
                 type="range"
@@ -1388,43 +1428,43 @@
                 step="1"
                 value={subtitlePositionPercent}
                 oninput={setSubtitlePositionPreference}
-                class="accent-blue-500"
+                class="accent-[#66d8ff]"
                 aria-label="Subtitle vertical position"
               />
-              <span class="text-xs text-gray-500">{subtitlePositionPercent}% from bottom</span>
+              <span class="text-xs app-faint">{subtitlePositionPercent}% from bottom</span>
             </label>
           </div>
         </div>
 
-        <div class="rounded-xl border border-white/10 bg-white/5 p-4">
+        <div class="glass-panel rounded-2xl p-4">
           <h3 class="text-sm font-semibold mb-3">Language + Quality</h3>
           <div class="grid gap-3 md:grid-cols-2">
-            <label class="text-sm text-gray-300 flex flex-col gap-1">
+            <label class="text-sm text-[var(--text-secondary)] flex flex-col gap-1">
               Preferred audio language
               <input
                 type="text"
                 value={preferences.language.preferred_audio_language}
                 onchange={setAudioLanguagePreference}
-                class="bg-white/8 border border-white/10 rounded-lg px-3 py-2 text-sm"
+                class="h-10 rounded-xl border border-white/14 bg-[rgba(13,21,35,0.72)] px-3 text-sm text-[var(--text-primary)]"
                 placeholder="en, cs, de..."
               />
             </label>
 
-            <label class="text-sm text-gray-300 flex flex-col gap-1">
+            <label class="text-sm text-[var(--text-secondary)] flex flex-col gap-1">
               Preferred subtitle language
               <input
                 type="text"
                 value={preferences.language.preferred_subtitle_language}
                 onchange={setSubtitleLanguagePreference}
-                class="bg-white/8 border border-white/10 rounded-lg px-3 py-2 text-sm"
+                class="h-10 rounded-xl border border-white/14 bg-[rgba(13,21,35,0.72)] px-3 text-sm text-[var(--text-primary)]"
                 placeholder="en, cs, de..."
               />
             </label>
 
-            <label class="text-sm text-gray-300 flex flex-col gap-1 md:col-span-2">
+            <label class="text-sm text-[var(--text-secondary)] flex flex-col gap-1 md:col-span-2">
               Default streaming quality
               <select
-                class="bg-white/8 border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                class="h-10 rounded-xl border border-white/14 bg-[rgba(13,21,35,0.72)] px-3 text-sm text-[var(--text-primary)]"
                 value={preferences.quality.default_quality_key}
                 onchange={setQualityPreference}
               >
@@ -1437,10 +1477,10 @@
           </div>
         </div>
 
-        <div class="rounded-xl border border-white/10 bg-white/5 p-4">
+        <div class="glass-panel rounded-2xl p-4">
           <h3 class="text-sm font-semibold mb-3">Cache + Refresh</h3>
           <div class="grid gap-3 md:grid-cols-2">
-            <label class="text-sm text-gray-200 flex items-center gap-2 md:col-span-2">
+            <label class="text-sm text-[var(--text-secondary)] flex items-center gap-2 md:col-span-2">
               <input
                 type="checkbox"
                 checked={preferences.cache.enabled}
@@ -1449,7 +1489,7 @@
               Enable local homepage cache
             </label>
 
-            <label class="text-sm text-gray-300 flex flex-col gap-1">
+            <label class="text-sm text-[var(--text-secondary)] flex flex-col gap-1">
               Cache max age (minutes)
               <input
                 type="number"
@@ -1457,15 +1497,15 @@
                 max="10080"
                 value={preferences.cache.max_age_minutes}
                 onchange={setCacheAgePreference}
-                class="bg-white/8 border border-white/10 rounded-lg px-3 py-2 text-sm"
+                class="h-10 rounded-xl border border-white/14 bg-[rgba(13,21,35,0.72)] px-3 text-sm text-[var(--text-primary)]"
                 disabled={!preferences.cache.enabled}
               />
             </label>
 
-            <label class="text-sm text-gray-300 flex flex-col gap-1">
+            <label class="text-sm text-[var(--text-secondary)] flex flex-col gap-1">
               Refresh interval
               <select
-                class="bg-white/8 border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                class="h-10 rounded-xl border border-white/14 bg-[rgba(13,21,35,0.72)] px-3 text-sm text-[var(--text-primary)]"
                 value={String(preferences.refresh_interval_seconds)}
                 onchange={setRefreshIntervalPreference}
               >
@@ -1479,7 +1519,7 @@
           </div>
         </div>
 
-        <div class="rounded-xl border border-white/10 bg-white/5 p-4">
+        <div class="glass-panel rounded-2xl p-4">
           <h3 class="text-sm font-semibold mb-2">Maintenance</h3>
           <div class="flex flex-wrap gap-3">
             <Button variant="secondary" onclick={handleDownloadDiagnostics}>
@@ -1504,11 +1544,11 @@
           <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" class="opacity-25" />
           <path d="M4 12a8 8 0 018-8" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
         </svg>
-        <p class="text-gray-400 text-sm">Loading your library...</p>
+        <p class="app-muted text-sm">Loading your library...</p>
       </div>
     </div>
   {:else}
-    <div class="space-y-2">
+    <div class="space-y-3 app-animate-fade-up">
       <h2 bind:this={activeRouteHeading} tabindex="-1" class="sr-only">Home</h2>
       <HeroBanner items={featuredItems} />
 
@@ -1519,11 +1559,11 @@
         {#if libraryLatest[library.id]?.length}
           <section class="mb-6">
             <div class="flex items-center justify-between px-6 mb-2">
-              <h2 class="text-lg font-semibold text-white">Latest in {library.name}</h2>
+              <h2 class="text-lg font-semibold text-[var(--text-primary)]">Latest in {library.name}</h2>
               <button
                 type="button"
                 onclick={() => openLibraryView(library)}
-                class="text-sm text-blue-400 hover:text-blue-300 transition-colors"
+                class="text-sm text-cyan-200 hover:text-cyan-100 transition-colors"
                 aria-label="View all in {library.name}"
               >
                 View All
@@ -1555,8 +1595,8 @@
               d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"
             />
           </svg>
-          <p class="text-gray-400 text-lg font-medium mb-1">Your library is empty</p>
-          <p class="text-gray-600 text-sm">Sync may still be in progress. Content will appear here once indexed.</p>
+          <p class="app-muted text-lg font-medium mb-1">Your library is empty</p>
+          <p class="app-faint text-sm">Sync may still be in progress. Content will appear here once indexed.</p>
         </div>
       {/if}
     </div>

@@ -277,19 +277,27 @@
   });
 </script>
 
-<!-- Opaque app background (hidden when player is active to reveal mpv video) -->
-<div class="fixed inset-0 bg-gray-900 -z-10" class:hidden={playerActive}></div>
+<!-- App shell background layers (hidden when player is active to reveal mpv video) -->
+<div class="fixed inset-0 z-0 pointer-events-none" class:hidden={playerActive}>
+  <div class="app-stage app-grid-sheen absolute inset-0"></div>
+  <div
+    class="absolute inset-0"
+    style:background="radial-gradient(80% 50% at 50% 115%, rgba(102,216,255,0.12), transparent 72%)"
+  ></div>
+</div>
 
 {#if getAuthStatus() === "loading"}
-  <LoadingScreen />
+  <div class="relative z-10">
+    <LoadingScreen />
+  </div>
 {:else}
-  <div class:hidden={playerActive}>
+  <div class:hidden={playerActive} class="relative z-10 app-animate-fade-up">
     <Router {routes} />
   </div>
 {/if}
 
 {#if toasts.length > 0}
-  <div class="fixed top-4 right-4 z-[100] w-[min(92vw,24rem)] space-y-2 pointer-events-none">
+  <div class="fixed bottom-4 right-4 z-[100] w-[min(92vw,24rem)] space-y-2 pointer-events-none">
     {#each toasts as toast (toast.id)}
       <div class="pointer-events-auto">
         <ErrorBanner
