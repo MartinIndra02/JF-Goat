@@ -18,6 +18,5 @@ Thumbs.db
 
 # Claude session artifacts
 tmpclaude-*
-
-# Ignore large binary files
-src-tauri/bin/mpv-2.dll
+# Ignore large binary files but tracked via Git LFS (unignored)
+# (empty or removed)

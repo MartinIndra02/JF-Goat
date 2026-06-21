@@ -34,6 +34,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Create LFS config hash
+        id: lfs-cache-key
+        run: echo "hash=${{ hashFiles('src-tauri/bin/mpv-2.dll') }}" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: Cache Git LFS files
+        uses: actions/cache@v4
+        id: lfs-cache
+        with:
+          path: .git/lfs
+          key: ${{ runner.os }}-lfs-${{ steps.lfs-cache-key.outputs.hash }}
+          restore-keys: |
+            ${{ runner.os }}-lfs-
+
+      - name: Explicitly download LFS files
+        run: git lfs pull
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
