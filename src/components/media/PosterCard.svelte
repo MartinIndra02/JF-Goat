@@ -133,7 +133,7 @@
       item = {
         ...item,
         played: newPlayed,
-        playback_ticks: newPlayed ? item.playback_ticks : 0,
+        playback_ticks: 0,
       };
       pushToast({
         level: "success",

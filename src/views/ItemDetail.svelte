@@ -226,18 +226,28 @@
   async function handleTogglePlayed(id: string, currentPlayed: boolean) {
     try {
       const newPlayed = await togglePlayed(id, currentPlayed);
-      // Update main item if it matches
-      if (item && item.id === id) {
-        item = { ...item, played: newPlayed, playback_ticks: newPlayed ? item.playback_ticks : 0 };
+      // Update main item if it matches (either by ID directly, or if it is a parent Series/Season of this item)
+      if (item && (item.id === id || item.season_id === id || item.series_id === id)) {
+        item = { ...item, played: newPlayed, playback_ticks: 0 };
       }
-      // Update episodes list
-      episodes = episodes.map(ep => ep.id === id ? { ...ep, played: newPlayed, playback_ticks: newPlayed ? ep.playback_ticks : 0 } : ep);
+      // Update episodes list (either directly, or if they belong to the toggled Series/Season)
+      episodes = episodes.map(ep =>
+        (ep.id === id || ep.season_id === id || ep.series_id === id)
+          ? { ...ep, played: newPlayed, playback_ticks: 0 }
+          : ep
+      );
       // Update sibling episodes
-      siblingEpisodes = siblingEpisodes.map(ep => ep.id === id ? { ...ep, played: newPlayed, playback_ticks: newPlayed ? ep.playback_ticks : 0 } : ep);
+      siblingEpisodes = siblingEpisodes.map(ep =>
+        (ep.id === id || ep.season_id === id || ep.series_id === id)
+          ? { ...ep, played: newPlayed, playback_ticks: 0 }
+          : ep
+      );
       // Update allSeasonEpisodes cache
       for (const seasonId of Object.keys(allSeasonEpisodes)) {
         allSeasonEpisodes[seasonId] = allSeasonEpisodes[seasonId].map(ep =>
-          ep.id === id ? { ...ep, played: newPlayed, playback_ticks: newPlayed ? ep.playback_ticks : 0 } : ep
+          (ep.id === id || ep.season_id === id || ep.series_id === id)
+            ? { ...ep, played: newPlayed, playback_ticks: 0 }
+            : ep
         );
       }
     } catch (e) {
