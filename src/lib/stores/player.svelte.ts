@@ -186,7 +186,15 @@ export function getRequestedSubtitleIndex(): number | null {
 
 // ── Actions ─────────────────────────────────────────────────────
 
+let firstTimeUpdatePos: number | null = null;
+let loadingTimeout: ReturnType<typeof setTimeout> | null = null;
+
 export function showPlayer(id: string, displayTitle: string) {
+  if (loadingTimeout) {
+    clearTimeout(loadingTimeout);
+    loadingTimeout = null;
+  }
+  firstTimeUpdatePos = null;
   itemId = id;
   title = displayTitle;
   status = "loading";
@@ -198,6 +206,11 @@ export function showPlayer(id: string, displayTitle: string) {
 }
 
 export function hidePlayer() {
+  if (loadingTimeout) {
+    clearTimeout(loadingTimeout);
+    loadingTimeout = null;
+  }
+  firstTimeUpdatePos = null;
   visible = false;
   status = "idle";
   itemId = null;
@@ -349,12 +362,28 @@ export function initPlayerListeners() {
   listen<MpvTimeUpdate>("mpv-time-update", (event) => {
     timePos = event.payload.position;
     duration = event.payload.duration;
-    if (status === "loading") {
-      status = "playing";
+    if (status === "loading" && !loadingTimeout) {
+      if (firstTimeUpdatePos === null) {
+        firstTimeUpdatePos = event.payload.position;
+      } else {
+        const diff = Math.abs(event.payload.position - firstTimeUpdatePos);
+        if (diff > 2.0) {
+          // This is a seek/jump to the resume position. Keep loading from this new position.
+          firstTimeUpdatePos = event.payload.position;
+        } else if (diff > 0.0) {
+          // Playhead is advancing normally. Playback has started!
+          loadingTimeout = setTimeout(() => {
+            status = "playing";
+            firstTimeUpdatePos = null;
+            loadingTimeout = null;
+          }, 150);
+        }
+      }
     }
   });
 
   listen<MpvStateChange>("mpv-state-change", (event) => {
+    if (status === "loading") return;
     status = event.payload.paused ? "paused" : "playing";
   });
 
