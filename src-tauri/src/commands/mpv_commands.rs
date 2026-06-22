@@ -209,6 +209,7 @@ async fn build_playback_url_with_options(
 
 #[tauri::command]
 pub async fn mpv_play(
+    app: tauri::AppHandle,
     mpv: State<'_, MpvState>,
     app_state: State<'_, AppState>,
     item_id: String,
@@ -230,7 +231,15 @@ pub async fn mpv_play(
     let start_seconds = start_ticks as f64 / 10_000_000.0;
 
     #[cfg(target_os = "windows")]
-    show_mpv_window(mpv.child_hwnd);
+    {
+        use tauri::Manager;
+        show_mpv_window(mpv.child_hwnd);
+        if let Some(window) = app.get_webview_window("main") {
+            if let Ok(size) = window.inner_size() {
+                crate::mpv::resize_mpv_window(mpv.child_hwnd, size.width, size.height);
+            }
+        }
+    }
 
     mpv.cmd_tx
         .send(MpvCommand::LoadFile {

@@ -411,6 +411,11 @@ pub fn run() {
                         mpv::resize_mpv_window(mpv_hwnd, size.width, size.height);
                     }
                 });
+
+                // Sync initial window size
+                if let Ok(size) = window.inner_size() {
+                    mpv::resize_mpv_window(child_hwnd, size.width, size.height);
+                }
             }
 
             Ok(())
