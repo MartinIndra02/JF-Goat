@@ -219,6 +219,8 @@ pub struct JellyfinPlaybackMediaSource {
     pub supports_direct_stream: Option<bool>,
     #[serde(alias = "SupportsTranscoding", default)]
     pub supports_transcoding: Option<bool>,
+    #[serde(alias = "MediaStreams", default)]
+    pub media_streams: Vec<JellyfinMediaStream>,
 }
 
 fn build_query_string(query_params: &[(String, String)]) -> String {
@@ -1084,7 +1086,7 @@ pub async fn search_remote(
 
 // ── MediaStreams and ExternalUrls ────────────────────────────────────────
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct JellyfinMediaStream {
     #[serde(alias = "Codec")]
     pub codec: Option<String>,

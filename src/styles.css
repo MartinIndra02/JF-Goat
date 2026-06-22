@@ -7,6 +7,19 @@ body,
   padding: 0;
   width: 100%;
   min-height: 100%;
+}
+
+html {
+  background: transparent !important;
+}
+
+body,
+#app {
+  background: #05070d !important;
+}
+
+body.video-revealed,
+body.video-revealed #app {
   background: transparent !important;
 }
 

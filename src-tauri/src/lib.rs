@@ -411,6 +411,11 @@ pub fn run() {
                         mpv::resize_mpv_window(mpv_hwnd, size.width, size.height);
                     }
                 });
+
+                // Sync initial window size
+                if let Ok(size) = window.inner_size() {
+                    mpv::resize_mpv_window(child_hwnd, size.width, size.height);
+                }
             }
 
             Ok(())
@@ -455,6 +460,7 @@ pub fn run() {
             commands::mpv_set_video_scale,
             commands::mpv_set_audio_track,
             commands::mpv_set_subtitle_track,
+            commands::mpv_add_external_subtitle,
             commands::mpv_stop,
             commands::get_media_streams,
             commands::get_item_chapters,

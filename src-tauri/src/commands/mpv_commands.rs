@@ -209,6 +209,7 @@ async fn build_playback_url_with_options(
 
 #[tauri::command]
 pub async fn mpv_play(
+    app: tauri::AppHandle,
     mpv: State<'_, MpvState>,
     app_state: State<'_, AppState>,
     item_id: String,
@@ -230,7 +231,15 @@ pub async fn mpv_play(
     let start_seconds = start_ticks as f64 / 10_000_000.0;
 
     #[cfg(target_os = "windows")]
-    show_mpv_window(mpv.child_hwnd);
+    {
+        use tauri::Manager;
+        show_mpv_window(mpv.child_hwnd);
+        if let Some(window) = app.get_webview_window("main") {
+            if let Ok(size) = window.inner_size() {
+                crate::mpv::resize_mpv_window(mpv.child_hwnd, size.width, size.height);
+            }
+        }
+    }
 
     mpv.cmd_tx
         .send(MpvCommand::LoadFile {
@@ -351,6 +360,37 @@ pub fn mpv_set_subtitle_track(
     mpv.cmd_tx
         .send(MpvCommand::SetSubtitleTrack(track))
         .map_err(|e| JfgoatError::Internal(e.to_string()))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn mpv_add_external_subtitle(
+    mpv: State<'_, MpvState>,
+    app_state: State<'_, AppState>,
+    item_id: String,
+    index: i64,
+    format: String,
+) -> Result<(), JfgoatError> {
+    let (server_url, token, _user_id, _device_id) = read_playback_connection_params(&app_state)?;
+    let server_base = server_url.trim_end_matches('/');
+
+    let format_lower = format.to_ascii_lowercase();
+    let format_ext = match format_lower.as_str() {
+        "subrip" | "srt" => "srt",
+        "webvtt" | "vtt" => "vtt",
+        "ass" | "ssa" | "substationalpha" => "ass",
+        other => other,
+    };
+
+    let url = format!(
+        "{}/Videos/{}/{}/Subtitles/{}/Stream.{}?api_key={}",
+        server_base, item_id, item_id, index, format_ext, token
+    );
+
+    mpv.cmd_tx
+        .send(MpvCommand::AddSubtitle(url))
+        .map_err(|e| JfgoatError::Internal(e.to_string()))?;
+
     Ok(())
 }
 

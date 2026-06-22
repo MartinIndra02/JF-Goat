@@ -1126,15 +1126,33 @@ pub async fn toggle_played(
         media_api::mark_unplayed(&jf_client, &user_id, &id).await?;
     }
 
-    // Update local DB
+    // Fetch the updated item from the server to get its new UserData
+    let jf_item = media_api::fetch_item_by_id(&jf_client, &user_id, &id).await?;
+    let item_type = jf_item.item_type.clone();
+    let updated_item = jf_item_to_media_item(jf_item, &server_id, &user_id);
+
+    let mut items_to_update = vec![updated_item.clone()];
+
+    if item_type == "Series" {
+        if let Ok(children_resp) = media_api::fetch_series_children(&jf_client, &user_id, &id, 0, 500).await {
+            for child in children_resp.items {
+                items_to_update.push(jf_item_to_media_item(child, &server_id, &user_id));
+            }
+        }
+    } else if item_type == "Season" {
+        if let Some(ref series_id) = updated_item.series_id {
+            if let Ok(episodes_resp) = media_api::fetch_episodes(&jf_client, &user_id, series_id, &id).await {
+                for ep in episodes_resp.items {
+                    items_to_update.push(jf_item_to_media_item(ep, &server_id, &user_id));
+                }
+            }
+        }
+    }
+
+    // Update local DB in a single transaction
     {
         let db = state.db.write_conn().map_err(|e| JfgoatError::Internal(e.to_string()))?;
-        let _ = db.execute(
-            "UPDATE media_items
-             SET played = ?1, playback_ticks = CASE WHEN ?1 = 0 THEN 0 ELSE playback_ticks END
-             WHERE id = ?2 AND server_id = ?3 AND user_id = ?4",
-            rusqlite::params![new_played as i32, id, server_id, user_id],
-        );
+        crate::db::media::insert_media_chunk(&db, &items_to_update)?;
     }
 
     Ok(new_played)

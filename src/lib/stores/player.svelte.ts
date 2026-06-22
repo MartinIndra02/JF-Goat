@@ -97,6 +97,10 @@ let preferredSubtitleDisplayTitle = $state<string | undefined>(
   readStoredText(PREF_SUB_TITLE_KEY),
 );
 
+let requestedAudioIndex = $state<number | null>(null);
+let requestedSubtitleIndex = $state<number | null>(null);
+
+
 // ── Getters ─────────────────────────────────────────────────────
 
 export function getPlayerStatus(): PlayerStatus {
@@ -171,18 +175,42 @@ export function getPreferredSubtitleDisplayTitle(): string | undefined {
   return preferredSubtitleDisplayTitle;
 }
 
+export function getRequestedAudioIndex(): number | null {
+  return requestedAudioIndex;
+}
+
+export function getRequestedSubtitleIndex(): number | null {
+  return requestedSubtitleIndex;
+}
+
+
 // ── Actions ─────────────────────────────────────────────────────
 
+let firstTimeUpdatePos: number | null = null;
+let loadingTimeout: ReturnType<typeof setTimeout> | null = null;
+
 export function showPlayer(id: string, displayTitle: string) {
+  if (loadingTimeout) {
+    clearTimeout(loadingTimeout);
+    loadingTimeout = null;
+  }
+  firstTimeUpdatePos = null;
   itemId = id;
   title = displayTitle;
   status = "loading";
   visible = true;
   timePos = 0;
   duration = 0;
+  requestedAudioIndex = null;
+  requestedSubtitleIndex = null;
 }
 
 export function hidePlayer() {
+  if (loadingTimeout) {
+    clearTimeout(loadingTimeout);
+    loadingTimeout = null;
+  }
+  firstTimeUpdatePos = null;
   visible = false;
   status = "idle";
   itemId = null;
@@ -214,6 +242,12 @@ export function setAudioTrack(v: number | null) {
 export function setSubtitleTrack(v: number | null) {
   subtitleTrack = v;
 }
+
+export function setRequestedTracks(audio: number | null, subtitle: number | null) {
+  requestedAudioIndex = audio;
+  requestedSubtitleIndex = subtitle;
+}
+
 
 export function setPreferredAudioStreamIndex(v: number | undefined) {
   preferredAudioStreamIndex = v;
@@ -328,12 +362,28 @@ export function initPlayerListeners() {
   listen<MpvTimeUpdate>("mpv-time-update", (event) => {
     timePos = event.payload.position;
     duration = event.payload.duration;
-    if (status === "loading") {
-      status = "playing";
+    if (status === "loading" && !loadingTimeout) {
+      if (firstTimeUpdatePos === null) {
+        firstTimeUpdatePos = event.payload.position;
+      } else {
+        const diff = Math.abs(event.payload.position - firstTimeUpdatePos);
+        if (diff > 2.0) {
+          // This is a seek/jump to the resume position. Keep loading from this new position.
+          firstTimeUpdatePos = event.payload.position;
+        } else if (diff > 0.0) {
+          // Playhead is advancing normally. Playback has started!
+          loadingTimeout = setTimeout(() => {
+            status = "playing";
+            firstTimeUpdatePos = null;
+            loadingTimeout = null;
+          }, 150);
+        }
+      }
     }
   });
 
   listen<MpvStateChange>("mpv-state-change", (event) => {
+    if (status === "loading") return;
     status = event.payload.paused ? "paused" : "playing";
   });
 

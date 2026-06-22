@@ -11,6 +11,7 @@
   import {
     initPlayerListeners,
     isPlayerVisible,
+    getPlayerStatus,
     hidePlayer,
   } from "./lib/stores/player.svelte";
   import {
@@ -52,7 +53,19 @@
   };
 
   const playerActive = $derived(isPlayerVisible());
+  const playerStatus = $derived(getPlayerStatus());
+  const isVideoRevealed = $derived(
+    playerActive && (playerStatus === "playing" || playerStatus === "paused" || playerStatus === "ended")
+  );
   const toasts = $derived(getToasts());
+
+  $effect(() => {
+    if (isVideoRevealed) {
+      document.body.classList.add("video-revealed");
+    } else {
+      document.body.classList.remove("video-revealed");
+    }
+  });
 
   function applyPreferencesToLocalPlayerKeys() {
     if (typeof localStorage === "undefined") return;
