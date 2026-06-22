@@ -20,6 +20,7 @@ pub enum MpvCommand {
     SetVideoScale(String),
     SetAudioTrack(i64),
     SetSubtitleTrack(Option<i64>),
+    AddSubtitle(String),
     Stop,
 }
 
@@ -432,7 +433,7 @@ fn run_mpv_loop(
                     if let Some(track_idx) = track {
                         mpv.set_property("sid", track_idx).ok();
                     } else {
-                        mpv.set_property("sid", -1i64).ok();
+                        mpv.set_property("sid", "no").ok();
                     }
                     emit_playback_settings_if_changed(
                         &app_handle,
@@ -444,6 +445,9 @@ fn run_mpv_loop(
                         audio_track,
                         subtitle_track,
                     );
+                }
+                MpvCommand::AddSubtitle(url) => {
+                    mpv.command("sub-add", &[&url, "select"]).ok();
                 }
                 MpvCommand::Stop => {
                     mpv.command("stop", &[]).ok();

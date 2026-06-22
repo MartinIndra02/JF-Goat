@@ -97,6 +97,10 @@ let preferredSubtitleDisplayTitle = $state<string | undefined>(
   readStoredText(PREF_SUB_TITLE_KEY),
 );
 
+let requestedAudioIndex = $state<number | null>(null);
+let requestedSubtitleIndex = $state<number | null>(null);
+
+
 // ── Getters ─────────────────────────────────────────────────────
 
 export function getPlayerStatus(): PlayerStatus {
@@ -171,6 +175,15 @@ export function getPreferredSubtitleDisplayTitle(): string | undefined {
   return preferredSubtitleDisplayTitle;
 }
 
+export function getRequestedAudioIndex(): number | null {
+  return requestedAudioIndex;
+}
+
+export function getRequestedSubtitleIndex(): number | null {
+  return requestedSubtitleIndex;
+}
+
+
 // ── Actions ─────────────────────────────────────────────────────
 
 export function showPlayer(id: string, displayTitle: string) {
@@ -180,6 +193,8 @@ export function showPlayer(id: string, displayTitle: string) {
   visible = true;
   timePos = 0;
   duration = 0;
+  requestedAudioIndex = null;
+  requestedSubtitleIndex = null;
 }
 
 export function hidePlayer() {
@@ -214,6 +229,12 @@ export function setAudioTrack(v: number | null) {
 export function setSubtitleTrack(v: number | null) {
   subtitleTrack = v;
 }
+
+export function setRequestedTracks(audio: number | null, subtitle: number | null) {
+  requestedAudioIndex = audio;
+  requestedSubtitleIndex = subtitle;
+}
+
 
 export function setPreferredAudioStreamIndex(v: number | undefined) {
   preferredAudioStreamIndex = v;

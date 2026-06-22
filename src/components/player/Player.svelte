@@ -24,6 +24,8 @@
     getPreferredSubtitleStreamIndex,
     resolvePreferredAudioStreamIndex,
     resolvePreferredSubtitleStreamIndex,
+    getRequestedAudioIndex,
+    getRequestedSubtitleIndex,
   } from "../../lib/stores/player.svelte";
   import {
     mpvPlay,
@@ -36,6 +38,7 @@
     mpvSetSubtitlePosition,
     mpvSetAudioTrack,
     mpvSetSubtitleTrack,
+    mpvAddExternalSubtitle,
     mpvStop,
     reportPlaybackLifecycle,
     getItemById,
@@ -128,11 +131,11 @@
   let pendingSeekSeconds = $state<number | null>(null);
 
   const PLAYBACK_CONTEXT_DELAY_MS = 2500;
-  const STREAM_CONTEXT_DELAY_MS = 3000;
+  const STREAM_CONTEXT_DELAY_MS = 200;
   const PLAYBACK_PROGRESS_INTERVAL_MS = 15_000;
   const SUBTITLE_POSITION_STORAGE_KEY = "jfgoat.player.subtitleBottomPercent";
-  const DEFAULT_SUBTITLE_POSITION_PERCENT = 92;
-  const SUBTITLE_POSITION_CONTROLS_OFFSET = 14;
+  const DEFAULT_SUBTITLE_POSITION_PERCENT = 95;
+  const SUBTITLE_POSITION_CONTROLS_OFFSET = 8;
 
   function clampSubtitlePositionPercent(value: number): number {
     return Math.max(70, Math.min(98, Math.round(value)));
@@ -407,6 +410,45 @@
       selectedAudioIndex = resolvePreferredAudioStreamIndex(streams.audio);
       selectedSubtitleIndex = resolvePreferredSubtitleStreamIndex(streams.subtitle);
       setSubtitleTrack(selectedSubtitleIndex);
+
+      const reqAudio = getRequestedAudioIndex();
+      const reqSub = getRequestedSubtitleIndex();
+
+      console.log("[Player] loadStreamContext resolved:", {
+        selectedAudioIndex,
+        selectedSubtitleIndex,
+        reqAudio,
+        reqSub
+      });
+
+      const audioChanged = reqAudio !== selectedAudioIndex;
+      const subChanged = reqSub !== selectedSubtitleIndex;
+
+      if (audioChanged || subChanged) {
+        console.log("[Player] Initial tracks differ from requested, applying:", { selectedAudioIndex, selectedSubtitleIndex });
+        void applyTrackSelection(selectedAudioIndex, selectedSubtitleIndex, false);
+      } else {
+        console.log("[Player] Initial tracks match requested, setting on MPV:", { selectedAudioIndex, selectedSubtitleIndex });
+        if (selectedAudioIndex !== null) {
+          const mpvAudioId = mapAudioIndexToMpvId(streams, selectedAudioIndex);
+          if (mpvAudioId !== null) {
+            void mpvSetAudioTrack(mpvAudioId);
+          }
+        }
+        if (selectedSubtitleIndex === null) {
+          void mpvSetSubtitleTrack(null);
+        } else {
+          const mpvSubtitleId = mapSubtitleIndexToMpvId(streams, selectedSubtitleIndex);
+          if (mpvSubtitleId !== null) {
+            void mpvSetSubtitleTrack(mpvSubtitleId);
+          } else {
+            const track = streams.subtitle.find((t) => t.index === selectedSubtitleIndex);
+            const codec = track?.codec?.toLowerCase() ?? "vtt";
+            console.log("[Player] Initial subtitle is external, calling mpvAddExternalSubtitle:", selectedSubtitleIndex, "codec:", codec);
+            void mpvAddExternalSubtitle(id, selectedSubtitleIndex, codec);
+          }
+        }
+      }
     } else {
       selectedAudioIndex = null;
       selectedSubtitleIndex = null;
@@ -574,6 +616,10 @@
 
     closeTopMenus();
     selectedQualityKey = nextQualityKey;
+
+    mediaStreams = null;
+    streamContextItemId = null;
+
     await mpvPlay({
       itemId: playerItemId,
       startTicks: Math.max(0, Math.floor(pos * 10_000_000)),
@@ -588,6 +634,9 @@
     let mpvId = 1;
     for (const track of streams.audio) {
       if (track.index === streamIndex) {
+        if (track.is_external) {
+          return null;
+        }
         return mpvId;
       }
       if (!track.is_external) {
@@ -601,11 +650,10 @@
     let mpvId = 1;
     for (const track of streams.subtitle) {
       if (track.index === streamIndex) {
-        const deliveryMethod = (track.delivery_method ?? "").toLowerCase();
-        if (deliveryMethod === "embed" || deliveryMethod === "") {
-          return mpvId;
+        if (track.is_external) {
+          return null;
         }
-        return null;
+        return mpvId;
       }
       if (!track.is_external) {
         mpvId += 1;
@@ -617,60 +665,103 @@
   async function applyTrackSelection(
     nextAudioIndex: number | null,
     nextSubtitleIndex: number | null,
+    savePreferences = true,
   ) {
     if (!playerItemId) return;
+
+    const currentAudioIndex = selectedAudioIndex;
+    const currentSubtitleIndex = selectedSubtitleIndex;
+
+    console.log("[Player] applyTrackSelection start:", {
+      currentAudioIndex,
+      currentSubtitleIndex,
+      nextAudioIndex,
+      nextSubtitleIndex,
+      savePreferences
+    });
 
     selectedAudioIndex = nextAudioIndex;
     selectedSubtitleIndex = nextSubtitleIndex;
     setSubtitleTrack(nextSubtitleIndex);
 
-    if (nextAudioIndex !== null) {
-      setPreferredAudioStreamIndex(nextAudioIndex);
+    if (savePreferences) {
+      if (nextAudioIndex !== null) {
+        setPreferredAudioStreamIndex(nextAudioIndex);
+      }
+      setPreferredSubtitleStreamIndex(nextSubtitleIndex);
+
+      const selectedAudioTrack = mediaStreams?.audio.find(
+        (track) => track.index === nextAudioIndex,
+      );
+      const selectedSubtitleTrack = mediaStreams?.subtitle.find(
+        (track) => track.index === nextSubtitleIndex,
+      );
+      setPreferredAudioMetadata(
+        selectedAudioTrack?.language,
+        selectedAudioTrack?.display_title,
+      );
+      setPreferredSubtitleMetadata(
+        selectedSubtitleTrack?.language,
+        selectedSubtitleTrack?.display_title,
+      );
     }
-    setPreferredSubtitleStreamIndex(nextSubtitleIndex);
 
-    const selectedAudioTrack = mediaStreams?.audio.find(
-      (track) => track.index === nextAudioIndex,
-    );
-    const selectedSubtitleTrack = mediaStreams?.subtitle.find(
-      (track) => track.index === nextSubtitleIndex,
-    );
-    setPreferredAudioMetadata(
-      selectedAudioTrack?.language,
-      selectedAudioTrack?.display_title,
-    );
-    setPreferredSubtitleMetadata(
-      selectedSubtitleTrack?.language,
-      selectedSubtitleTrack?.display_title,
-    );
+    const currentAudioIsExternal =
+      currentAudioIndex !== null &&
+      mediaStreams !== null &&
+      mapAudioIndexToMpvId(mediaStreams, currentAudioIndex) === null;
 
-    let requireStreamReload = false;
-
+    let nextAudioIsExternal = false;
     if (mediaStreams && nextAudioIndex !== null) {
+      nextAudioIsExternal = mapAudioIndexToMpvId(mediaStreams, nextAudioIndex) === null;
+    }
+
+    let requireStreamReload = (nextAudioIndex !== currentAudioIndex) && (currentAudioIsExternal || nextAudioIsExternal || !mediaStreams);
+
+    console.log("[Player] checked audio tracks:", {
+      currentAudioIndex,
+      nextAudioIndex,
+      currentAudioIsExternal,
+      nextAudioIsExternal,
+      requireStreamReload
+    });
+
+    if (!requireStreamReload && mediaStreams && nextAudioIndex !== null) {
       const mpvAudioId = mapAudioIndexToMpvId(mediaStreams, nextAudioIndex);
+      console.log("[Player] mapped audio track in MPV:", mpvAudioId);
       if (mpvAudioId !== null) {
         await mpvSetAudioTrack(mpvAudioId);
-      } else {
-        requireStreamReload = true;
       }
-    } else if (nextAudioIndex !== null) {
-      requireStreamReload = true;
     }
 
-    if (nextSubtitleIndex === null) {
-      await mpvSetSubtitleTrack(null);
-    } else if (mediaStreams) {
-      const mpvSubtitleId = mapSubtitleIndexToMpvId(mediaStreams, nextSubtitleIndex);
-      if (mpvSubtitleId !== null) {
-        await mpvSetSubtitleTrack(mpvSubtitleId);
-      } else {
-        requireStreamReload = true;
+    if (!requireStreamReload) {
+      if (nextSubtitleIndex === null) {
+        console.log("[Player] setting subtitle track to null");
+        await mpvSetSubtitleTrack(null);
+      } else if (mediaStreams) {
+        const mpvSubtitleId = mapSubtitleIndexToMpvId(mediaStreams, nextSubtitleIndex);
+        console.log("[Player] mapped subtitle track in MPV:", mpvSubtitleId);
+        if (mpvSubtitleId !== null) {
+          await mpvSetSubtitleTrack(mpvSubtitleId);
+        } else {
+          const track = mediaStreams.subtitle.find((t) => t.index === nextSubtitleIndex);
+          const codec = track?.codec?.toLowerCase() ?? "vtt";
+          console.log("[Player] subtitle is external, calling mpvAddExternalSubtitle:", nextSubtitleIndex, "codec:", codec);
+          await mpvAddExternalSubtitle(playerItemId, nextSubtitleIndex, codec);
+        }
       }
-    } else {
-      requireStreamReload = true;
     }
+
+    console.log("[Player] requireStreamReload result:", requireStreamReload);
 
     if (requireStreamReload) {
+      console.log("[Player] reloading stream with:", {
+        itemId: playerItemId,
+        nextAudioIndex,
+        nextSubtitleIndex
+      });
+      mediaStreams = null;
+      streamContextItemId = null;
       // Keep the active quality profile when track changes force a stream reload.
       const quality = selectedQuality;
       await mpvPlay({

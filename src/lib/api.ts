@@ -1,4 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
+import { setRequestedTracks } from "./stores/player.svelte";
+
 import type {
   ServerPublicInfo,
   LoginResult,
@@ -318,6 +320,9 @@ export async function exportDiagnostics(): Promise<DiagnosticsExportResult> {
 // ── MPV player commands ─────────────────────────────────────────
 
 export async function mpvPlay(request: PlaybackRequest): Promise<void> {
+  const audio = request.audioStreamIndex ?? null;
+  const subtitle = request.subtitleStreamIndex === -1 ? null : (request.subtitleStreamIndex ?? null);
+  setRequestedTracks(audio, subtitle);
   return invoke("mpv_play", { ...request });
 }
 
@@ -359,6 +364,10 @@ export async function mpvSetAudioTrack(track: number): Promise<void> {
 
 export async function mpvSetSubtitleTrack(track: number | null): Promise<void> {
   return invoke("mpv_set_subtitle_track", { track });
+}
+
+export async function mpvAddExternalSubtitle(itemId: string, index: number, format: string): Promise<void> {
+  return invoke("mpv_add_external_subtitle", { itemId, index, format });
 }
 
 export async function mpvStop(): Promise<void> {

@@ -355,6 +355,37 @@ pub fn mpv_set_subtitle_track(
 }
 
 #[tauri::command]
+pub fn mpv_add_external_subtitle(
+    mpv: State<'_, MpvState>,
+    app_state: State<'_, AppState>,
+    item_id: String,
+    index: i64,
+    format: String,
+) -> Result<(), JfgoatError> {
+    let (server_url, token, _user_id, _device_id) = read_playback_connection_params(&app_state)?;
+    let server_base = server_url.trim_end_matches('/');
+
+    let format_lower = format.to_ascii_lowercase();
+    let format_ext = match format_lower.as_str() {
+        "subrip" | "srt" => "srt",
+        "webvtt" | "vtt" => "vtt",
+        "ass" | "ssa" | "substationalpha" => "ass",
+        other => other,
+    };
+
+    let url = format!(
+        "{}/Videos/{}/{}/Subtitles/{}/Stream.{}?api_key={}",
+        server_base, item_id, item_id, index, format_ext, token
+    );
+
+    mpv.cmd_tx
+        .send(MpvCommand::AddSubtitle(url))
+        .map_err(|e| JfgoatError::Internal(e.to_string()))?;
+
+    Ok(())
+}
+
+#[tauri::command]
 pub fn mpv_stop(mpv: State<'_, MpvState>) -> Result<(), JfgoatError> {
     #[cfg(target_os = "windows")]
     hide_mpv_window(mpv.child_hwnd);

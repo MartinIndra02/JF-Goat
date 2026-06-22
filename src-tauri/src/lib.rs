@@ -455,6 +455,7 @@ pub fn run() {
             commands::mpv_set_video_scale,
             commands::mpv_set_audio_track,
             commands::mpv_set_subtitle_track,
+            commands::mpv_add_external_subtitle,
             commands::mpv_stop,
             commands::get_media_streams,
             commands::get_item_chapters,
