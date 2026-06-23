@@ -14,5 +14,5 @@ test("autologin opens home directly", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Continue Watching" }),
   ).toBeVisible();
-  await expect(page.getByRole("heading", { name: "jfgoat" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "JF Goat" })).toHaveCount(0);
 });

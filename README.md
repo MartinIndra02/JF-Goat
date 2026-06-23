@@ -78,7 +78,17 @@ npm run release:tauri
 
 ## 📝 Changelog
 
-### v1.0.1 (Current)
+### v1.0.2 (Current)
+This release includes new features, styling enhancements, and bug fixes:
+
+* **Application Icon**: Configured and integrated native icons across multiple formats and resolutions for the system tray, taskbar, window header, and package installers (Windows, macOS, Android, iOS).
+* **Refresh Context Menu**: Added a right-click context menu with a "Refresh from Jellyfin API" option to manually trigger a fresh sync for an item, compare changes, and write updates directly to the local SQLite database.
+* **Navigation Enhancements**: Integrated a right-click "Go Back" context menu action for improved mouse-only navigation.
+* **Design Unification**: Unified design and layout across the series, seasons, and episodes detail pages to match the home screen and player aesthetics. Removed obsolete resolution/quality selectors (HD SDR and Original) on the episode screen.
+* **Search Delta Sync Fix**: Resolved an issue where unscheduled incremental delta syncs triggered unexpectedly during search and general app navigation.
+* **Dependency Updates**: Patched security vulnerabilities across frontend and backend dependencies.
+
+### v1.0.1
 This release includes crucial fixes and stability improvements addressing GitHub issues **#15-20** and **#23-26**:
 
 * **CI/CD & Builds (Issue #15)**: Disabled updater artifacts in `tauri.conf.json` to bypass code-signing key errors during build pipelines.

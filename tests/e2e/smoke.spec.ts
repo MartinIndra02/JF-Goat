@@ -7,7 +7,7 @@ test("connect -> login -> home -> detail -> player -> search with propagation", 
   await installTauriMock(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
-  await expect(page.getByRole("heading", { name: "jfgoat" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "JF Goat" })).toBeVisible();
 
   await page
     .getByPlaceholder("http://your-server:8096")
