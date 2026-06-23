@@ -36,7 +36,12 @@
     markHealthy,
   } from "../lib/stores/connectivity.svelte";
   import { pushErrorToast, pushToast } from "../lib/stores/toast.svelte";
-  import { initSyncListeners, resetSyncStore } from "../lib/stores/sync.svelte";
+  import {
+    initSyncListeners,
+    resetSyncStore,
+    isSyncTriggered,
+    markSyncTriggered,
+  } from "../lib/stores/sync.svelte";
   import SyncIndicator from "../components/layout/SyncIndicator.svelte";
   import HeroBanner from "../components/media/HeroBanner.svelte";
   import MediaRow from "../components/media/MediaRow.svelte";
@@ -189,9 +194,12 @@
   });
 
   initSyncListeners();
-  startSync().catch((error) => {
-    pushErrorToast("sync", error, "Sync startup failed", "sync-start-failed");
-  });
+  if (!isSyncTriggered()) {
+    markSyncTriggered();
+    startSync().catch((error) => {
+      pushErrorToast("sync", error, "Sync startup failed", "sync-start-failed");
+    });
+  }
 
   onMount(() => {
     const onHomepageCacheUpdated = (event: Event) => {

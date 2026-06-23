@@ -366,6 +366,7 @@ pub fn run() {
                 token: RwLock::new(None),
                 sync_status: RwLock::new(SyncStatus::Ready),
                 user_data_refresh_running: AtomicBool::new(false),
+                sync_running: AtomicBool::new(false),
             };
             app.manage(app_state);
 

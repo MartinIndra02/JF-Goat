@@ -102,6 +102,7 @@ pub struct AppState {
     pub token: RwLock<Option<String>>,
     pub sync_status: RwLock<SyncStatus>,
     pub user_data_refresh_running: AtomicBool,
+    pub sync_running: AtomicBool,
 }
 
 impl AppState {
