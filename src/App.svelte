@@ -59,6 +59,60 @@
   );
   const toasts = $derived(getToasts());
 
+  let globalMenuOpen = $state(false);
+  let globalMenuX = $state(0);
+  let globalMenuY = $state(0);
+
+  function handleGlobalContextMenu(event: MouseEvent) {
+    if (getAuthStatus() !== "authenticated") return;
+    if (event.defaultPrevented) return;
+
+    event.preventDefault();
+    
+    const menuWidth = 160;
+    const menuHeight = 50;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    globalMenuX = Math.min(event.clientX, viewportWidth - menuWidth - 12);
+    globalMenuY = Math.min(event.clientY, viewportHeight - menuHeight - 12);
+    globalMenuOpen = true;
+  }
+
+  function closeGlobalMenu() {
+    globalMenuOpen = false;
+  }
+
+  function triggerGlobalBack() {
+    closeGlobalMenu();
+    if (window.history.length > 1) {
+      window.history.back();
+    } else {
+      replace("/home");
+    }
+  }
+
+  function triggerGlobalRefresh() {
+    closeGlobalMenu();
+    const hash = window.location.hash || "";
+    if (hash.startsWith("#/item")) {
+      const params = new URLSearchParams(hash.slice(hash.indexOf("?") + 1));
+      const id = params.get("id");
+      if (id) {
+        window.dispatchEvent(new CustomEvent("refresh-current-item", { detail: { id } }));
+      } else {
+        const pathPart = hash.split("?")[0].replace("#/item/", "");
+        if (pathPart && pathPart !== "#/item") {
+          window.dispatchEvent(new CustomEvent("refresh-current-item", { detail: { id: decodeURIComponent(pathPart) } }));
+        }
+      }
+    } else if (hash.startsWith("#/library")) {
+      window.dispatchEvent(new CustomEvent("refresh-library"));
+    } else {
+      window.dispatchEvent(new CustomEvent("refresh-homepage"));
+    }
+  }
+
   $effect(() => {
     if (isVideoRevealed) {
       document.body.classList.add("video-revealed");
@@ -274,6 +328,23 @@
       });
     };
 
+    const onPointerDown = (e: PointerEvent) => {
+      if (!globalMenuOpen) return;
+      const target = e.target as HTMLElement;
+      if (!target.closest(".global-context-menu")) {
+        closeGlobalMenu();
+      }
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        closeGlobalMenu();
+      }
+    };
+
+    window.addEventListener("contextmenu", handleGlobalContextMenu);
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
     window.addEventListener("unhandledrejection", handleUnhandledRejection);
     window.addEventListener("error", handleRuntimeError);
     window.addEventListener("online", handleOnline);
@@ -282,6 +353,9 @@
     void init();
 
     return () => {
+      window.removeEventListener("contextmenu", handleGlobalContextMenu);
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("unhandledrejection", handleUnhandledRejection);
       window.removeEventListener("error", handleRuntimeError);
       window.removeEventListener("online", handleOnline);
@@ -326,4 +400,49 @@
   </div>
 {/if}
 
+{#if globalMenuOpen}
+  <div 
+    class="global-context-menu fixed z-[9999] w-40 bg-[rgba(13,20,35,0.85)] border border-white/20 rounded-xl py-1 shadow-2xl backdrop-blur-xl flex flex-col overflow-hidden"
+    style="left: {globalMenuX}px; top: {globalMenuY}px;"
+  >
+    <button
+      onclick={triggerGlobalBack}
+      class="w-full text-left px-3.5 py-2.5 text-xs font-semibold text-gray-200 hover:text-white hover:bg-white/10 transition-all flex items-center gap-2 group border-b border-white/10"
+    >
+      <svg class="w-3.5 h-3.5 text-cyan-300 group-hover:-translate-x-0.5 transition-transform duration-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+      </svg>
+      Back
+    </button>
+    <button
+      onclick={triggerGlobalRefresh}
+      class="w-full text-left px-3.5 py-2.5 text-xs font-semibold text-gray-200 hover:text-white hover:bg-white/10 transition-all flex items-center gap-2 group"
+    >
+      <svg class="w-3.5 h-3.5 text-cyan-300 group-hover:rotate-180 transition-transform duration-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+      </svg>
+      Refresh
+    </button>
+  </div>
+{/if}
+
 <Player />
+
+<style>
+  .global-context-menu {
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    transform-origin: top left;
+    animation: globalContextMenuScale 0.15s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  @keyframes globalContextMenuScale {
+    from {
+      opacity: 0;
+      transform: scale(0.92);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+</style>

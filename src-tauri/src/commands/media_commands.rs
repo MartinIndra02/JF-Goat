@@ -1261,3 +1261,62 @@ pub async fn report_playback_stopped(
     )
     .await
 }
+
+/// Force-refresh a media item directly from the Jellyfin API and write all changes/new items
+/// (including all child seasons/episodes for series) into the local SQLite database.
+#[tauri::command]
+pub async fn refresh_item_details(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<(), JfgoatError> {
+    let (server_url, token, user_id, device_id) = get_connection_params(&state)?;
+    let server_id = get_server_id(&state)?;
+
+    let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
+        .with_token(&token);
+
+    // 1. Fetch item from remote Jellyfin API
+    let jf_item = media_api::fetch_item_by_id(&jf_client, &user_id, &id).await?;
+    let item_type = jf_item.item_type.clone();
+    let media_item = MediaItem::from_jellyfin_item(jf_item, &server_id, &user_id);
+
+    let mut items_to_save = vec![media_item.clone()];
+
+    // 2. Fetch seasons/episodes recursively if needed
+    if item_type == "Series" {
+        // Fetch seasons and episodes for this series using fetch_series_children in chunks
+        let mut start = 0u32;
+        let limit = 500u32;
+        loop {
+            let resp = media_api::fetch_series_children(&jf_client, &user_id, &id, start, limit).await?;
+            let count = resp.items.len();
+            if count == 0 {
+                break;
+            }
+            for item in resp.items {
+                items_to_save.push(MediaItem::from_jellyfin_item(item, &server_id, &user_id));
+            }
+            if count < limit as usize {
+                break;
+            }
+            start += limit;
+        }
+    } else if item_type == "Season" {
+        // Fetch episodes for this season
+        if let Some(ref series_id) = media_item.series_id {
+            let resp = media_api::fetch_episodes(&jf_client, &user_id, series_id, &id).await?;
+            for item in resp.items {
+                items_to_save.push(MediaItem::from_jellyfin_item(item, &server_id, &user_id));
+            }
+        }
+    }
+
+    // 3. Save all fetched items to the DB
+    {
+        let db = state.db.write_conn().map_err(|e| JfgoatError::Internal(e.to_string()))?;
+        crate::db::media::insert_media_chunk(&db, &items_to_save)?;
+    }
+
+    Ok(())
+}
+

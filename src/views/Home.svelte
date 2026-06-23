@@ -216,6 +216,49 @@
       onHomepageCacheUpdated as EventListener,
     );
 
+    const handleRefreshHomepage = async () => {
+      if (!isHomeRoute) return;
+      pushToast({
+        level: "info",
+        source: "api",
+        title: "Refreshing dashboard",
+        message: "Fetching updated media from server...",
+        dismissAfterMs: 3000,
+      });
+      await refreshFromServer();
+      pushToast({
+        level: "success",
+        source: "api",
+        title: "Dashboard updated",
+        message: "Your home screen is now up to date.",
+        dismissAfterMs: 3000,
+      });
+    };
+
+    const handleRefreshLibrary = async () => {
+      if (!isLibraryRoute) return;
+      const viewId = selectedLibraryId;
+      if (!viewId) return;
+      pushToast({
+        level: "info",
+        source: "api",
+        title: "Refreshing library",
+        message: "Fetching the latest library content...",
+        dismissAfterMs: 3000,
+      });
+      await loadLibraryItems(viewId);
+      pushToast({
+        level: "success",
+        source: "api",
+        title: "Library updated",
+        message: "The library view is now up to date.",
+        dismissAfterMs: 3000,
+      });
+    };
+
+    window.addEventListener("refresh-homepage", handleRefreshHomepage);
+    window.addEventListener("refresh-library", handleRefreshLibrary);
+
     const onWindowPointerDown = (event: PointerEvent) => {
       if (!navMenuOpen) return;
 
@@ -251,6 +294,8 @@
         onHomepageCacheUpdated as EventListener,
       );
 
+      window.removeEventListener("refresh-homepage", handleRefreshHomepage);
+      window.removeEventListener("refresh-library", handleRefreshLibrary);
       window.removeEventListener("pointerdown", onWindowPointerDown);
       window.removeEventListener("keydown", onWindowKeydown);
 

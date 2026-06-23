@@ -436,3 +436,8 @@ export async function toggleFavorite(
 ): Promise<boolean> {
   return invoke("toggle_favorite", { id, isFavorite });
 }
+
+export async function refreshItemDetails(id: string): Promise<void> {
+  return invoke("refresh_item_details", { id });
+}
+
