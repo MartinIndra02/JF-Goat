@@ -9,7 +9,7 @@ mod sync;
 
 use std::fs;
 use std::path::PathBuf;
-use std::sync::RwLock;
+use parking_lot::RwLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, Manager};
 use std::sync::atomic::AtomicBool;
@@ -287,8 +287,8 @@ pub fn run() {
                 }
             };
 
-            let server_url = state.server_url.read().ok().and_then(|v| v.clone());
-            let token = state.token.read().ok().and_then(|v| v.clone());
+            let server_url = state.server_url.read().clone();
+            let token = state.token.read().clone();
 
             if let (Some(server_url), Some(token)) = (server_url, token) {
                 let http_client = state.http_client.clone();

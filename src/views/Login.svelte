@@ -18,8 +18,8 @@
         user_id: result.user_id,
         username: result.username,
         server_id: result.server_id,
-        server_name: "",
-        server_url: "",
+        server_name: result.server_name,
+        server_url: result.server_url,
       });
       push("/home");
     } catch (e: any) {

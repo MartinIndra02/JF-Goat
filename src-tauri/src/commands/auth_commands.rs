@@ -11,7 +11,7 @@ const KEYRING_USER: &str = "access_token";
 const KEYRING_USER_PASSWORD: &str = "saved_password";
 
 fn get_device_id(state: &AppState) -> Result<String, JfgoatError> {
-    let db = state.db.write_conn().map_err(|e| JfgoatError::Internal(e.to_string()))?;
+    let db = state.db.read_conn().map_err(|e| JfgoatError::Internal(e.to_string()))?;
     let device_id: String = db.query_row(
         "SELECT value FROM metadata WHERE key = 'device_id'",
         [],
@@ -49,24 +49,7 @@ fn keyring_clear_token() -> Result<(), JfgoatError> {
     }
 }
 
-fn keyring_store_password(password: &str) -> Result<(), JfgoatError> {
-    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER_PASSWORD)
-        .map_err(|e| JfgoatError::Internal(format!("Keyring error: {}", e)))?;
-    entry
-        .set_password(password)
-        .map_err(|e| JfgoatError::Internal(format!("Keyring store error: {}", e)))?;
-    Ok(())
-}
 
-fn keyring_load_password() -> Result<Option<String>, JfgoatError> {
-    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER_PASSWORD)
-        .map_err(|e| JfgoatError::Internal(format!("Keyring error: {}", e)))?;
-    match entry.get_password() {
-        Ok(password) => Ok(Some(password)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(e) => Err(JfgoatError::Internal(format!("Keyring load error: {}", e))),
-    }
-}
 
 fn keyring_clear_password() -> Result<(), JfgoatError> {
     let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER_PASSWORD)
@@ -85,18 +68,7 @@ fn update_app_state_after_auth(
     server_url: &str,
     user_id: &str,
 ) -> Result<(), JfgoatError> {
-    {
-        let mut cached_token = state.token.write().map_err(|e| JfgoatError::Internal(e.to_string()))?;
-        *cached_token = Some(token);
-    }
-    {
-        let mut cached_url = state.server_url.write().map_err(|e| JfgoatError::Internal(e.to_string()))?;
-        *cached_url = Some(server_url.to_string());
-    }
-    {
-        let mut cached_uid = state.user_id.write().map_err(|e| JfgoatError::Internal(e.to_string()))?;
-        *cached_uid = Some(user_id.to_string());
-    }
+    state.update_session(Some(token), Some(server_url.to_string()), Some(user_id.to_string()));
     Ok(())
 }
 
@@ -112,7 +84,14 @@ pub async fn connect_to_server(
 
     let device_id = get_device_id(&state)?;
 
-    let jf_client = JellyfinClient::new(&state.http_client, &url, &device_id);
+    let parsed_url = reqwest::Url::parse(&url)
+        .map_err(|e| JfgoatError::Auth(format!("Invalid URL format: {}", e)))?;
+    if parsed_url.scheme() != "http" && parsed_url.scheme() != "https" {
+        return Err(JfgoatError::Auth("URL scheme must be http or https".to_string()));
+    }
+    let clean_url = parsed_url.as_str().trim_end_matches('/').to_string();
+
+    let jf_client = JellyfinClient::new(&state.http_client, &clean_url, &device_id);
     let info = auth::validate_server(&jf_client).await?;
 
     // Store server in DB
@@ -122,18 +101,7 @@ pub async fn connect_to_server(
     }
 
     // Cache server URL
-    {
-        let mut server_url = state.server_url.write().map_err(|e| JfgoatError::Internal(e.to_string()))?;
-        *server_url = Some(info.url.clone());
-    }
-    {
-        let mut cached_token = state.token.write().map_err(|e| JfgoatError::Internal(e.to_string()))?;
-        *cached_token = None;
-    }
-    {
-        let mut cached_uid = state.user_id.write().map_err(|e| JfgoatError::Internal(e.to_string()))?;
-        *cached_uid = None;
-    }
+    state.update_session(None, Some(info.url.clone()), None);
 
     Ok(info)
 }
@@ -146,31 +114,36 @@ pub async fn login(
 ) -> Result<LoginResult, JfgoatError> {
     let device_id = get_device_id(&state)?;
 
-    let server_url = {
-        let url = state.server_url.read().map_err(|e| JfgoatError::Internal(e.to_string()))?;
-        url.clone().ok_or_else(|| JfgoatError::Auth("No server connected".to_string()))?
-    };
+    let server_url = state
+        .server_url
+        .read()
+        .clone()
+        .ok_or_else(|| JfgoatError::Auth("No server connected".to_string()))?;
 
     let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id);
-    let (token, result) = auth::authenticate_by_name(&jf_client, &username, &password).await?;
+    let (token, mut result) = auth::authenticate_by_name(&jf_client, &username, &password).await?;
 
     // Store token in OS credential store
     keyring_store_token(&token)?;
 
-    // Store password in OS credential store for auto-login when token expires.
-    // The OS keyring (GNOME Keyring / macOS Keychain / Windows Credential Manager)
-    // encrypts stored credentials; they are never persisted in plaintext.
-    keyring_store_password(&password)?;
+    // Clear legacy password if any
+    let _ = keyring_clear_password();
 
-    // Update DB with user info
-    {
+    // Update DB with user info & get server name
+    let server_name = {
         let db = state.db.write_conn().map_err(|e| JfgoatError::Internal(e.to_string()))?;
         servers::set_active_server(&db, &result.server_id)?;
         servers::update_server_user(&db, &result.server_id, &result.user_id, &result.username)?;
-    }
+        let s = servers::get_active_server(&db)?
+            .ok_or_else(|| JfgoatError::Internal("Active server not found after login".to_string()))?;
+        s.name
+    };
 
     // Cache in AppState
     update_app_state_after_auth(&state, token, &server_url, &result.user_id)?;
+
+    result.server_name = server_name;
+    result.server_url = server_url;
 
     Ok(result)
 }
@@ -181,7 +154,7 @@ pub async fn check_auth(
 ) -> Result<Option<SessionInfo>, JfgoatError> {
     // Check if we have an active server with user info
     let server = {
-        let db = state.db.write_conn().map_err(|e| JfgoatError::Internal(e.to_string()))?;
+        let db = state.db.read_conn().map_err(|e| JfgoatError::Internal(e.to_string()))?;
         servers::get_active_server(&db)?
     };
 
@@ -221,52 +194,19 @@ pub async fn check_auth(
                 }));
             }
             Ok(r) if r.status() == reqwest::StatusCode::UNAUTHORIZED => {
-                // Token is definitively invalid — clear it and fall through to auto-login
+                // Token is definitively invalid — clear it
                 keyring_clear_token()?;
             }
             _ => {
                 // Network error or unexpected status — keep the token (it may still
-                // be valid) and fall through to auto-login attempt.
-                // Don't clear credentials on transient failures.
+                // be valid). Don't clear credentials on transient failures.
             }
         }
     }
 
-    // Token missing or invalid — attempt auto-login with stored credentials
-    let password = match keyring_load_password()? {
-        Some(p) => p,
-        None => return Ok(None),
-    };
-
-    let jf_client = JellyfinClient::new(&state.http_client, &server.url, &device_id);
-    match auth::authenticate_by_name(&jf_client, &username, &password).await {
-        Ok((new_token, result)) => {
-            // Auto-login succeeded — store new token and update AppState
-            keyring_store_token(&new_token)?;
-            {
-                let db = state.db.write_conn().map_err(|e| JfgoatError::Internal(e.to_string()))?;
-                servers::set_active_server(&db, &result.server_id)?;
-                servers::update_server_user(&db, &result.server_id, &result.user_id, &result.username)?;
-            }
-            update_app_state_after_auth(&state, new_token, &server.url, &result.user_id)?;
-            Ok(Some(SessionInfo {
-                user_id: result.user_id,
-                username: result.username,
-                server_id: result.server_id,
-                server_name: server.name,
-                server_url: server.url,
-            }))
-        }
-        Err(JfgoatError::Auth(_)) => {
-            // Invalid credentials — clear stored password to avoid retry loops
-            keyring_clear_password()?;
-            Ok(None)
-        }
-        Err(_) => {
-            // Network or server error — keep credentials for next attempt
-            Ok(None)
-        }
-    }
+    // Token missing or invalid — clear any legacy password and return None (auto-login disabled)
+    let _ = keyring_clear_password();
+    Ok(None)
 }
 
 /// Fast offline auth check — returns the stored session without network validation.
@@ -277,7 +217,7 @@ pub async fn check_auth_offline(
     state: State<'_, AppState>,
 ) -> Result<Option<SessionInfo>, JfgoatError> {
     let server = {
-        let db = state.db.write_conn().map_err(|e| JfgoatError::Internal(e.to_string()))?;
+        let db = state.db.read_conn().map_err(|e| JfgoatError::Internal(e.to_string()))?;
         servers::get_active_server(&db)?
     };
 
@@ -298,18 +238,7 @@ pub async fn check_auth_offline(
     };
 
     // Pre-populate AppState so homepage data commands work immediately
-    {
-        let mut cached_token = state.token.write().map_err(|e| JfgoatError::Internal(e.to_string()))?;
-        *cached_token = Some(token);
-    }
-    {
-        let mut cached_url = state.server_url.write().map_err(|e| JfgoatError::Internal(e.to_string()))?;
-        *cached_url = Some(server.url.clone());
-    }
-    {
-        let mut cached_uid = state.user_id.write().map_err(|e| JfgoatError::Internal(e.to_string()))?;
-        *cached_uid = Some(user_id.clone());
-    }
+    state.update_session(Some(token), Some(server.url.clone()), Some(user_id.clone()));
 
     Ok(Some(SessionInfo {
         user_id,
@@ -329,18 +258,7 @@ pub async fn logout(
     keyring_clear_password()?;
 
     // Clear cached state
-    {
-        let mut token = state.token.write().map_err(|e| JfgoatError::Internal(e.to_string()))?;
-        *token = None;
-    }
-    {
-        let mut user_id = state.user_id.write().map_err(|e| JfgoatError::Internal(e.to_string()))?;
-        *user_id = None;
-    }
-    {
-        let mut server_url = state.server_url.write().map_err(|e| JfgoatError::Internal(e.to_string()))?;
-        *server_url = None;
-    }
+    state.update_session(None, None, None);
 
     // Clear active server in DB
     {

@@ -35,45 +35,7 @@ fn append_api_key_query(url: &str, api_key: &str) -> String {
     format!("{}{}api_key={}", url, separator, urlencoding::encode(api_key))
 }
 
-fn read_playback_connection_params(
-    state: &AppState,
-) -> Result<(String, String, String, String), JfgoatError> {
-    let server_url = state
-        .server_url
-        .read()
-        .map_err(|e| JfgoatError::Internal(e.to_string()))?
-        .clone()
-        .ok_or_else(|| JfgoatError::Auth("No server connected".to_string()))?;
 
-    let token = state
-        .token
-        .read()
-        .map_err(|e| JfgoatError::Internal(e.to_string()))?
-        .clone()
-        .ok_or_else(|| JfgoatError::Auth("No token available".to_string()))?;
-
-    let user_id = state
-        .user_id
-        .read()
-        .map_err(|e| JfgoatError::Internal(e.to_string()))?
-        .clone()
-        .ok_or_else(|| JfgoatError::Auth("No user ID".to_string()))?;
-
-    let device_id: String = {
-        let db = state
-            .db
-            .lock()
-            .map_err(|e| JfgoatError::Internal(e.to_string()))?;
-
-        db.query_row(
-            "SELECT value FROM metadata WHERE key = 'device_id'",
-            [],
-            |row| row.get(0),
-        )?
-    };
-
-    Ok((server_url, token, user_id, device_id))
-}
 
 fn resolve_stream_url_from_playback_context(
     server_url: &str,
@@ -155,7 +117,7 @@ async fn build_playback_url_with_options(
     max_streaming_bitrate: Option<i64>,
     target_height: Option<i64>,
 ) -> Result<String, JfgoatError> {
-    let (server_url, token, user_id, device_id) = read_playback_connection_params(state)?;
+    let (server_url, token, user_id, device_id) = state.get_connection_params()?;
 
     let payload = media_api::build_playback_config_payload(
         &server_url,
@@ -228,7 +190,8 @@ pub async fn mpv_play(
         target_height,
     )
     .await?;
-    let start_seconds = start_ticks as f64 / 10_000_000.0;
+    let safe_ticks = start_ticks.max(0);
+    let start_seconds = safe_ticks as f64 / 10_000_000.0;
 
     #[cfg(target_os = "windows")]
     {
@@ -371,7 +334,7 @@ pub fn mpv_add_external_subtitle(
     index: i64,
     format: String,
 ) -> Result<(), JfgoatError> {
-    let (server_url, token, _user_id, _device_id) = read_playback_connection_params(&app_state)?;
+    let (server_url, token, _user_id, _device_id) = app_state.get_connection_params()?;
     let server_base = server_url.trim_end_matches('/');
 
     let format_lower = format.to_ascii_lowercase();

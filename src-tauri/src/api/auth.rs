@@ -20,6 +20,8 @@ pub struct LoginResult {
     pub user_id: String,
     pub username: String,
     pub server_id: String,
+    pub server_name: String,
+    pub server_url: String,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -99,6 +101,8 @@ pub async fn authenticate_by_name(
         user_id: auth.user.id,
         username: auth.user.name,
         server_id: auth.server_id,
+        server_name: String::new(),
+        server_url: String::new(),
     };
 
     Ok((token, result))

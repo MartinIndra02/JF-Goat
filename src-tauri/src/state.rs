@@ -4,7 +4,7 @@ use rusqlite::{Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
-use std::sync::RwLock;
+use parking_lot::RwLock;
 use std::time::Duration;
 
 use crate::db::{
@@ -102,4 +102,55 @@ pub struct AppState {
     pub token: RwLock<Option<String>>,
     pub sync_status: RwLock<SyncStatus>,
     pub user_data_refresh_running: AtomicBool,
+}
+
+impl AppState {
+    pub fn get_connection_params(&self) -> Result<(String, String, String, String), JfgoatError> {
+        let server_url = self
+            .server_url
+            .read()
+            .clone()
+            .ok_or_else(|| JfgoatError::Auth("No server connected".to_string()))?;
+        let token = self
+            .token
+            .read()
+            .clone()
+            .ok_or_else(|| JfgoatError::Auth("No token".to_string()))?;
+        let user_id = self
+            .user_id
+            .read()
+            .clone()
+            .ok_or_else(|| JfgoatError::Auth("No user ID".to_string()))?;
+        let device_id: String = {
+            let db = self
+                .db
+                .read_conn()
+                .map_err(|e| JfgoatError::Internal(e.to_string()))?;
+            db.query_row(
+                "SELECT value FROM metadata WHERE key = 'device_id'",
+                [],
+                |row| row.get(0),
+            )?
+        };
+        Ok((server_url, token, user_id, device_id))
+    }
+
+    pub fn get_server_id(&self) -> Result<String, JfgoatError> {
+        let db = self
+            .db
+            .read_conn()
+            .map_err(|e| JfgoatError::Internal(e.to_string()))?;
+        let sid: String = db.query_row(
+            "SELECT id FROM servers WHERE is_active = 1 ORDER BY connected_at DESC LIMIT 1",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(sid)
+    }
+
+    pub fn update_session(&self, token: Option<String>, server_url: Option<String>, user_id: Option<String>) {
+        *self.token.write() = token;
+        *self.server_url.write() = server_url;
+        *self.user_id.write() = user_id;
+    }
 }

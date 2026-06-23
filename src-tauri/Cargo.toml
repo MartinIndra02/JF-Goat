@@ -31,6 +31,7 @@ raw-window-handle = "0.6"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
 tracing-appender = "0.2"
+parking_lot = "0.12"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [

@@ -1756,6 +1756,7 @@ dependencies = [
  "futures",
  "keyring",
  "libmpv2",
+ "parking_lot",
  "r2d2",
  "r2d2_sqlite",
  "raw-window-handle",

@@ -59,51 +59,7 @@ pub struct SyncError {
 
 /// Convert a Jellyfin API item into our local MediaItem struct.
 fn to_media_item(item: media::JellyfinItem, server_id: &str, user_id: &str) -> MediaItem {
-    let image_tag = item.image_tags.and_then(|t| t.primary);
-    let backdrop_tag = item.backdrop_image_tags.and_then(|v| v.into_iter().next());
-    let genres = item.genres.map(|g| g.join(", "));
-
-    let name = item.name
-        .filter(|n| !n.trim().is_empty())
-        .unwrap_or_else(|| format!("[{}]", &item.id));
-
-    let (played, play_count, playback_ticks, is_favorite) = match item.user_data {
-        Some(ud) => (
-            ud.played.unwrap_or(false),
-            ud.play_count.unwrap_or(0),
-            ud.playback_position_ticks.unwrap_or(0),
-            ud.is_favorite.unwrap_or(false),
-        ),
-        None => (false, 0, 0, false),
-    };
-
-    MediaItem {
-        id: item.id,
-        name,
-        item_type: item.item_type,
-        parent_id: item.parent_id,
-        series_id: item.series_id,
-        series_name: item.series_name,
-        season_id: item.season_id,
-        season_name: item.season_name,
-        index_number: item.index_number,
-        production_year: item.production_year,
-        overview: item.overview,
-        image_tag,
-        backdrop_tag,
-        date_created: item.date_created,
-        date_updated: item.date_last_media_added.or(item.premiere_date),
-        community_rating: item.community_rating,
-        official_rating: item.official_rating,
-        genres,
-        run_time_ticks: item.run_time_ticks,
-        played,
-        play_count,
-        playback_ticks,
-        is_favorite,
-        server_id: server_id.to_string(),
-        user_id: user_id.to_string(),
-    }
+    MediaItem::from_jellyfin_item(item, server_id, user_id)
 }
 
 /// Spawn the background indexing worker. Call this after successful authentication.
@@ -111,12 +67,14 @@ fn to_media_item(item: media::JellyfinItem, server_id: &str, user_id: &str) -> M
 pub fn start_background_sync(app: AppHandle) -> bool {
     // Guard: don't spawn a second sync if one is already running
     if let Some(state) = app.try_state::<AppState>() {
-        if let Ok(status) = state.sync_status.read() {
-            if *status == SyncStatus::InitialSync {
-                println!("Sync already in progress, skipping duplicate start");
-                return false;
-            }
+        let mut status = state.sync_status.write();
+        if *status == SyncStatus::InitialSync {
+            println!("Sync already in progress, skipping duplicate start");
+            return false;
         }
+        *status = SyncStatus::InitialSync;
+    } else {
+        return false;
     }
 
     tokio::spawn(async move {
@@ -124,9 +82,7 @@ pub fn start_background_sync(app: AppHandle) -> bool {
             eprintln!("Background sync failed: {}", e);
             // Ensure we never leave the status stuck at InitialSync
             if let Some(state) = app.try_state::<AppState>() {
-                if let Ok(mut status) = state.sync_status.write() {
-                    *status = SyncStatus::Ready;
-                }
+                *state.sync_status.write() = SyncStatus::Ready;
             }
             let _ = app.emit("sync-error", SyncError {
                 message: e.to_string(),
@@ -144,38 +100,9 @@ pub fn start_background_sync(app: AppHandle) -> bool {
 async fn run_sync(app: &AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
 
-    // Read connection parameters from AppState
-    let (server_url, token, user_id, device_id) = {
-        let url = state
-            .server_url
-            .read()
-            .map_err(|e| e.to_string())?
-            .clone()
-            .ok_or("No server URL")?;
-        let tok = state
-            .token
-            .read()
-            .map_err(|e| e.to_string())?
-            .clone()
-            .ok_or("No token")?;
-        let uid = state
-            .user_id
-            .read()
-            .map_err(|e| e.to_string())?
-            .clone()
-            .ok_or("No user ID")?;
-
-        let db = state.db.write_conn().map_err(|e| e.to_string())?;
-        let did: String = db
-            .query_row(
-                "SELECT value FROM metadata WHERE key = 'device_id'",
-                [],
-                |row| row.get(0),
-            )
-            .map_err(|e| e.to_string())?;
-
-        (url, tok, uid, did)
-    };
+    // Read connection parameters and server ID from AppState using helpers
+    let (server_url, token, user_id, device_id) = state.get_connection_params().map_err(|e| e.to_string())?;
+    let server_id = state.get_server_id().map_err(|e| e.to_string())?;
 
     let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
         .with_token(&token);
@@ -186,30 +113,16 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
 
     if grand_total == 0 {
-        let mut status = state.sync_status.write().map_err(|e| e.to_string())?;
-        *status = SyncStatus::Ready;
+        *state.sync_status.write() = SyncStatus::Ready;
         let _ = app.emit("sync-complete", ());
         return Ok(());
     }
-
-    // Get server_id for scoped local DB reads/writes.
-    let server_id = {
-        let db = state.db.write_conn().map_err(|e| e.to_string())?;
-        let sid: String = db
-            .query_row(
-                "SELECT id FROM servers WHERE is_active = 1 ORDER BY connected_at DESC LIMIT 1",
-                [],
-                |row| row.get(0),
-            )
-            .map_err(|e| e.to_string())?;
-        sid
-    };
 
     println!("Grand total item count from server: {}", grand_total);
 
     // Step 2: Initialize global_ingested from DB for accurate resume progress
     let initial_count = {
-        let db = state.db.write_conn().map_err(|e| e.to_string())?;
+        let db = state.db.read_conn().map_err(|e| e.to_string())?;
         get_local_item_count_scoped(&db, Some(&server_id), Some(&user_id)).map_err(|e| e.to_string())?
     };
 
@@ -219,7 +132,7 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
     // If we have already successfully completed the initial sync (all checkpoints Completed),
     // we can run a fast incremental delta sync in the background without taking the database offline.
     let all_completed = {
-        let db = state.db.write_conn().map_err(|e| e.to_string())?;
+        let db = state.db.read_conn().map_err(|e| e.to_string())?;
         let incomplete_count: u32 = db.query_row(
             "SELECT count(*) FROM sync_checkpoints WHERE status != 'COMPLETED' AND server_id = ?1 AND user_id = ?2",
             rusqlite::params![server_id, user_id],
@@ -248,19 +161,27 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
                         break;
                     }
 
-                    // Check which items from this batch are already in the DB
-                    let db = state.db.write_conn().map_err(|e| e.to_string())?;
+                    // Check which items from this batch are already in the DB and unmodified
+                    let db = state.db.read_conn().map_err(|e| e.to_string())?;
                     let mut existing_count = 0;
                     
                     {
                         let mut stmt = db.prepare_cached(
-                            "SELECT 1 FROM media_items WHERE id = ?1 AND server_id = ?2 AND user_id = ?3"
+                            "SELECT date_updated, date_created FROM media_items WHERE id = ?1 AND server_id = ?2 AND user_id = ?3"
                         ).map_err(|e| e.to_string())?;
 
                         for item in &response.items {
-                            let exists = stmt.exists(rusqlite::params![item.id, server_id, user_id]).unwrap_or(false);
-                            if exists {
-                                existing_count += 1;
+                            let db_dates: Result<(Option<String>, Option<String>), _> = stmt.query_row(
+                                rusqlite::params![item.id, server_id, user_id],
+                                |row| Ok((row.get(0)?, row.get(1)?))
+                            );
+
+                            if let Ok((db_updated, db_created)) = db_dates {
+                                let item_created = item.date_created.as_ref();
+                                let calculated_updated = item.date_last_media_added.as_ref().or(item.premiere_date.as_ref());
+                                if db_created.as_ref() == item_created && db_updated.as_ref() == calculated_updated {
+                                    existing_count += 1;
+                                }
                             }
                         }
                     }
@@ -272,16 +193,19 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
                         .map(|item| to_media_item(item, &server_id, &user_id))
                         .collect();
 
-                    insert_media_chunk(&db, &media_items).map_err(|e| e.to_string())?;
+                    {
+                        let db = state.db.write_conn().map_err(|e| e.to_string())?;
+                        insert_media_chunk(&db, &media_items).map_err(|e| e.to_string())?;
+                    }
                     println!(
-                        "Delta sync page {}: processed {} items ({} new, {} updated)",
+                        "Delta sync page {}: processed {} items ({} new/updated, {} unchanged)",
                         page + 1,
                         items_count,
                         items_count - existing_count,
                         existing_count
                     );
 
-                    // If all items in this batch already exist in the DB, we are fully caught up!
+                    // If all items in this batch already exist in the DB and are unchanged, we are fully caught up!
                     if existing_count == items_count {
                         println!("Delta sync fully caught up.");
                         break;
@@ -304,16 +228,11 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
             }
         }
 
+        *state.sync_status.write() = SyncStatus::Ready;
         // Emit sync complete since delta sync is finished
         let _ = app.emit("sync-complete", ());
         ensure_incremental_refresh_worker(app);
         return Ok(());
-    }
-
-    // Otherwise, we are doing a fresh or resume sync, so set status to INITIAL_SYNC.
-    {
-        let mut status = state.sync_status.write().map_err(|e| e.to_string())?;
-        *status = SyncStatus::InitialSync;
     }
 
     // Step 3: Fetch user views (libraries)
@@ -323,8 +242,7 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
 
     let views = views_response.items;
     if views.is_empty() {
-        let mut status = state.sync_status.write().map_err(|e| e.to_string())?;
-        *status = SyncStatus::Ready;
+        *state.sync_status.write() = SyncStatus::Ready;
         let _ = app.emit("sync-complete", ());
         return Ok(());
     }
@@ -394,21 +312,24 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
 
         // ── Checkpoint: Check if this view was already synced ──
         let start_index = {
-            let db = state.db.write_conn().map_err(|e| e.to_string())?;
-            match get_checkpoint(&db, view_id, &server_id, &user_id).map_err(|e| e.to_string())? {
-                CheckpointStatus::Completed => {
-                    println!("Skipping library '{}' (already completed)", view_name);
-                    continue;
-                }
-                CheckpointStatus::InProgress(last_index) => {
-                    println!("Resuming library '{}' from index {}", view_name, last_index);
-                    last_index
-                }
-                CheckpointStatus::NotFound => {
-                    init_checkpoint(&db, view_id, &server_id, &user_id).map_err(|e| e.to_string())?;
-                    println!("Starting library '{}' from index 0", view_name);
-                    0
-                }
+            let db = state.db.read_conn().map_err(|e| e.to_string())?;
+            get_checkpoint(&db, view_id, &server_id, &user_id).map_err(|e| e.to_string())?
+        };
+
+        let start_index = match start_index {
+            CheckpointStatus::Completed => {
+                println!("Skipping library '{}' (already completed)", view_name);
+                continue;
+            }
+            CheckpointStatus::InProgress(last_index) => {
+                println!("Resuming library '{}' from index {}", view_name, last_index);
+                last_index
+            }
+            CheckpointStatus::NotFound => {
+                let db = state.db.write_conn().map_err(|e| e.to_string())?;
+                init_checkpoint(&db, view_id, &server_id, &user_id).map_err(|e| e.to_string())?;
+                println!("Starting library '{}' from index 0", view_name);
+                0
             }
         };
 
@@ -952,8 +873,7 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
 
     // Step 6: Mark as READY
     {
-        let mut status = state.sync_status.write().map_err(|e| e.to_string())?;
-        *status = SyncStatus::Ready;
+        *state.sync_status.write() = SyncStatus::Ready;
     }
 
     let final_ingested = global_ingested.load(Ordering::SeqCst);
@@ -1006,10 +926,7 @@ fn ensure_incremental_refresh_worker(app: &AppHandle) {
                 break;
             };
 
-            let is_ready = match state.sync_status.read() {
-                Ok(status) => *status == SyncStatus::Ready,
-                Err(_) => false,
-            };
+            let is_ready = *state.sync_status.read() == SyncStatus::Ready;
             if !is_ready {
                 continue;
             }
@@ -1033,47 +950,8 @@ fn ensure_incremental_refresh_worker(app: &AppHandle) {
 }
 
 async fn refresh_user_data_once(state: &AppState) -> Result<u32, String> {
-    let (server_url, token, user_id, device_id) = {
-        let url = state
-            .server_url
-            .read()
-            .map_err(|e| e.to_string())?
-            .clone()
-            .ok_or("No server URL")?;
-        let tok = state
-            .token
-            .read()
-            .map_err(|e| e.to_string())?
-            .clone()
-            .ok_or("No token")?;
-        let uid = state
-            .user_id
-            .read()
-            .map_err(|e| e.to_string())?
-            .clone()
-            .ok_or("No user ID")?;
-
-        let db = state.db.write_conn().map_err(|e| e.to_string())?;
-        let did: String = db
-            .query_row(
-                "SELECT value FROM metadata WHERE key = 'device_id'",
-                [],
-                |row| row.get(0),
-            )
-            .map_err(|e| e.to_string())?;
-
-        (url, tok, uid, did)
-    };
-
-    let server_id = {
-        let db = state.db.write_conn().map_err(|e| e.to_string())?;
-        db.query_row(
-            "SELECT id FROM servers WHERE is_active = 1 ORDER BY connected_at DESC LIMIT 1",
-            [],
-            |row| row.get::<_, String>(0),
-        )
-        .map_err(|e| e.to_string())?
-    };
+    let (server_url, token, user_id, device_id) = state.get_connection_params().map_err(|e| e.to_string())?;
+    let server_id = state.get_server_id().map_err(|e| e.to_string())?;
 
     let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
         .with_token(&token);

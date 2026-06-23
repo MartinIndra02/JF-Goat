@@ -25,9 +25,15 @@ impl JellyfinClient {
     }
 
     pub fn auth_header(&self) -> String {
+        let device_name = match std::env::consts::OS {
+            "windows" => "Windows PC",
+            "macos" => "macOS PC",
+            "linux" => "Linux PC",
+            os => os,
+        };
         let mut header = format!(
-            "MediaBrowser Client=\"jfgoat\", Device=\"Windows PC\", DeviceId=\"{}\", Version=\"0.1.0\"",
-            self.device_id
+            "MediaBrowser Client=\"jfgoat\", Device=\"{}\", DeviceId=\"{}\", Version=\"0.1.0\"",
+            device_name, self.device_id
         );
         if let Some(ref token) = self.token {
             header.push_str(&format!(", Token=\"{}\"", token));

@@ -28,7 +28,7 @@ pub struct JellyfinView {
     pub collection_type: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct JellyfinItem {
     #[serde(alias = "Id")]
     pub id: String,
@@ -74,13 +74,13 @@ pub struct JellyfinItem {
     pub user_data: Option<JellyfinUserData>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct ImageTags {
     #[serde(alias = "Primary")]
     pub primary: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct JellyfinUserData {
     #[serde(alias = "Played")]
     pub played: Option<bool>,
@@ -336,7 +336,7 @@ pub async fn fetch_playback_info(
 ) -> Result<JellyfinPlaybackInfoResponse, JfgoatError> {
     let path = format!(
         "/Items/{}/PlaybackInfo?UserId={}",
-        item_id,
+        encode(item_id),
         encode(user_id)
     );
 
@@ -411,7 +411,7 @@ pub async fn fetch_user_views(
     client: &JellyfinClient,
     user_id: &str,
 ) -> Result<JellyfinViewsResponse, JfgoatError> {
-    let path = format!("/Users/{}/Views", user_id);
+    let path = format!("/Users/{}/Views", encode(user_id));
     let resp = client.get(&path).await?;
 
     if !resp.status().is_success() {
@@ -494,7 +494,7 @@ pub async fn fetch_user_items_userdata(
          &IncludeItemTypes=Movie,Series,Episode,Season,BoxSet,MusicAlbum,MusicArtist,Audio\
          &Fields=UserData\
          &EnableTotalRecordCount={}",
-        user_id, start_index, limit, enable_total_count
+        encode(user_id), start_index, limit, enable_total_count
     );
 
     let resp = client.get(&path).await?;
@@ -526,7 +526,7 @@ pub async fn fetch_recent_items(
          &IncludeItemTypes=Movie,Series,Episode,Season,BoxSet,MusicAlbum,MusicArtist,Audio\
          &Fields=Genres,DateCreated,ProductionYear,CommunityRating,OfficialRating,RunTimeTicks,ImageTags,BackdropImageTags,UserData\
          &EnableTotalRecordCount=false",
-        user_id, start_index, limit
+        encode(user_id), start_index, limit
     );
 
     let resp = client.get(&path).await?;
@@ -558,7 +558,7 @@ async fn fetch_view_items_inner(
          &IncludeItemTypes=Movie,Series,Episode,Season,BoxSet,MusicAlbum,MusicArtist,Audio\
          &Fields=Genres,DateCreated,ProductionYear,CommunityRating,OfficialRating,RunTimeTicks,ImageTags,BackdropImageTags\
          &EnableTotalRecordCount={}",
-        user_id, view_id, start_index, limit, enable_total_count
+        encode(user_id), encode(view_id), start_index, limit, enable_total_count
     );
 
     let resp = client.get(&path).await?;
@@ -591,7 +591,7 @@ pub async fn fetch_series(
          &IncludeItemTypes=Series\
          &Fields=Genres,DateCreated,ProductionYear,CommunityRating,OfficialRating,RunTimeTicks,ImageTags,BackdropImageTags\
          &EnableTotalRecordCount={}",
-        user_id, view_id, start_index, limit, enable_total_count
+        encode(user_id), encode(view_id), start_index, limit, enable_total_count
     );
 
     let resp = client.get(&path).await?;
@@ -623,7 +623,7 @@ pub async fn fetch_series_children(
          &IncludeItemTypes=Season,Episode\
          &Fields=Genres,DateCreated,ProductionYear,CommunityRating,OfficialRating,RunTimeTicks,ImageTags,BackdropImageTags\
          &EnableTotalRecordCount=false",
-        user_id, series_id, start_index, limit
+        encode(user_id), encode(series_id), start_index, limit
     );
 
     let resp = client.get(&path).await?;
@@ -650,7 +650,7 @@ pub async fn fetch_total_item_count(
 ) -> Result<u32, JfgoatError> {
     let path = format!(
         "/Users/{}/Items?Limit=1&Recursive=true&EnableTotalRecordCount=true",
-        user_id
+        encode(user_id)
     );
 
     let resp = client.get(&path).await?;
@@ -682,7 +682,7 @@ pub async fn fetch_resume_items(
          &IncludeItemTypes=Movie,Episode\
          &EnableTotalRecordCount=false\
          &MediaTypes=Video",
-        user_id, limit
+        encode(user_id), limit
     );
 
     let resp = client.get(&path).await?;
@@ -712,7 +712,7 @@ pub async fn fetch_next_up(
         "/Shows/NextUp?UserId={}&Limit={}\
          &Fields=Overview,Genres,ProductionYear,CommunityRating,OfficialRating,RunTimeTicks,ImageTags,BackdropImageTags\
          &EnableTotalRecordCount=false",
-        user_id, limit
+        encode(user_id), limit
     );
 
     let resp = client.get(&path).await?;
@@ -743,7 +743,7 @@ pub async fn fetch_latest_items(
         "/Users/{}/Items/Latest?ParentId={}&Limit={}\
          &Fields=Overview,Genres,ProductionYear,CommunityRating,OfficialRating,RunTimeTicks,ImageTags,BackdropImageTags\
          &GroupItems=true",
-        user_id, parent_id, limit
+        encode(user_id), encode(parent_id), limit
     );
 
     let resp = client.get(&path).await?;
@@ -772,7 +772,7 @@ pub async fn fetch_item_by_id(
 ) -> Result<JellyfinItem, JfgoatError> {
     let path = format!(
         "/Users/{}/Items/{}?Fields=Overview,Genres,DateCreated,ProductionYear,CommunityRating,OfficialRating,RunTimeTicks,ImageTags,BackdropImageTags,UserData",
-        user_id, item_id
+        encode(user_id), encode(item_id)
     );
 
     let resp = client.get(&path).await?;
@@ -804,7 +804,7 @@ pub async fn fetch_seasons(
 ) -> Result<JellyfinItemsResponse, JfgoatError> {
     let path = format!(
         "/Shows/{}/Seasons?UserId={}&Fields=Overview,Genres,DateCreated,ProductionYear,ImageTags,BackdropImageTags",
-        series_id, user_id
+        encode(series_id), encode(user_id)
     );
 
     let resp = client.get(&path).await?;
@@ -834,7 +834,7 @@ pub async fn fetch_episodes(
 ) -> Result<JellyfinItemsResponse, JfgoatError> {
     let path = format!(
         "/Shows/{}/Episodes?SeasonId={}&UserId={}&Fields=Overview,Genres,DateCreated,ProductionYear,CommunityRating,OfficialRating,RunTimeTicks,ImageTags,BackdropImageTags",
-        series_id, season_id, user_id
+        encode(series_id), encode(season_id), encode(user_id)
     );
 
     let resp = client.get(&path).await?;
@@ -884,7 +884,7 @@ pub async fn fetch_item_people(
 ) -> Result<Vec<JellyfinPerson>, JfgoatError> {
     let path = format!(
         "/Users/{}/Items/{}?Fields=People",
-        user_id, item_id
+        encode(user_id), encode(item_id)
     );
 
     let resp = client.get(&path).await?;
@@ -913,7 +913,7 @@ pub async fn fetch_similar_items(
 ) -> Result<JellyfinItemsResponse, JfgoatError> {
     let path = format!(
         "/Items/{}/Similar?UserId={}&Limit={}&Fields=Overview,Genres,ProductionYear,CommunityRating,OfficialRating,RunTimeTicks,ImageTags,BackdropImageTags",
-        item_id, user_id, limit
+        encode(item_id), encode(user_id), limit
     );
 
     let resp = client.get(&path).await?;
@@ -941,7 +941,7 @@ pub async fn mark_played(
     user_id: &str,
     item_id: &str,
 ) -> Result<(), JfgoatError> {
-    let path = format!("/Users/{}/PlayedItems/{}", user_id, item_id);
+    let path = format!("/Users/{}/PlayedItems/{}", encode(user_id), encode(item_id));
     let resp = client.post_empty(&path).await?;
     if !resp.status().is_success() {
         return Err(JfgoatError::Http(format!(
@@ -958,7 +958,7 @@ pub async fn mark_unplayed(
     user_id: &str,
     item_id: &str,
 ) -> Result<(), JfgoatError> {
-    let path = format!("/Users/{}/PlayedItems/{}", user_id, item_id);
+    let path = format!("/Users/{}/PlayedItems/{}", encode(user_id), encode(item_id));
     let resp = client.delete(&path).await?;
     if !resp.status().is_success() {
         return Err(JfgoatError::Http(format!(
@@ -1026,7 +1026,7 @@ pub async fn mark_favorite(
     user_id: &str,
     item_id: &str,
 ) -> Result<(), JfgoatError> {
-    let path = format!("/Users/{}/FavoriteItems/{}", user_id, item_id);
+    let path = format!("/Users/{}/FavoriteItems/{}", encode(user_id), encode(item_id));
     let resp = client.post_empty(&path).await?;
     if !resp.status().is_success() {
         return Err(JfgoatError::Http(format!(
@@ -1043,7 +1043,7 @@ pub async fn unmark_favorite(
     user_id: &str,
     item_id: &str,
 ) -> Result<(), JfgoatError> {
-    let path = format!("/Users/{}/FavoriteItems/{}", user_id, item_id);
+    let path = format!("/Users/{}/FavoriteItems/{}", encode(user_id), encode(item_id));
     let resp = client.delete(&path).await?;
     if !resp.status().is_success() {
         return Err(JfgoatError::Http(format!(
@@ -1063,7 +1063,7 @@ pub async fn search_remote(
 ) -> Result<JellyfinItemsResponse, JfgoatError> {
     let path = format!(
         "/Users/{}/Items?searchTerm={}&Limit={}&Recursive=true&Fields=Overview,Genres,ProductionYear,ImageTags",
-        user_id,
+        encode(user_id),
         urlencoding::encode(query),
         limit
     );
@@ -1162,7 +1162,7 @@ pub async fn fetch_item_media_streams(
 ) -> Result<Vec<JellyfinMediaStream>, JfgoatError> {
     let path = format!(
         "/Users/{}/Items/{}?Fields=MediaStreams",
-        user_id, item_id
+        encode(user_id), encode(item_id)
     );
 
     let resp = client.get(&path).await?;
@@ -1190,7 +1190,7 @@ pub async fn fetch_item_external_urls(
 ) -> Result<Vec<JellyfinExternalUrl>, JfgoatError> {
     let path = format!(
         "/Users/{}/Items/{}?Fields=ExternalUrls",
-        user_id, item_id
+        encode(user_id), encode(item_id)
     );
 
     let resp = client.get(&path).await?;
@@ -1215,7 +1215,7 @@ pub async fn fetch_item_chapters(
     client: &JellyfinClient,
     item_id: &str,
 ) -> Result<Vec<JellyfinChapter>, JfgoatError> {
-    let path = format!("/Items/{}/Chapters", item_id);
+    let path = format!("/Items/{}/Chapters", encode(item_id));
 
     let resp = client.get(&path).await?;
 
