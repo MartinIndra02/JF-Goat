@@ -34,6 +34,60 @@ pub struct MediaItem {
     pub user_id: String,
 }
 
+impl MediaItem {
+    pub fn from_jellyfin_item(
+        item: crate::api::media::JellyfinItem,
+        server_id: &str,
+        user_id: &str,
+    ) -> Self {
+        let image_tag = item.image_tags.and_then(|t| t.primary);
+        let backdrop_tag = item.backdrop_image_tags.and_then(|v| v.into_iter().next());
+        let genres = item.genres.map(|g| g.join(", "));
+
+        let name = item.name
+            .filter(|n| !n.trim().is_empty())
+            .unwrap_or_else(|| format!("[{}]", &item.id));
+
+        let (played, play_count, playback_ticks, is_favorite) = match item.user_data {
+            Some(ud) => (
+                ud.played.unwrap_or(false),
+                ud.play_count.unwrap_or(0),
+                ud.playback_position_ticks.unwrap_or(0),
+                ud.is_favorite.unwrap_or(false),
+            ),
+            None => (false, 0, 0, false),
+        };
+
+        Self {
+            id: item.id,
+            name,
+            item_type: item.item_type,
+            parent_id: item.parent_id,
+            series_id: item.series_id,
+            series_name: item.series_name,
+            season_id: item.season_id,
+            season_name: item.season_name,
+            index_number: item.index_number,
+            production_year: item.production_year,
+            overview: item.overview,
+            image_tag,
+            backdrop_tag,
+            date_created: item.date_created,
+            date_updated: item.date_last_media_added.or(item.premiere_date),
+            community_rating: item.community_rating,
+            official_rating: item.official_rating,
+            genres,
+            run_time_ticks: item.run_time_ticks,
+            played,
+            play_count,
+            playback_ticks,
+            is_favorite,
+            server_id: server_id.to_string(),
+            user_id: user_id.to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 pub struct PaginationScope {
     pub start_index: u32,
@@ -130,8 +184,13 @@ pub fn search_local(
     user_id: &str,
     limit: u32,
 ) -> Result<Vec<MediaItem>, JfgoatError> {
+    let cleaned_query: String = query
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { ' ' })
+        .collect();
+
     // Split by whitespace and construct FTS5 query where each term matches as a prefix wildcard
-    let terms: Vec<String> = query
+    let terms: Vec<String> = cleaned_query
         .split_whitespace()
         .map(|term| {
             // Escape double quotes inside the term
@@ -382,6 +441,22 @@ mod tests {
         let empty = search_local(&conn, "   ", "srv-1", "user-1", 10)
             .expect("blank query should succeed");
         assert!(empty.is_empty());
+    }
+
+    #[test]
+    fn search_local_with_special_characters_succeeds() {
+        let conn = Connection::open_in_memory().expect("in-memory database should open");
+        init_db(&conn).expect("database schema should initialize");
+
+        let items = vec![
+            sample_item("ep-1", "Pilot", "Episode"),
+        ];
+        insert_media_chunk(&conn, &items).expect("seed media items should insert");
+
+        let result = search_local(&conn, "Pil!@#$%", "srv-1", "user-1", 10)
+            .expect("search with special characters should succeed");
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].id, "ep-1");
     }
 
     #[test]

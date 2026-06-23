@@ -92,34 +92,19 @@ pub fn export_diagnostics(
     let warn_count = count_logs_at_level(&recent_logs, "WARN") + count_logs_at_level(&recent_logs, "warn");
 
     let sync_status = {
-        let status = state
-            .sync_status
-            .read()
-            .map_err(|e| format!("Failed to read sync status: {}", e))?;
+        let status = state.sync_status.read();
         sync_status_label(*status).to_string()
     };
 
-    let has_server_url = state
-        .server_url
-        .read()
-        .map_err(|e| format!("Failed to read server URL state: {}", e))?
-        .is_some();
-    let has_user_id = state
-        .user_id
-        .read()
-        .map_err(|e| format!("Failed to read user ID state: {}", e))?
-        .is_some();
-    let has_token = state
-        .token
-        .read()
-        .map_err(|e| format!("Failed to read token state: {}", e))?
-        .is_some();
+    let has_server_url = state.server_url.read().is_some();
+    let has_user_id = state.user_id.read().is_some();
+    let has_token = state.token.read().is_some();
 
     let (media_items_count, servers_count, checkpoints_count, metadata_count) = {
         let db = state
             .db
-            .lock()
-            .map_err(|e| format!("Failed to lock database: {}", e))?;
+            .read_conn()
+            .map_err(|e| format!("Failed to get db read connection: {}", e))?;
 
         (
             safe_count_query(&db, "SELECT COUNT(*) FROM media_items"),

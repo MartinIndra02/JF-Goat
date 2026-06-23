@@ -20,7 +20,9 @@ pub fn init_db(conn: &Connection) -> Result<(), JfgoatError> {
         INSERT OR IGNORE INTO metadata (key, value) VALUES ('schema_version', '1');",
     )?;
 
-    migrate(conn)?;
+    let tx = conn.unchecked_transaction()?;
+    migrate(&tx)?;
+    tx.commit()?;
     Ok(())
 }
 

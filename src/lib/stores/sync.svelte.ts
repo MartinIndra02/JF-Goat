@@ -13,6 +13,15 @@ let syncErrors = $state<SyncError[]>([]);
 let fatalError = $state<string | null>(null);
 
 let listenersAttached = false;
+let syncTriggered = false;
+
+export function isSyncTriggered(): boolean {
+  return syncTriggered;
+}
+
+export function markSyncTriggered() {
+  syncTriggered = true;
+}
 
 export function getSyncState(): SyncState {
   return syncState;
@@ -36,6 +45,7 @@ export function resetSyncStore() {
   syncErrors = [];
   fatalError = null;
   listenersAttached = false;
+  syncTriggered = false;
 }
 
 export function initSyncListeners() {

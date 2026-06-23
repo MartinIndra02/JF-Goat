@@ -89,105 +89,23 @@ fn jf_item_to_media_item(
     server_id: &str,
     user_id: &str,
 ) -> MediaItem {
-    let image_tag = item.image_tags.and_then(|t| t.primary);
-    let backdrop_tag = item.backdrop_image_tags.and_then(|v| v.into_iter().next());
-    let genres = item.genres.map(|g| g.join(", "));
-    let (played, play_count, playback_ticks, is_favorite) = match item.user_data {
-        Some(ud) => (
-            ud.played.unwrap_or(false),
-            ud.play_count.unwrap_or(0),
-            ud.playback_position_ticks.unwrap_or(0),
-            ud.is_favorite.unwrap_or(false),
-        ),
-        None => (false, 0, 0, false),
-    };
-    let name = item
-        .name
-        .filter(|n| !n.trim().is_empty())
-        .unwrap_or_else(|| format!("[{}]", &item.id));
-
-    MediaItem {
-        id: item.id,
-        name,
-        item_type: item.item_type,
-        parent_id: item.parent_id,
-        series_id: item.series_id,
-        series_name: item.series_name,
-        season_id: item.season_id,
-        season_name: item.season_name,
-        index_number: item.index_number,
-        production_year: item.production_year,
-        overview: item.overview,
-        image_tag,
-        backdrop_tag,
-        date_created: item.date_created,
-        date_updated: item.date_last_media_added.or(item.premiere_date),
-        community_rating: item.community_rating,
-        official_rating: item.official_rating,
-        genres,
-        run_time_ticks: item.run_time_ticks,
-        played,
-        play_count,
-        playback_ticks,
-        is_favorite,
-        server_id: server_id.to_string(),
-        user_id: user_id.to_string(),
-    }
+    MediaItem::from_jellyfin_item(item, server_id, user_id)
 }
 
 /// Read connection parameters from AppState.
 fn get_connection_params(state: &AppState) -> Result<(String, String, String, String), JfgoatError> {
-    let server_url = state
-        .server_url
-        .read()
-        .map_err(|e| JfgoatError::Internal(e.to_string()))?
-        .clone()
-        .ok_or_else(|| JfgoatError::Auth("No server connected".to_string()))?;
-    let token = state
-        .token
-        .read()
-        .map_err(|e| JfgoatError::Internal(e.to_string()))?
-        .clone()
-        .ok_or_else(|| JfgoatError::Auth("No token".to_string()))?;
-    let user_id = state
-        .user_id
-        .read()
-        .map_err(|e| JfgoatError::Internal(e.to_string()))?
-        .clone()
-        .ok_or_else(|| JfgoatError::Auth("No user ID".to_string()))?;
-    let device_id: String = {
-        let db = state
-            .db
-            .lock()
-            .map_err(|e| JfgoatError::Internal(e.to_string()))?;
-        db.query_row(
-            "SELECT value FROM metadata WHERE key = 'device_id'",
-            [],
-            |row| row.get(0),
-        )?
-    };
-    Ok((server_url, token, user_id, device_id))
+    state.get_connection_params()
 }
 
 fn get_server_id(state: &AppState) -> Result<String, JfgoatError> {
-    let db = state
-        .db
-        .lock()
-        .map_err(|e| JfgoatError::Internal(e.to_string()))?;
-    let sid: String = db.query_row(
-        "SELECT id FROM servers WHERE is_active = 1 ORDER BY connected_at DESC LIMIT 1",
-        [],
-        |row| row.get(0),
-    )?;
-    Ok(sid)
+    state.get_server_id()
 }
 
 fn get_active_scope(state: &AppState) -> Result<(String, String), JfgoatError> {
-    let server_id = get_server_id(state)?;
+    let server_id = state.get_server_id()?;
     let user_id = state
         .user_id
         .read()
-        .map_err(|e| JfgoatError::Internal(e.to_string()))?
         .clone()
         .ok_or_else(|| JfgoatError::Auth("No user ID".to_string()))?;
 
@@ -204,7 +122,7 @@ fn query_local_library_items_by_parent(
 ) -> Result<media_api::PaginatedResult<MediaItem>, JfgoatError> {
     let db = state
         .db
-        .lock()
+        .read_conn()
         .map_err(|e| JfgoatError::Internal(e.to_string()))?;
 
     let total_count: u32 = db.query_row(
@@ -254,7 +172,7 @@ fn query_local_library_items_by_server_type(
 ) -> Result<media_api::PaginatedResult<MediaItem>, JfgoatError> {
     let db = state
         .db
-        .lock()
+        .read_conn()
         .map_err(|e| JfgoatError::Internal(e.to_string()))?;
 
     let total_count: u32 = db.query_row(
@@ -328,7 +246,7 @@ pub fn get_recent_movies(
     let (server_id, user_id) = get_active_scope(&state)?;
     let db = state
         .db
-        .lock()
+        .read_conn()
         .map_err(|e| JfgoatError::Internal(e.to_string()))?;
 
     let sql = format!(
@@ -353,7 +271,7 @@ pub fn get_recent_series(
     let (server_id, user_id) = get_active_scope(&state)?;
     let db = state
         .db
-        .lock()
+        .read_conn()
         .map_err(|e| JfgoatError::Internal(e.to_string()))?;
 
     let sql = format!(
@@ -378,7 +296,7 @@ pub fn get_continue_watching(
     let (server_id, user_id) = get_active_scope(&state)?;
     let db = state
         .db
-        .lock()
+        .read_conn()
         .map_err(|e| JfgoatError::Internal(e.to_string()))?;
 
     let sql = format!(
@@ -406,7 +324,7 @@ pub fn get_latest_media(
     let (server_id, user_id) = get_active_scope(&state)?;
     let db = state
         .db
-        .lock()
+        .read_conn()
         .map_err(|e| JfgoatError::Internal(e.to_string()))?;
 
     let sql = format!(
@@ -452,14 +370,21 @@ pub struct HomepageCache {
 #[tauri::command]
 pub async fn save_homepage_cache(
     app: tauri::AppHandle,
+    state: State<'_, AppState>,
     data: HomepageCache,
 ) -> Result<(), JfgoatError> {
+    let server_id = state.get_server_id().unwrap_or_else(|_| "unknown_server".to_string());
+    let user_id = state.user_id.read().clone().unwrap_or_else(|| "unknown_user".to_string());
+
     let cache_dir = app
         .path()
         .app_cache_dir()
         .map_err(|e| JfgoatError::Internal(e.to_string()))?;
     let _ = fs::create_dir_all(&cache_dir);
-    let cache_path = cache_dir.join("homepage_cache.json");
+    
+    let safe_user_id = user_id.replace(|c: char| !c.is_alphanumeric(), "_");
+    let safe_server_id = server_id.replace(|c: char| !c.is_alphanumeric(), "_");
+    let cache_path = cache_dir.join(format!("homepage_cache_{}_{}.json", safe_server_id, safe_user_id));
 
     let json = serde_json::to_string(&data)
         .map_err(|e| JfgoatError::Internal(format!("JSON serialize error: {}", e)))?;
@@ -474,12 +399,19 @@ pub async fn save_homepage_cache(
 #[tauri::command]
 pub async fn load_homepage_cache(
     app: tauri::AppHandle,
+    state: State<'_, AppState>,
 ) -> Result<Option<HomepageCache>, JfgoatError> {
+    let server_id = state.get_server_id().unwrap_or_else(|_| "unknown_server".to_string());
+    let user_id = state.user_id.read().clone().unwrap_or_else(|| "unknown_user".to_string());
+
     let cache_dir = app
         .path()
         .app_cache_dir()
         .map_err(|e| JfgoatError::Internal(e.to_string()))?;
-    let cache_path = cache_dir.join("homepage_cache.json");
+        
+    let safe_user_id = user_id.replace(|c: char| !c.is_alphanumeric(), "_");
+    let safe_server_id = server_id.replace(|c: char| !c.is_alphanumeric(), "_");
+    let cache_path = cache_dir.join(format!("homepage_cache_{}_{}.json", safe_server_id, safe_user_id));
 
     if !cache_path.exists() {
         return Ok(None);
@@ -580,7 +512,7 @@ pub async fn get_item_by_id(
     {
         let db = state
             .db
-            .lock()
+            .read_conn()
             .map_err(|e| JfgoatError::Internal(e.to_string()))?;
 
         let sql = format!(
@@ -631,7 +563,7 @@ pub async fn get_series_seasons(
     {
         let db = state
             .db
-            .lock()
+            .read_conn()
             .map_err(|e| JfgoatError::Internal(e.to_string()))?;
 
         let sql = format!(
@@ -692,7 +624,7 @@ pub async fn get_season_episodes(
     {
         let db = state
             .db
-            .lock()
+            .read_conn()
             .map_err(|e| JfgoatError::Internal(e.to_string()))?;
 
         let sql = format!(
@@ -826,7 +758,7 @@ pub async fn get_library_items(
     let safe_page = page.max(1);
     let safe_limit = limit.clamp(1, 500);
     let start_index = safe_page.saturating_sub(1).saturating_mul(safe_limit);
-    let enable_total_count = start_index == 0;
+    let enable_total_count = true;
 
     if prefer_offline.unwrap_or(false) {
         return get_library_items_from_local_fallback(&state, &parent_id, start_index, safe_limit);
@@ -1178,13 +1110,14 @@ pub async fn toggle_favorite(
         media_api::unmark_favorite(&jf_client, &user_id, &id).await?;
     }
 
-    // Update local DB
+    // Fetch the updated item from the server to get its new UserData
+    let jf_item = media_api::fetch_item_by_id(&jf_client, &user_id, &id).await?;
+    let updated_item = jf_item_to_media_item(jf_item, &server_id, &user_id);
+
+    // Update local DB fully
     {
         let db = state.db.write_conn().map_err(|e| JfgoatError::Internal(e.to_string()))?;
-        let _ = db.execute(
-            "UPDATE media_items SET is_favorite = ?1 WHERE id = ?2 AND server_id = ?3 AND user_id = ?4",
-            rusqlite::params![new_favorite as i32, id, server_id, user_id],
-        );
+        crate::db::media::insert_media_chunk(&db, &[updated_item])?;
     }
 
     Ok(new_favorite)
@@ -1202,7 +1135,7 @@ pub fn apply_user_data_refresh_batch(
 
     let db = state
         .db
-        .lock()
+        .write_conn()
         .map_err(|e| JfgoatError::Internal(e.to_string()))?;
     let tx = db.unchecked_transaction()?;
     let mut updated = 0u32;
@@ -1274,41 +1207,37 @@ pub async fn report_playback_lifecycle_internal(
         }
     };
 
-    if let Err(e) = report_result {
-        println!("[playback] {:?} report failed for {}: {:?}", event, item_id, e);
-    }
+    report_result?;
 
     let near_end = if safe_duration > 0 {
         let remaining = (safe_duration - safe_position).max(0);
         let remaining_threshold = 60 * 10_000_000; // 60s
         let percent = safe_position as f64 / safe_duration as f64;
-        remaining <= remaining_threshold || percent >= 0.95
+        percent >= 0.90 && (remaining <= remaining_threshold || percent >= 0.95)
     } else {
         false
     };
 
     if event == PlaybackLifecycleEvent::Stopped && near_end {
-        if let Err(e) = media_api::mark_played(&jf_client, &user_id, &item_id).await {
-            println!("[playback] mark played failed for {}: {:?}", item_id, e);
-        }
+        media_api::mark_played(&jf_client, &user_id, &item_id).await?;
     }
 
     {
         let db = state
             .db
-            .lock()
+            .write_conn()
             .map_err(|e| JfgoatError::Internal(e.to_string()))?;
 
         if event == PlaybackLifecycleEvent::Stopped && near_end {
-            let _ = db.execute(
+            db.execute(
                 "UPDATE media_items SET played = 1, playback_ticks = 0 WHERE id = ?1 AND server_id = ?2 AND user_id = ?3",
                 rusqlite::params![item_id, server_id, user_id],
-            );
+            )?;
         } else {
-            let _ = db.execute(
+            db.execute(
                 "UPDATE media_items SET played = 0, playback_ticks = ?1 WHERE id = ?2 AND server_id = ?3 AND user_id = ?4",
                 rusqlite::params![safe_position, item_id, server_id, user_id],
-            );
+            )?;
         }
     }
 
@@ -1332,3 +1261,62 @@ pub async fn report_playback_stopped(
     )
     .await
 }
+
+/// Force-refresh a media item directly from the Jellyfin API and write all changes/new items
+/// (including all child seasons/episodes for series) into the local SQLite database.
+#[tauri::command]
+pub async fn refresh_item_details(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<(), JfgoatError> {
+    let (server_url, token, user_id, device_id) = get_connection_params(&state)?;
+    let server_id = get_server_id(&state)?;
+
+    let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
+        .with_token(&token);
+
+    // 1. Fetch item from remote Jellyfin API
+    let jf_item = media_api::fetch_item_by_id(&jf_client, &user_id, &id).await?;
+    let item_type = jf_item.item_type.clone();
+    let media_item = MediaItem::from_jellyfin_item(jf_item, &server_id, &user_id);
+
+    let mut items_to_save = vec![media_item.clone()];
+
+    // 2. Fetch seasons/episodes recursively if needed
+    if item_type == "Series" {
+        // Fetch seasons and episodes for this series using fetch_series_children in chunks
+        let mut start = 0u32;
+        let limit = 500u32;
+        loop {
+            let resp = media_api::fetch_series_children(&jf_client, &user_id, &id, start, limit).await?;
+            let count = resp.items.len();
+            if count == 0 {
+                break;
+            }
+            for item in resp.items {
+                items_to_save.push(MediaItem::from_jellyfin_item(item, &server_id, &user_id));
+            }
+            if count < limit as usize {
+                break;
+            }
+            start += limit;
+        }
+    } else if item_type == "Season" {
+        // Fetch episodes for this season
+        if let Some(ref series_id) = media_item.series_id {
+            let resp = media_api::fetch_episodes(&jf_client, &user_id, series_id, &id).await?;
+            for item in resp.items {
+                items_to_save.push(MediaItem::from_jellyfin_item(item, &server_id, &user_id));
+            }
+        }
+    }
+
+    // 3. Save all fetched items to the DB
+    {
+        let db = state.db.write_conn().map_err(|e| JfgoatError::Internal(e.to_string()))?;
+        crate::db::media::insert_media_chunk(&db, &items_to_save)?;
+    }
+
+    Ok(())
+}
+

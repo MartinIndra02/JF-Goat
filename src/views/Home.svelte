@@ -36,7 +36,12 @@
     markHealthy,
   } from "../lib/stores/connectivity.svelte";
   import { pushErrorToast, pushToast } from "../lib/stores/toast.svelte";
-  import { initSyncListeners, resetSyncStore } from "../lib/stores/sync.svelte";
+  import {
+    initSyncListeners,
+    resetSyncStore,
+    isSyncTriggered,
+    markSyncTriggered,
+  } from "../lib/stores/sync.svelte";
   import SyncIndicator from "../components/layout/SyncIndicator.svelte";
   import HeroBanner from "../components/media/HeroBanner.svelte";
   import MediaRow from "../components/media/MediaRow.svelte";
@@ -189,9 +194,12 @@
   });
 
   initSyncListeners();
-  startSync().catch((error) => {
-    pushErrorToast("sync", error, "Sync startup failed", "sync-start-failed");
-  });
+  if (!isSyncTriggered()) {
+    markSyncTriggered();
+    startSync().catch((error) => {
+      pushErrorToast("sync", error, "Sync startup failed", "sync-start-failed");
+    });
+  }
 
   onMount(() => {
     const onHomepageCacheUpdated = (event: Event) => {
@@ -207,6 +215,49 @@
       HOMEPAGE_CACHE_UPDATED_EVENT,
       onHomepageCacheUpdated as EventListener,
     );
+
+    const handleRefreshHomepage = async () => {
+      if (!isHomeRoute) return;
+      pushToast({
+        level: "info",
+        source: "api",
+        title: "Refreshing dashboard",
+        message: "Fetching updated media from server...",
+        dismissAfterMs: 3000,
+      });
+      await refreshFromServer();
+      pushToast({
+        level: "success",
+        source: "api",
+        title: "Dashboard updated",
+        message: "Your home screen is now up to date.",
+        dismissAfterMs: 3000,
+      });
+    };
+
+    const handleRefreshLibrary = async () => {
+      if (!isLibraryRoute) return;
+      const viewId = selectedLibraryId;
+      if (!viewId) return;
+      pushToast({
+        level: "info",
+        source: "api",
+        title: "Refreshing library",
+        message: "Fetching the latest library content...",
+        dismissAfterMs: 3000,
+      });
+      await loadLibraryItems(viewId);
+      pushToast({
+        level: "success",
+        source: "api",
+        title: "Library updated",
+        message: "The library view is now up to date.",
+        dismissAfterMs: 3000,
+      });
+    };
+
+    window.addEventListener("refresh-homepage", handleRefreshHomepage);
+    window.addEventListener("refresh-library", handleRefreshLibrary);
 
     const onWindowPointerDown = (event: PointerEvent) => {
       if (!navMenuOpen) return;
@@ -243,6 +294,8 @@
         onHomepageCacheUpdated as EventListener,
       );
 
+      window.removeEventListener("refresh-homepage", handleRefreshHomepage);
+      window.removeEventListener("refresh-library", handleRefreshLibrary);
       window.removeEventListener("pointerdown", onWindowPointerDown);
       window.removeEventListener("keydown", onWindowKeydown);
 

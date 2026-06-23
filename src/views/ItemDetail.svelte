@@ -24,7 +24,9 @@
     getExternalUrls,
     togglePlayed,
     toggleFavorite,
+    refreshItemDetails,
   } from "../lib/api";
+  import { pushToast, pushErrorToast } from "../lib/stores/toast.svelte";
   import type {
     MediaItem,
     Person,
@@ -59,6 +61,7 @@
   let focusedDetailItemId = $state("");
   let activeDetailController: AbortController | null = null;
   let activeSeasonController: AbortController | null = null;
+  let refreshing = $state(false);
 
   // For episode detail: sibling episodes from same season
   let siblingEpisodes = $state<MediaItem[]>([]);
@@ -274,6 +277,63 @@
     );
   }
 
+  async function handleRefresh(id: string) {
+    if (refreshing) return;
+    refreshing = true;
+
+    pushToast({
+      level: "info",
+      source: "api",
+      title: "Refreshing details",
+      message: "Fetching the latest version from server...",
+      dismissAfterMs: 3000,
+    });
+
+    try {
+      await refreshItemDetails(id);
+      
+      if (activeDetailController) {
+        await loadItem(id, activeDetailController.signal);
+      } else {
+        const controller = new AbortController();
+        activeDetailController = controller;
+        await loadItem(id, controller.signal);
+      }
+
+      pushToast({
+        level: "success",
+        source: "api",
+        title: "Refresh complete",
+        message: "Details are now up to date.",
+        dismissAfterMs: 3000,
+      });
+    } catch (error) {
+      console.error("Refresh failed:", error);
+      pushErrorToast(
+        "api",
+        error,
+        "Refresh failed",
+        `refresh-failed-${id}`,
+      );
+    } finally {
+      refreshing = false;
+    }
+  }
+
+  $effect(() => {
+    const handleRefreshEvent = async (e: Event) => {
+      const customEvent = e as CustomEvent<{ id: string }>;
+      const id = customEvent.detail?.id;
+      if (!id || id !== itemId) return;
+      await handleRefresh(id);
+    };
+
+    window.addEventListener("refresh-current-item", handleRefreshEvent);
+    return () => {
+      window.removeEventListener("refresh-current-item", handleRefreshEvent);
+    };
+  });
+
   // Reactively load item data whenever itemId changes
   $effect(() => {
     const id = itemId;
@@ -347,6 +407,43 @@
     loadItem(id, detailController.signal);
   }
 
+  async function triggerBackgroundRefresh(id: string, signal: AbortSignal) {
+    try {
+      await refreshItemDetails(id);
+      if (signal.aborted) return;
+
+      const freshResult = await getItemById(id, { signal });
+      if (signal.aborted || !freshResult) return;
+
+      item = freshResult;
+
+      // Reload child records and clear cached episode arrays
+      if (item.type === "Series") {
+        const freshSeasons = await getSeriesSeasons(item.id, { signal });
+        if (!signal.aborted) {
+          seasons = freshSeasons;
+          if (seasons.length > 0) {
+            const seasonIdToLoad = selectedSeasonId || seasons[0].id;
+            allSeasonEpisodes = {}; // clear cached episodes to force DB reload
+            await loadSeasonEpisodes(seasonIdToLoad, signal);
+          }
+        }
+      } else if (item.type === "Season") {
+        const freshEpisodes = await getSeasonEpisodes(item.id, { signal });
+        if (!signal.aborted) {
+          episodes = freshEpisodes;
+        }
+      } else if (item.type === "Episode" && item.season_id) {
+        const freshSiblings = await getSeasonEpisodes(item.season_id, { signal });
+        if (!signal.aborted) {
+          siblingEpisodes = freshSiblings;
+        }
+      }
+    } catch (e) {
+      console.warn("[detail] Background refresh failed (likely offline):", e);
+    }
+  }
+
   async function loadItem(id: string, signal: AbortSignal) {
     try {
       const result = await getItemById(id, { signal });
@@ -399,6 +496,9 @@
         loadMediaStreams(item.id, signal);
         loadExternalUrls(item.id, signal);
       }
+
+      // Trigger background update of details (including overviews)
+      void triggerBackgroundRefresh(id, signal);
     } catch (e) {
       if (signal.aborted || isAbortError(e)) return;
       console.error("Failed to load item details:", e);
@@ -534,4 +634,14 @@
       <button onclick={() => window.history.length > 1 ? window.history.back() : push("/home")} class="text-cyan-200 hover:text-cyan-100 text-sm">Go back</button>
     </div>
   </main>
+{/if}
+
+{#if refreshing}
+  <div class="fixed inset-0 z-50 bg-[rgba(5,7,13,0.6)] backdrop-blur-sm flex flex-col items-center justify-center gap-4 animate-fade-in pointer-events-auto">
+    <div class="relative w-16 h-16">
+      <div class="absolute inset-0 rounded-full border-4 border-cyan-400/20"></div>
+      <div class="absolute inset-0 rounded-full border-4 border-t-cyan-300 animate-spin"></div>
+    </div>
+    <p class="text-sm font-semibold text-cyan-200 tracking-wide animate-pulse">Syncing library details...</p>
+  </div>
 {/if}

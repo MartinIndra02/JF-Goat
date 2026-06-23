@@ -29,23 +29,23 @@
   function goBack() { window.history.length > 1 ? window.history.back() : push("/home"); }
 </script>
 
-<main class="min-h-screen bg-gray-900 text-white">
+<main class="app-stage min-h-screen text-[var(--text-primary)]">
   <!-- Hero Backdrop -->
   <div class="relative w-full overflow-hidden" style="height: clamp(300px, 50vh, 500px);">
     {#if backdropUrl(item)}
       <img src={backdropUrl(item)} alt="" onload={handleImageLoad} class="absolute inset-0 w-full h-full object-cover object-top transition-opacity duration-500 opacity-0" />
     {/if}
-    <div class="absolute inset-0 bg-gray-800 -z-10"></div>
-    <div class="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/40 to-transparent"></div>
+    <div class="absolute inset-0 bg-[rgba(5,7,13,0.5)] -z-10"></div>
+    <div class="absolute inset-0 bg-gradient-to-t from-[var(--bg-0)] via-[rgba(5,7,13,0.4)] to-transparent"></div>
 
-    <button aria-label="Go back" onclick={goBack} class="absolute top-4 left-4 z-10 p-2 bg-black/40 hover:bg-black/60 rounded-full backdrop-blur-sm transition-colors">
+    <button aria-label="Go back" onclick={goBack} class="absolute top-4 left-4 z-10 h-10 w-10 grid place-items-center bg-[rgba(10,18,31,0.64)] border border-white/22 rounded-xl backdrop-blur-xl text-[var(--text-primary)] hover:bg-[rgba(22,34,54,0.76)] transition-colors">
       <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
     </button>
 
     <div class="absolute top-4 right-4 z-10 flex items-center gap-1.5">
-      <button class="p-2 bg-black/40 hover:bg-black/60 rounded-full backdrop-blur-sm transition-colors text-gray-300" aria-label="Download"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/></svg></button>
-      <button class="p-2 bg-black/40 hover:bg-black/60 rounded-full backdrop-blur-sm transition-colors text-gray-300" aria-label="Layout"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg></button>
-      <button class="p-2 bg-black/40 hover:bg-black/60 rounded-full backdrop-blur-sm transition-colors text-gray-300" aria-label="Sync"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg></button>
+      <button class="h-10 w-10 grid place-items-center bg-[rgba(10,18,31,0.64)] border border-white/22 rounded-xl backdrop-blur-xl text-[var(--text-primary)] hover:bg-[rgba(22,34,54,0.76)] transition-colors" aria-label="Download"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/></svg></button>
+      <button class="h-10 w-10 grid place-items-center bg-[rgba(10,18,31,0.64)] border border-white/22 rounded-xl backdrop-blur-xl text-[var(--text-primary)] hover:bg-[rgba(22,34,54,0.76)] transition-colors" aria-label="Layout"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg></button>
+      <button class="h-10 w-10 grid place-items-center bg-[rgba(10,18,31,0.64)] border border-white/22 rounded-xl backdrop-blur-xl text-[var(--text-primary)] hover:bg-[rgba(22,34,54,0.76)] transition-colors" aria-label="Sync"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg></button>
     </div>
   </div>
 
@@ -78,23 +78,23 @@
     <!-- Actions row -->
     <div class="flex flex-wrap items-center gap-3 mb-5">
       <div class="flex items-center gap-2">
-        <button onclick={() => onToggleFavorite(item.id, item.is_favorite)} class="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-white/10 hover:bg-white/15 transition-colors text-sm {item.is_favorite ? 'text-red-400' : 'text-gray-300'}">
+        <button onclick={() => onToggleFavorite(item.id, item.is_favorite)} class="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/12 border border-white/10 transition-all {item.is_favorite ? 'text-rose-400 hover:text-rose-300 bg-rose-500/10 border-rose-500/20' : 'text-gray-400 hover:text-white'}">
           <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd"/></svg>
           <span>Favorite</span>
         </button>
-        <button onclick={() => onTogglePlayed(item.id, item.played)} class="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-white/10 hover:bg-white/15 transition-colors text-sm {item.played ? 'text-green-400' : 'text-gray-300'}">
+        <button onclick={() => onTogglePlayed(item.id, item.played)} class="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/12 border border-white/10 transition-all {item.played ? 'text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 border-emerald-500/20' : 'text-gray-400 hover:text-white'}">
           <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
           <span>Watched</span>
         </button>
       </div>
 
       <!-- View toggle -->
-      <div class="flex items-center ml-auto bg-white/5 rounded-lg overflow-hidden border border-white/10">
-        <button onclick={() => seasonEpisodesViewMode = "list"} class="px-3 py-1.5 text-xs font-medium transition-colors flex items-center gap-1.5 {seasonEpisodesViewMode === 'list' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}">
+      <div class="flex items-center ml-auto bg-white/5 rounded-xl overflow-hidden border border-white/10">
+        <button onclick={() => seasonEpisodesViewMode = "list"} class="px-3.5 py-1.5 text-xs font-semibold transition-colors flex items-center gap-1.5 {seasonEpisodesViewMode === 'list' ? 'bg-white/12 text-white' : 'text-gray-400 hover:text-white hover:bg-white/5'}">
           <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd"/></svg>
           List
         </button>
-        <button onclick={() => seasonEpisodesViewMode = "grid"} class="px-3 py-1.5 text-xs font-medium transition-colors flex items-center gap-1.5 {seasonEpisodesViewMode === 'grid' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}">
+        <button onclick={() => seasonEpisodesViewMode = "grid"} class="px-3.5 py-1.5 text-xs font-semibold transition-colors flex items-center gap-1.5 {seasonEpisodesViewMode === 'grid' ? 'bg-white/12 text-white' : 'text-gray-400 hover:text-white hover:bg-white/5'}">
           <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
           Grid
         </button>

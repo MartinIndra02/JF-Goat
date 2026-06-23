@@ -9,7 +9,7 @@ mod sync;
 
 use std::fs;
 use std::path::PathBuf;
-use std::sync::RwLock;
+use parking_lot::RwLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, Manager};
 use std::sync::atomic::AtomicBool;
@@ -287,8 +287,8 @@ pub fn run() {
                 }
             };
 
-            let server_url = state.server_url.read().ok().and_then(|v| v.clone());
-            let token = state.token.read().ok().and_then(|v| v.clone());
+            let server_url = state.server_url.read().clone();
+            let token = state.token.read().clone();
 
             if let (Some(server_url), Some(token)) = (server_url, token) {
                 let http_client = state.http_client.clone();
@@ -366,6 +366,7 @@ pub fn run() {
                 token: RwLock::new(None),
                 sync_status: RwLock::new(SyncStatus::Ready),
                 user_data_refresh_running: AtomicBool::new(false),
+                sync_running: AtomicBool::new(false),
             };
             app.manage(app_state);
 
@@ -469,6 +470,7 @@ pub fn run() {
             commands::report_playback_stopped,
             commands::toggle_played,
             commands::toggle_favorite,
+            commands::refresh_item_details,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
