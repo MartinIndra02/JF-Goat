@@ -407,6 +407,43 @@
     loadItem(id, detailController.signal);
   }
 
+  async function triggerBackgroundRefresh(id: string, signal: AbortSignal) {
+    try {
+      await refreshItemDetails(id);
+      if (signal.aborted) return;
+
+      const freshResult = await getItemById(id, { signal });
+      if (signal.aborted || !freshResult) return;
+
+      item = freshResult;
+
+      // Reload child records and clear cached episode arrays
+      if (item.type === "Series") {
+        const freshSeasons = await getSeriesSeasons(item.id, { signal });
+        if (!signal.aborted) {
+          seasons = freshSeasons;
+          if (seasons.length > 0) {
+            const seasonIdToLoad = selectedSeasonId || seasons[0].id;
+            allSeasonEpisodes = {}; // clear cached episodes to force DB reload
+            await loadSeasonEpisodes(seasonIdToLoad, signal);
+          }
+        }
+      } else if (item.type === "Season") {
+        const freshEpisodes = await getSeasonEpisodes(item.id, { signal });
+        if (!signal.aborted) {
+          episodes = freshEpisodes;
+        }
+      } else if (item.type === "Episode" && item.season_id) {
+        const freshSiblings = await getSeasonEpisodes(item.season_id, { signal });
+        if (!signal.aborted) {
+          siblingEpisodes = freshSiblings;
+        }
+      }
+    } catch (e) {
+      console.warn("[detail] Background refresh failed (likely offline):", e);
+    }
+  }
+
   async function loadItem(id: string, signal: AbortSignal) {
     try {
       const result = await getItemById(id, { signal });
@@ -459,6 +496,9 @@
         loadMediaStreams(item.id, signal);
         loadExternalUrls(item.id, signal);
       }
+
+      // Trigger background update of details (including overviews)
+      void triggerBackgroundRefresh(id, signal);
     } catch (e) {
       if (signal.aborted || isAbortError(e)) return;
       console.error("Failed to load item details:", e);

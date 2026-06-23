@@ -30,7 +30,7 @@
   <div class="w-full max-w-md glass-panel-strong app-soft-ring rounded-3xl p-7 sm:p-9 flex flex-col items-center gap-6 app-animate-fade-up">
     <div class="text-center space-y-2">
       <p class="inline-flex items-center px-3 py-1 app-pill text-[11px] uppercase tracking-[0.18em]">Server Setup</p>
-      <h1 class="text-3xl font-semibold">jfgoat</h1>
+      <h1 class="text-3xl font-semibold">JF Goat</h1>
       <p class="app-muted text-sm">Connect to your Jellyfin server</p>
     </div>
 

@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-config-schema/schema.json",
-  "productName": "jfgoat",
+  "productName": "JF Goat",
   "version": "1.0.1",
   "identifier": "com.jfgoat.client",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "jfgoat",
+        "title": "JF Goat",
         "width": 1280,
         "height": 800,
         "resizable": true,
