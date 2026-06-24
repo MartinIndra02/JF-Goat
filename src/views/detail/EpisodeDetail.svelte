@@ -107,32 +107,8 @@
       } catch (e) {
         console.error("Failed to start download:", e);
       }
-    } else if (download.status === "Downloading") {
-      try {
-        await pauseDownload(item.id);
-      } catch (e) {
-        console.error("Failed to pause download:", e);
-      }
-    } else if (download.status === "Paused" || download.status === "Failed") {
-      try {
-        await resumeDownload(item.id);
-      } catch (e) {
-        console.error("Failed to resume download:", e);
-      }
-    } else if (download.status === "Pending") {
-      try {
-        await cancelDownload(item.id);
-      } catch (e) {
-        console.error("Failed to cancel download:", e);
-      }
-    } else if (download.status === "Completed") {
-      if (confirm(`Are you sure you want to delete "${item.name}" from your offline synced media?`)) {
-        try {
-          await deleteDownload(item.id);
-        } catch (e) {
-          console.error("Failed to delete download:", e);
-        }
-      }
+    } else {
+      push("/offline");
     }
   }
 
@@ -282,44 +258,6 @@
       </svg>
     </button>
 
-    <!-- Toolbar icons top-right -->
-    <div class="absolute top-4 right-4 z-10 flex items-center gap-1.5">
-      <button
-        onclick={handleDownloadClick}
-        class="h-10 px-3 flex items-center gap-1.5 bg-[rgba(10,18,31,0.64)] border border-white/22 rounded-xl backdrop-blur-xl text-[var(--text-primary)] hover:bg-[rgba(22,34,54,0.76)] transition-colors cursor-pointer"
-        aria-label="Download"
-        title={download ? `Offline download: ${download.status}` : "Download offline"}
-      >
-        {#if !download}
-          <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
-          <span class="text-xs font-semibold">Download</span>
-        {:else if download.status === "Downloading"}
-          <svg class="w-3.5 h-3.5 text-cyan-300 animate-spin" fill="none" viewBox="0 0 24 24">
-            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" class="opacity-25" />
-            <path d="M4 12a8 8 0 018-8" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
-          </svg>
-          <span class="text-xs font-semibold text-cyan-200">{download.progress.toFixed(0)}%</span>
-        {:else if download.status === "Pending"}
-          <svg class="w-3.5 h-3.5 text-amber-300 animate-pulse" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/></svg>
-          <span class="text-xs font-semibold text-amber-200">Queued</span>
-        {:else if download.status === "Paused"}
-          <svg class="w-3.5 h-3.5 text-gray-300" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
-          <span class="text-xs font-semibold text-gray-300">Paused</span>
-        {:else if download.status === "Completed"}
-          <svg class="w-3.5 h-3.5 text-emerald-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
-          <span class="text-xs font-semibold text-emerald-300">Synced</span>
-        {:else if download.status === "Failed"}
-          <svg class="w-3.5 h-3.5 text-rose-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
-          <span class="text-xs font-semibold text-rose-300">Failed</span>
-        {/if}
-      </button>
-      <button class="h-10 w-10 grid place-items-center bg-[rgba(10,18,31,0.64)] border border-white/22 rounded-xl backdrop-blur-xl text-[var(--text-primary)] hover:bg-[rgba(22,34,54,0.76)] transition-colors" aria-label="Layout">
-        <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
-      </button>
-      <button class="h-10 w-10 grid place-items-center bg-[rgba(10,18,31,0.64)] border border-white/22 rounded-xl backdrop-blur-xl text-[var(--text-primary)] hover:bg-[rgba(22,34,54,0.76)] transition-colors" aria-label="Sync">
-        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-      </button>
-    </div>
   </div>
 
   <div class="relative -mt-32 z-10 px-5 pb-16 max-w-3xl mx-auto">
@@ -505,6 +443,35 @@
         <svg class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
       </button>
 
+      <!-- Download Button -->
+      <button
+        onclick={handleDownloadClick}
+        class="p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-center gap-1.5 {download ? (download.status === 'Completed' ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' : download.status === 'Downloading' ? 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20 px-3' : download.status === 'Pending' ? 'text-amber-400 bg-amber-500/10 border-amber-500/20 px-3' : download.status === 'Failed' ? 'text-rose-400 bg-rose-500/10 border-rose-500/20' : 'text-gray-400 bg-white/5 border-white/10 hover:bg-white/12 hover:text-white') : 'text-gray-400 bg-white/5 border-white/10 hover:bg-white/12 hover:text-white'}"
+        aria-label="Download"
+        title={download ? `Offline download: ${download.status}` : "Download offline"}
+      >
+        {#if !download}
+          <svg class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+        {:else if download.status === "Downloading"}
+          <svg class="w-5 h-5 text-cyan-300 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" class="opacity-25" />
+            <path d="M4 12a8 8 0 018-8" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
+          </svg>
+          <span class="text-xs font-semibold text-cyan-200">{download.progress.toFixed(0)}%</span>
+        {:else if download.status === "Pending"}
+          <svg class="w-5 h-5 text-amber-300 animate-pulse" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/></svg>
+          <span class="text-xs font-semibold text-amber-200">Queued</span>
+        {:else if download.status === "Paused"}
+          <svg class="w-5 h-5 text-gray-300" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+          <span class="text-xs font-semibold text-gray-300">Paused</span>
+        {:else if download.status === "Completed"}
+          <svg class="w-5 h-5 text-emerald-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+        {:else if download.status === "Failed"}
+          <svg class="w-5 h-5 text-rose-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+          <span class="text-xs font-semibold text-rose-300">Failed</span>
+        {/if}
+      </button>
+
       <!-- Context menu -->
       <div class="relative">
         <button aria-label="More options" onclick={() => contextMenuOpen = !contextMenuOpen} class="p-2.5 rounded-xl bg-white/5 hover:bg-white/12 border border-white/10 text-gray-400 hover:text-white transition-colors">
@@ -536,14 +503,6 @@
             <button onclick={() => { onToggleFavorite(item.id, item.is_favorite); closeContextMenu(); }} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
               <svg class="w-4 h-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd"/></svg>
               {item.is_favorite ? "Remove from favorites" : "Add to favorites"}
-            </button>
-            <button onclick={closeContextMenu} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
-              <svg class="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-              Sync
-            </button>
-            <button onclick={closeContextMenu} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
-              <svg class="w-4 h-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/></svg>
-              Episode Info
             </button>
           </div>
         {/if}
