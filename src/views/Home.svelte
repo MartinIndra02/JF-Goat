@@ -1201,7 +1201,7 @@
           <TextInput
             bind:element={searchInput}
             bind:value={searchQuery}
-            placeholder="Search..."
+            placeholder="Search your library..."
             oninput={onSearchInput}
             onkeydown={onSearchKeyDown}
             inputClass="pl-10"
