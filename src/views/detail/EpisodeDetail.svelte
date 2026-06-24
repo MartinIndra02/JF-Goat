@@ -6,6 +6,7 @@
     MediaStreamInfo,
     ExternalUrl,
     PlaybackSelection,
+    OfflineDownload,
   } from "../../lib/types";
   import {
     setPreferredAudioStreamIndex,
@@ -15,6 +16,15 @@
     resolvePreferredAudioStreamIndex,
     resolvePreferredSubtitleStreamIndex,
   } from "../../lib/stores/player.svelte";
+  import {
+    getDownloadStatus,
+    startDownload,
+    pauseDownload,
+    resumeDownload,
+    cancelDownload,
+    deleteDownload,
+  } from "../../lib/api";
+  import { listen } from "@tauri-apps/api/event";
   import {
     seasonNumber, formatRuntime, formatDate,
     progressPercent, handleImageLoad, backdropUrl, personImageUrl, scrollCarousel,
@@ -51,6 +61,80 @@
   let selectedQualityKey = $state("original");
   let siblingScrollEl = $state<HTMLElement | null>(null);
   let castScrollEl = $state<HTMLElement | null>(null);
+
+  let download = $state<OfflineDownload | null>(null);
+
+  async function loadDownloadStatus() {
+    try {
+      download = await getDownloadStatus(item.id);
+    } catch (e) {
+      console.error("Failed to load download status:", e);
+    }
+  }
+
+  $effect(() => {
+    item.id;
+    void loadDownloadStatus();
+  });
+
+  $effect(() => {
+    let unlistenProgress: (() => void) | null = null;
+    
+    const setupListener = async () => {
+      unlistenProgress = await listen<OfflineDownload>("download-progress", (event) => {
+        const payload = event.payload;
+        if (payload.id === item.id) {
+          if (payload.status === "Deleted" || payload.status === "Cancelled") {
+            download = null;
+          } else {
+            download = payload;
+          }
+        }
+      });
+    };
+    
+    void setupListener();
+    
+    return () => {
+      if (unlistenProgress) unlistenProgress();
+    };
+  });
+
+  async function handleDownloadClick() {
+    if (!download) {
+      try {
+        await startDownload(item.id);
+      } catch (e) {
+        console.error("Failed to start download:", e);
+      }
+    } else if (download.status === "Downloading") {
+      try {
+        await pauseDownload(item.id);
+      } catch (e) {
+        console.error("Failed to pause download:", e);
+      }
+    } else if (download.status === "Paused" || download.status === "Failed") {
+      try {
+        await resumeDownload(item.id);
+      } catch (e) {
+        console.error("Failed to resume download:", e);
+      }
+    } else if (download.status === "Pending") {
+      try {
+        await cancelDownload(item.id);
+      } catch (e) {
+        console.error("Failed to cancel download:", e);
+      }
+    } else if (download.status === "Completed") {
+      if (confirm(`Are you sure you want to delete "${item.name}" from your offline synced media?`)) {
+        try {
+          await deleteDownload(item.id);
+        } catch (e) {
+          console.error("Failed to delete download:", e);
+        }
+      }
+    }
+  }
 
   // Scroll to top and reset transient state when item changes
   $effect(() => {
@@ -200,8 +284,34 @@
 
     <!-- Toolbar icons top-right -->
     <div class="absolute top-4 right-4 z-10 flex items-center gap-1.5">
-      <button class="h-10 w-10 grid place-items-center bg-[rgba(10,18,31,0.64)] border border-white/22 rounded-xl backdrop-blur-xl text-[var(--text-primary)] hover:bg-[rgba(22,34,54,0.76)] transition-colors" aria-label="Download">
-        <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+      <button
+        onclick={handleDownloadClick}
+        class="h-10 px-3 flex items-center gap-1.5 bg-[rgba(10,18,31,0.64)] border border-white/22 rounded-xl backdrop-blur-xl text-[var(--text-primary)] hover:bg-[rgba(22,34,54,0.76)] transition-colors cursor-pointer"
+        aria-label="Download"
+        title={download ? `Offline download: ${download.status}` : "Download offline"}
+      >
+        {#if !download}
+          <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+          <span class="text-xs font-semibold">Download</span>
+        {:else if download.status === "Downloading"}
+          <svg class="w-3.5 h-3.5 text-cyan-300 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" class="opacity-25" />
+            <path d="M4 12a8 8 0 018-8" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
+          </svg>
+          <span class="text-xs font-semibold text-cyan-200">{download.progress.toFixed(0)}%</span>
+        {:else if download.status === "Pending"}
+          <svg class="w-3.5 h-3.5 text-amber-300 animate-pulse" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/></svg>
+          <span class="text-xs font-semibold text-amber-200">Queued</span>
+        {:else if download.status === "Paused"}
+          <svg class="w-3.5 h-3.5 text-gray-300" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+          <span class="text-xs font-semibold text-gray-300">Paused</span>
+        {:else if download.status === "Completed"}
+          <svg class="w-3.5 h-3.5 text-emerald-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+          <span class="text-xs font-semibold text-emerald-300">Synced</span>
+        {:else if download.status === "Failed"}
+          <svg class="w-3.5 h-3.5 text-rose-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+          <span class="text-xs font-semibold text-rose-300">Failed</span>
+        {/if}
       </button>
       <button class="h-10 w-10 grid place-items-center bg-[rgba(10,18,31,0.64)] border border-white/22 rounded-xl backdrop-blur-xl text-[var(--text-primary)] hover:bg-[rgba(22,34,54,0.76)] transition-colors" aria-label="Layout">
         <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>

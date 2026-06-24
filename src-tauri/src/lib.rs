@@ -9,7 +9,6 @@ mod sync;
 
 use std::fs;
 use std::path::PathBuf;
-use parking_lot::RwLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, Manager};
 use std::sync::atomic::AtomicBool;
@@ -357,17 +356,42 @@ pub fn run() {
                 .build()
                 .expect("Failed to build HTTP client");
 
+            let (download_tx, download_rx) = tokio::sync::mpsc::unbounded_channel::<()>();
+
             // Create and manage AppState
             let app_state = AppState {
-                db,
-                http_client,
-                server_url: RwLock::new(None),
-                user_id: RwLock::new(None),
-                token: RwLock::new(None),
-                sync_status: RwLock::new(SyncStatus::Ready),
+                db: db.clone(),
+                http_client: http_client.clone(),
+                server_url: std::sync::Arc::new(parking_lot::RwLock::new(None)),
+                user_id: std::sync::Arc::new(parking_lot::RwLock::new(None)),
+                token: std::sync::Arc::new(parking_lot::RwLock::new(None)),
+                sync_status: parking_lot::RwLock::new(SyncStatus::Ready),
                 user_data_refresh_running: AtomicBool::new(false),
                 sync_running: AtomicBool::new(false),
+                download_trigger: download_tx,
             };
+
+            let app_handle_for_downloads = app.handle().clone();
+            let db_for_downloads = db.clone();
+            let http_client_for_downloads = http_client.clone();
+            let server_url_for_downloads = app_state.server_url.clone();
+            let user_id_for_downloads = app_state.user_id.clone();
+            let token_for_downloads = app_state.token.clone();
+            let download_trigger_for_downloads = app_state.download_trigger.clone();
+
+            tauri::async_runtime::spawn(commands::download_commands::start_download_manager_loop(
+                app_handle_for_downloads,
+                commands::download_commands::DownloadContext {
+                    db: db_for_downloads,
+                    http_client: http_client_for_downloads,
+                    server_url: server_url_for_downloads,
+                    user_id: user_id_for_downloads,
+                    token: token_for_downloads,
+                    download_trigger: download_trigger_for_downloads,
+                },
+                download_rx,
+            ));
+
             app.manage(app_state);
 
             // ── MPV Player Setup (Windows) ─────────────────────────────────
@@ -471,6 +495,14 @@ pub fn run() {
             commands::toggle_played,
             commands::toggle_favorite,
             commands::refresh_item_details,
+            commands::start_download,
+            commands::pause_download,
+            commands::resume_download,
+            commands::cancel_download,
+            commands::delete_download,
+            commands::get_download_status,
+            commands::get_offline_downloads,
+            commands::select_download_directory,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

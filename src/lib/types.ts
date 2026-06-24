@@ -132,6 +132,7 @@ export interface UserPreferences {
   quality: QualityPreferences;
   cache: CachePreferences;
   refresh_interval_seconds: number;
+  download_directory: string | null;
 }
 
 export const DEFAULT_USER_PREFERENCES: UserPreferences = {
@@ -151,7 +152,24 @@ export const DEFAULT_USER_PREFERENCES: UserPreferences = {
     max_age_minutes: 720,
   },
   refresh_interval_seconds: 180,
+  download_directory: null,
 };
+
+export interface OfflineDownload {
+  id: string;
+  server_id: string;
+  user_id: string;
+  name: string;
+  type: string;
+  local_path: string | null;
+  status: "Pending" | "Downloading" | "Completed" | "Paused" | "Failed" | "Cancelled" | "Deleted";
+  progress: number;
+  downloaded_bytes: number;
+  total_bytes: number;
+  speed_bytes_per_sec: number;
+  error_message: string | null;
+  added_at: string;
+}
 
 // ── Player types ────────────────────────────────────────────────
 

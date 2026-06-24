@@ -76,6 +76,7 @@ pub struct UserPreferences {
     pub quality: QualityPreferences,
     pub cache: CachePreferences,
     pub refresh_interval_seconds: u32,
+    pub download_directory: Option<String>,
 }
 
 impl Default for UserPreferences {
@@ -86,6 +87,7 @@ impl Default for UserPreferences {
             quality: QualityPreferences::default(),
             cache: CachePreferences::default(),
             refresh_interval_seconds: 180,
+            download_directory: None,
         }
     }
 }
@@ -113,6 +115,8 @@ impl UserPreferences {
 
         self.cache.max_age_minutes = self.cache.max_age_minutes.clamp(5, 10_080);
         self.refresh_interval_seconds = self.refresh_interval_seconds.clamp(30, 1_800);
+
+        self.download_directory = self.download_directory.map(|d| d.trim().to_string());
 
         self
     }

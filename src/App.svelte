@@ -45,6 +45,7 @@
     "/login": Login,
     "/home": Home,
     "/library": Home,
+    "/offline": Home,
     "/search": Home,
     "/settings": Home,
     "/item": ItemDetail,
@@ -167,6 +168,7 @@
     return (
       path.startsWith("/home") ||
       path.startsWith("/library") ||
+      path.startsWith("/offline") ||
       path.startsWith("/search") ||
       path.startsWith("/settings") ||
       path.startsWith("/item")

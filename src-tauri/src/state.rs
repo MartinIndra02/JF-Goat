@@ -94,15 +94,18 @@ fn configure_connection(conn: &mut Connection) -> rusqlite::Result<()> {
     Ok(())
 }
 
+use std::sync::Arc;
+
 pub struct AppState {
     pub db: DbPool,
     pub http_client: reqwest::Client,
-    pub server_url: RwLock<Option<String>>,
-    pub user_id: RwLock<Option<String>>,
-    pub token: RwLock<Option<String>>,
+    pub server_url: Arc<RwLock<Option<String>>>,
+    pub user_id: Arc<RwLock<Option<String>>>,
+    pub token: Arc<RwLock<Option<String>>>,
     pub sync_status: RwLock<SyncStatus>,
     pub user_data_refresh_running: AtomicBool,
     pub sync_running: AtomicBool,
+    pub download_trigger: tokio::sync::mpsc::UnboundedSender<()>,
 }
 
 impl AppState {
