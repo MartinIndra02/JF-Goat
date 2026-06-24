@@ -138,7 +138,21 @@ async fn download_media_item(
         item.id
     );
 
-    let response = match ctx.http_client.get(&url).send().await {
+    let temp_path = download_dir.join(format!("{}.part", item.id));
+
+    let mut existing_bytes: i64 = 0;
+    if temp_path.exists() {
+        if let Ok(meta) = std::fs::metadata(&temp_path) {
+            existing_bytes = meta.len() as i64;
+        }
+    }
+
+    let mut req = ctx.http_client.get(&url);
+    if existing_bytes > 0 {
+        req = req.header("Range", format!("bytes={}-", existing_bytes));
+    }
+
+    let response = match req.send().await {
         Ok(resp) => resp,
         Err(e) => {
             let err_msg = format!("Request failed: {}", e);
@@ -148,6 +162,8 @@ async fn download_media_item(
         }
     };
 
+    let is_partial = response.status() == reqwest::StatusCode::PARTIAL_CONTENT;
+
     if !response.status().is_success() {
         let err_msg = format!("HTTP error: {}", response.status());
         update_download_status(ctx, &item.id, "Failed", Some(&err_msg))?;
@@ -155,8 +171,13 @@ async fn download_media_item(
         return Ok(());
     }
 
-    let total_bytes = response.content_length().unwrap_or(0);
-    update_download_total_bytes(ctx, &item.id, total_bytes as i64)?;
+    let downloaded_bytes = if is_partial { existing_bytes } else { 0 };
+    let total_bytes = if is_partial {
+        downloaded_bytes + response.content_length().unwrap_or(0) as i64
+    } else {
+        response.content_length().unwrap_or(0) as i64
+    };
+    update_download_total_bytes(ctx, &item.id, total_bytes)?;
 
     let ext = match response.headers().get(reqwest::header::CONTENT_TYPE) {
         Some(val) => {
@@ -176,22 +197,39 @@ async fn download_media_item(
 
     let filename = format!("{}.{}", item.id, ext);
     let final_path = download_dir.join(&filename);
-    let temp_path = download_dir.join(format!("{}.part", item.id));
 
-    let mut file = match tokio::fs::File::create(&temp_path).await {
-        Ok(f) => f,
-        Err(e) => {
-            let err_msg = format!("File create failed: {}", e);
-            update_download_status(ctx, &item.id, "Failed", Some(&err_msg))?;
-            emit_download_progress(&app_handle, ctx, &item.id)?;
-            return Ok(());
+    let mut file = if is_partial {
+        match tokio::fs::OpenOptions::new()
+            .write(true)
+            .append(true)
+            .open(&temp_path)
+            .await
+        {
+            Ok(f) => f,
+            Err(e) => {
+                let err_msg = format!("Failed to open part file for append: {}", e);
+                update_download_status(ctx, &item.id, "Failed", Some(&err_msg))?;
+                emit_download_progress(&app_handle, ctx, &item.id)?;
+                return Ok(());
+            }
+        }
+    } else {
+        match tokio::fs::File::create(&temp_path).await {
+            Ok(f) => f,
+            Err(e) => {
+                let err_msg = format!("File create failed: {}", e);
+                update_download_status(ctx, &item.id, "Failed", Some(&err_msg))?;
+                emit_download_progress(&app_handle, ctx, &item.id)?;
+                return Ok(());
+            }
         }
     };
 
     let mut stream = response.bytes_stream();
-    let mut downloaded_bytes: i64 = 0;
+    let mut downloaded_bytes = downloaded_bytes;
     let mut last_db_update = std::time::Instant::now();
     let start_time = std::time::Instant::now();
+    let initial_downloaded = downloaded_bytes;
 
     while let Some(chunk_result) = stream.next().await {
         let chunk = match chunk_result {
@@ -200,7 +238,6 @@ async fn download_media_item(
                 let err_msg = format!("Stream error: {}", e);
                 update_download_status(ctx, &item.id, "Failed", Some(&err_msg))?;
                 emit_download_progress(&app_handle, ctx, &item.id)?;
-                let _ = tokio::fs::remove_file(&temp_path).await;
                 return Ok(());
             }
         };
@@ -209,7 +246,6 @@ async fn download_media_item(
             let err_msg = format!("Write failed: {}", e);
             update_download_status(ctx, &item.id, "Failed", Some(&err_msg))?;
             emit_download_progress(&app_handle, ctx, &item.id)?;
-            let _ = tokio::fs::remove_file(&temp_path).await;
             return Ok(());
         }
 
@@ -235,7 +271,7 @@ async fn download_media_item(
             last_db_update = std::time::Instant::now();
             let elapsed_secs = start_time.elapsed().as_secs_f64();
             let speed = if elapsed_secs > 0.0 {
-                downloaded_bytes as f64 / elapsed_secs
+                (downloaded_bytes - initial_downloaded) as f64 / elapsed_secs
             } else {
                 0.0
             };
