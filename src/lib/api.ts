@@ -476,3 +476,8 @@ export async function selectDownloadDirectory(): Promise<string | null> {
   return invoke("select_download_directory");
 }
 
+// ── App Updater ────────────────────────────────────────────────────────
+
+export async function restartApp(): Promise<void> {
+  return invoke("restart_app");
+}
