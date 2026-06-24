@@ -52,8 +52,8 @@
     markSyncTriggered,
   } from "../lib/stores/sync.svelte";
   import SyncIndicator from "../components/layout/SyncIndicator.svelte";
-  import HeroBanner from "../components/media/HeroBanner.svelte";
   import MediaRow from "../components/media/MediaRow.svelte";
+  import HeroCarousel from "../components/media/HeroCarousel.svelte";
   import PosterCard from "../components/media/PosterCard.svelte";
   import Button from "../components/ui/Button.svelte";
   import TextInput from "../components/ui/TextInput.svelte";
@@ -100,9 +100,6 @@
   let lastDataRefreshAt = $state<number | null>(null);
   let activeRouteHeading = $state<HTMLElement | null>(null);
   let lastFocusedRoute = $state("");
-  let navMenuOpen = $state(false);
-  let navMenuButton = $state<HTMLButtonElement | null>(null);
-  let navMenuPanel = $state<HTMLElement | null>(null);
 
   const SUBTITLE_POSITION_STORAGE_KEY = "jfgoat.player.subtitleBottomPercent";
   const DEFAULT_SUBTITLE_POSITION_PERCENT = 92;
@@ -117,20 +114,6 @@
   const isSearchRoute = $derived(currentPath === "/search");
   const isSettingsRoute = $derived(currentPath === "/settings");
 
-  const primaryNavItems = [
-    { label: "Home", path: "/home" },
-    { label: "Library", path: "/library" },
-    { label: "Offline", path: "/offline" },
-    { label: "Settings", path: "/settings" },
-  ] as const;
-
-  const currentRouteLabel = $derived.by(() => {
-    if (currentPath === "/search") {
-      return "Search";
-    }
-    const match = primaryNavItems.find((item) => item.path === currentPath);
-    return match?.label ?? "Menu";
-  });
 
   const movieResults = $derived(searchResults.filter((item) => item.type === "Movie"));
   const showResults = $derived(
@@ -148,6 +131,12 @@
   );
 
   const selectedLibraryId = $derived(routeQuery.get("view") ?? "");
+  const carouselItems = $derived(
+    nextUpItems.length > 0 
+      ? nextUpItems.slice(0, 5) 
+      : (resumeItems.length > 0 ? resumeItems.slice(0, 5) : featuredItems.slice(0, 5))
+  );
+  const activeCarouselIds = $derived(new Set(carouselItems.map(item => item.id)));
   const selectedLibraryLayout = $derived(normalizeLayout(routeQuery.get("layout")));
   const selectedLibrarySort = $derived(normalizeSort(routeQuery.get("sort")));
   const selectedLibraryTypeFilter = $derived(normalizeTypeFilter(routeQuery.get("type")));
@@ -270,27 +259,6 @@
     window.addEventListener("refresh-homepage", handleRefreshHomepage);
     window.addEventListener("refresh-library", handleRefreshLibrary);
 
-    const onWindowPointerDown = (event: PointerEvent) => {
-      if (!navMenuOpen) return;
-
-      const target = event.target as Node | null;
-      if (!target) return;
-
-      if (navMenuButton?.contains(target) || navMenuPanel?.contains(target)) {
-        return;
-      }
-
-      navMenuOpen = false;
-    };
-
-    const onWindowKeydown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      navMenuOpen = false;
-    };
-
-    window.addEventListener("pointerdown", onWindowPointerDown);
-    window.addEventListener("keydown", onWindowKeydown);
-
     staleClockTimer = setInterval(() => {
       cacheFreshnessNow = Date.now();
     }, 30_000);
@@ -307,8 +275,6 @@
 
       window.removeEventListener("refresh-homepage", handleRefreshHomepage);
       window.removeEventListener("refresh-library", handleRefreshLibrary);
-      window.removeEventListener("pointerdown", onWindowPointerDown);
-      window.removeEventListener("keydown", onWindowKeydown);
 
       if (searchTimer) clearTimeout(searchTimer);
       if (refreshTimer) clearInterval(refreshTimer);
@@ -704,10 +670,6 @@
     push(path);
   }
 
-  function togglePrimaryMenu() {
-    navMenuOpen = !navMenuOpen;
-  }
-
   function openItem(item: MediaItem) {
     if (item.type === "BoxSet") {
       push(
@@ -717,11 +679,6 @@
     }
 
     push(`/item?id=${encodeURIComponent(item.id)}`);
-  }
-
-  function handleMenuNavigate(path: string) {
-    navMenuOpen = false;
-    navigateTo(path);
   }
 
   function openLibraryView(library: UserLibrary) {
@@ -1180,33 +1137,55 @@
 
 <main class="min-h-screen text-[var(--text-primary)] pb-16">
   <header class="sticky top-0 z-40 border-b border-white/10 bg-[rgba(6,10,18,0.55)] backdrop-blur-xl">
-    <div class="flex flex-wrap items-center gap-4 px-4 sm:px-6 py-3.5">
-      <div class="relative flex items-center gap-3 min-w-0">
+    <div class="flex flex-wrap items-center justify-between gap-4 px-4 sm:px-6 py-3.5">
+      
+      <div class="flex items-center gap-4 min-w-0">
+        <!-- Home / Server Name -->
         <button
-          bind:this={navMenuButton}
           type="button"
-          onclick={togglePrimaryMenu}
-          aria-expanded={navMenuOpen}
-          aria-label="Toggle navigation menu"
-          class="w-9 h-9 rounded-xl bg-[linear-gradient(140deg,rgba(102,216,255,0.86),rgba(65,184,213,0.78))] hover:brightness-110 transition-all duration-200 flex items-center justify-center shrink-0 text-slate-950 shadow-[0_10px_24px_rgba(65,184,213,0.35)]"
+          onclick={() => navigateTo("/home")}
+          class="group flex items-center gap-3 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#66d8ff] rounded-xl px-2.5 py-1.5 -ml-2.5 hover:bg-white/5 transition-all duration-200"
         >
-          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z" />
-          </svg>
+          <div class="w-9 h-9 rounded-xl bg-[linear-gradient(140deg,rgba(102,216,255,0.86),rgba(65,184,213,0.78))] group-hover:scale-105 group-hover:brightness-110 transition-all duration-200 flex items-center justify-center shrink-0 text-slate-950 shadow-[0_10px_24px_rgba(65,184,213,0.35)]">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 3L4 9v11a1 1 0 001 1h5v-6h4v6h5a1 1 0 001-1V9l-8-6z"/>
+            </svg>
+          </div>
+          <div class="min-w-0 hidden sm:block">
+            <h1 class="text-sm font-semibold truncate tracking-[0.02em] text-white group-hover:text-cyan-300 transition-colors">
+              {session?.server_name ?? "jfFast"}
+            </h1>
+            <p class="text-xs app-faint truncate">
+              {session?.username ?? ""}
+            </p>
+          </div>
         </button>
 
-        <div class="min-w-0">
-          <h1 class="text-sm font-semibold truncate tracking-[0.02em]">
-            {session?.server_name ?? "jfFast"}
-          </h1>
-          <p class="text-xs app-faint truncate">
-            {session?.username ?? ""} · {currentRouteLabel}
-          </p>
-        </div>
+        <!-- Library + Offline Links -->
+        <nav class="flex items-center gap-1" aria-label="Primary navigation">
+          <button
+            type="button"
+            onclick={() => navigateTo("/library")}
+            class="px-3.5 py-2 rounded-xl text-xs font-semibold tracking-[0.02em] transition-all duration-200 border {isLibraryRoute ? 'bg-cyan-500/10 border-cyan-400/20 text-cyan-300' : 'border-transparent text-[var(--text-secondary)] hover:text-white hover:bg-white/5'}"
+            aria-current={isLibraryRoute ? "page" : undefined}
+          >
+            Library
+          </button>
+          <button
+            type="button"
+            onclick={() => navigateTo("/offline")}
+            class="px-3.5 py-2 rounded-xl text-xs font-semibold tracking-[0.02em] transition-all duration-200 border {isOfflineRoute ? 'bg-cyan-500/10 border-cyan-400/20 text-cyan-300' : 'border-transparent text-[var(--text-secondary)] hover:text-white hover:bg-white/5'}"
+            aria-current={isOfflineRoute ? "page" : undefined}
+          >
+            Offline
+          </button>
+        </nav>
       </div>
 
-      <div class="flex-1 min-w-52 max-w-xl ml-auto">
-        <div class="relative">
+      <!-- Right: Search & Settings Section -->
+      <div class="flex items-center gap-3 ml-auto flex-1 max-w-sm justify-end">
+        <!-- Search Section -->
+        <div class="relative w-full max-w-xs">
           <svg
             class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 app-faint"
             viewBox="0 0 20 20"
@@ -1222,106 +1201,28 @@
           <TextInput
             bind:element={searchInput}
             bind:value={searchQuery}
-            placeholder="Search your library..."
+            placeholder="Search..."
             oninput={onSearchInput}
             onkeydown={onSearchKeyDown}
             inputClass="pl-10"
           />
         </div>
+
+        <!-- Settings Section -->
+        <button
+          type="button"
+          onclick={() => navigateTo("/settings")}
+          aria-label="Settings"
+          class="group w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border {isSettingsRoute ? 'bg-cyan-500/10 border-cyan-400/20 text-cyan-300 shadow-[0_4px_12px_rgba(65,184,213,0.15)]' : 'border-white/10 bg-white/5 text-[var(--text-secondary)] hover:text-white hover:bg-white/10 hover:border-white/20'} transition-all duration-200"
+        >
+          <svg class="w-4 h-4 transition-transform duration-500 group-hover:rotate-45" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.43l-1.003.828c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.99l1.005.831a1.125 1.125 0 01.26 1.43l-1.297 2.247a1.125 1.125 0 01-1.37.491l-1.216-.456c-.356-.133-.751-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.43l1.004-.83c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.831a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.645-.869l.214-1.28z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+        </button>
       </div>
-
-      <Button variant="secondary" size="sm" onclick={handleLogout}>
-        <span class="text-sm">Log Out</span>
-      </Button>
-    </div>
-  </header>
-
-  {#if navMenuOpen}
-    <button
-      type="button"
-      class="fixed inset-0 z-50 bg-black/65 backdrop-blur-[2px]"
-      aria-label="Close navigation sidebar"
-      onclick={() => {
-        navMenuOpen = false;
-      }}
-    ></button>
-
-    <aside
-      bind:this={navMenuPanel}
-      class="fixed left-0 top-0 bottom-0 z-[60] w-[19rem] overflow-hidden border-r border-white/20 bg-[rgba(6,10,18,0.97)] p-5 shadow-[0_18px_46px_rgba(2,6,16,0.7)]"
-      aria-label="Primary navigation sidebar"
-    >
-      <div
-        class="pointer-events-none absolute inset-0"
-        style:background="radial-gradient(100% 60% at 0% 0%, rgba(102,216,255,0.22), transparent 68%), radial-gradient(120% 70% at 100% 100%, rgba(244,188,107,0.12), transparent 74%), linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01))"
-      ></div>
-
-      <div class="relative h-full flex flex-col">
-        <div class="flex items-center justify-between gap-3 mb-5">
-          <div>
-            <p class="text-xs uppercase tracking-[0.18em] app-faint">Navigation</p>
-            <p class="text-sm font-semibold text-[var(--text-primary)] mt-1">{session?.server_name ?? "jfFast"}</p>
-          </div>
-          <button
-            type="button"
-            class="h-8 w-8 rounded-lg border border-white/20 bg-white/10 text-white hover:bg-white/18 transition-colors"
-            aria-label="Close sidebar"
-            onclick={() => {
-              navMenuOpen = false;
-            }}
-          >
-            <svg class="w-4 h-4 mx-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        <nav class="grid gap-2" aria-label="Primary">
-          {#each primaryNavItems as navItem}
-            <button
-              type="button"
-              onclick={() => handleMenuNavigate(navItem.path)}
-              class="w-full text-left px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 {currentPath === navItem.path ? 'bg-[linear-gradient(140deg,rgba(102,216,255,0.3),rgba(65,184,213,0.24))] border border-cyan-200/35 text-cyan-100 shadow-[0_10px_22px_rgba(65,184,213,0.24)]' : 'border border-transparent text-[var(--text-secondary)] hover:border-white/16 hover:bg-white/7 hover:text-[var(--text-primary)]'}"
-              aria-current={currentPath === navItem.path ? "page" : undefined}
-            >
-              {navItem.label}
-            </button>
-          {/each}
-        </nav>
-
-        <div class="mt-auto space-y-3 pt-5">
-          <div class="rounded-2xl border border-white/16 bg-[rgba(10,18,30,0.7)] px-3.5 py-3 backdrop-blur-lg">
-            <p class="text-[11px] uppercase tracking-[0.18em] app-faint mb-1">Session</p>
-            <p class="text-sm font-medium text-[var(--text-primary)] truncate">{session?.username ?? "Guest"}</p>
-            <p class="text-xs app-muted mt-1">
-              {userLibraries.length} libraries · {resumeItems.length} in progress
-            </p>
-          </div>
-
-          <div class="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              class="rounded-xl border border-white/16 bg-white/8 px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-white/14 hover:text-[var(--text-primary)]"
-              onclick={() => handleMenuNavigate("/search")}
-            >
-              Search
-            </button>
-            <button
-              type="button"
-              class="rounded-xl border border-white/16 bg-white/8 px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-white/14 hover:text-[var(--text-primary)] disabled:opacity-50 disabled:cursor-not-allowed"
-              onclick={() => {
-                navMenuOpen = false;
-                void handleResync();
-              }}
-              disabled={runningResync}
-            >
-              {runningResync ? "Syncing..." : "Resync"}
-            </button>
-          </div>
-        </div>
-      </div>
-    </aside>
-  {/if}
+     </div>
+   </header>
 
   {#if statusMessage}
     <div class="px-6 pt-3">
@@ -1939,12 +1840,25 @@
       </div>
     </div>
   {:else}
-    <div class="space-y-3 app-animate-fade-up">
+    <div class="space-y-6 app-animate-fade-up">
       <h2 bind:this={activeRouteHeading} tabindex="-1" class="sr-only">Home</h2>
-      <HeroBanner items={featuredItems} />
 
-      <MediaRow title="Continue Watching" items={resumeItems} landscape={true} />
-      <MediaRow title="Next Up" items={nextUpItems} landscape={true} />
+      {#if carouselItems.length > 0}
+        <div class="px-6 pt-2">
+          <HeroCarousel items={carouselItems} />
+        </div>
+      {/if}
+
+      <MediaRow 
+        title="Continue Watching" 
+        items={resumeItems.filter(item => !activeCarouselIds.has(item.id))} 
+        landscape={true} 
+      />
+      <MediaRow 
+        title="Next Up" 
+        items={nextUpItems.filter(item => !activeCarouselIds.has(item.id))} 
+        landscape={true} 
+      />
 
       {#each userLibraries as library (library.id)}
         {#if libraryLatest[library.id]?.length}
