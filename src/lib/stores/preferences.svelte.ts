@@ -15,6 +15,7 @@ type PreferencesUpdate = {
   quality?: Partial<UserPreferences["quality"]>;
   cache?: Partial<UserPreferences["cache"]>;
   refresh_interval_seconds?: UserPreferences["refresh_interval_seconds"];
+  download_directory?: UserPreferences["download_directory"];
 };
 
 function cloneDefaults(): UserPreferences {
@@ -24,6 +25,7 @@ function cloneDefaults(): UserPreferences {
     quality: { ...DEFAULT_USER_PREFERENCES.quality },
     cache: { ...DEFAULT_USER_PREFERENCES.cache },
     refresh_interval_seconds: DEFAULT_USER_PREFERENCES.refresh_interval_seconds,
+    download_directory: DEFAULT_USER_PREFERENCES.download_directory,
   };
 }
 
@@ -67,6 +69,9 @@ function sanitizePreferences(input: UserPreferences): UserPreferences {
       30,
       Math.min(1_800, Math.round(refreshInterval)),
     ),
+    download_directory: input.download_directory !== undefined && input.download_directory !== null
+      ? String(input.download_directory).trim()
+      : null,
   };
 }
 
@@ -93,6 +98,8 @@ function mergePreferences(
     },
     refresh_interval_seconds:
       update.refresh_interval_seconds ?? current.refresh_interval_seconds,
+    download_directory:
+      update.download_directory !== undefined ? update.download_directory : current.download_directory,
   });
 }
 

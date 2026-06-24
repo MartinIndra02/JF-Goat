@@ -181,15 +181,29 @@ pub async fn mpv_play(
     max_streaming_bitrate: Option<i64>,
     target_height: Option<i64>,
 ) -> Result<(), JfgoatError> {
-    let url = build_playback_url_with_options(
-        &app_state,
-        &item_id,
-        audio_stream_index,
-        subtitle_stream_index,
-        max_streaming_bitrate,
-        target_height,
-    )
-    .await?;
+    let local_path = {
+        let db = app_state.db.read_conn().map_err(|e| JfgoatError::Internal(e.to_string()))?;
+        db.query_row(
+            "SELECT local_path FROM offline_downloads WHERE id = ?1 AND status = 'Completed'",
+            rusqlite::params![item_id],
+            |row| row.get::<_, String>(0),
+        ).ok()
+    };
+
+    let url = if let Some(path) = local_path {
+        println!("[mpv] Playing offline downloaded file: {}", path);
+        path
+    } else {
+        build_playback_url_with_options(
+            &app_state,
+            &item_id,
+            audio_stream_index,
+            subtitle_stream_index,
+            max_streaming_bitrate,
+            target_height,
+        )
+        .await?
+    };
     let safe_ticks = start_ticks.max(0);
     let start_seconds = safe_ticks as f64 / 10_000_000.0;
 

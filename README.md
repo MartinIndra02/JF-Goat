@@ -78,7 +78,16 @@ npm run release:tauri
 
 ## 📝 Changelog
 
-### v1.0.2 (Current)
+### v1.1.0 (Current)
+This release includes major new features, performance enhancements, and UI design updates:
+
+* **Offline Downloads**: Added full support for downloading series/episodes for offline playback, featuring auto-resuming of interrupted or failed downloads and offline sync logic.
+* **Next Up Carousel**: Integrated a custom, high-performance "Next Up" carousel (HeroCarousel) on the homepage that is responsive and allows quick access to in-progress media.
+* **Unbounded Delta Sync**: Removed the 3,000 items limitation on delta updates, allowing full synchronization of large libraries in the background.
+* **Top Header Navigation**: Migrated the application's layout from a sidebar-based navigation to a modern top header layout (Home, Library, Offline, Settings).
+* **UI & Detail Refinements**: Refined detail views (especially episodes detail page) to include direct action buttons for downloads, clear offline availability status, and smooth layouts.
+
+### v1.0.2
 This release includes new features, styling enhancements, and bug fixes:
 
 * **Application Icon**: Configured and integrated native icons across multiple formats and resolutions for the system tray, taskbar, window header, and package installers (Windows, macOS, Android, iOS).

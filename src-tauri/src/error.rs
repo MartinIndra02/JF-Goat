@@ -24,7 +24,7 @@ pub fn sanitize_error_message(msg: &str) -> String {
     }
     result.push_str(current);
 
-    let mut current_ptr = result;
+    let current_ptr = result;
     result = String::new();
     let mut ptr = current_ptr.as_str();
     while let Some(pos) = ptr.find("Token=\"") {
@@ -36,7 +36,7 @@ pub fn sanitize_error_message(msg: &str) -> String {
     }
     result.push_str(ptr);
 
-    let mut current_ptr2 = result;
+    let current_ptr2 = result;
     result = String::new();
     let mut ptr2 = current_ptr2.as_str();
     while let Some(pos) = ptr2.find("Token=") {

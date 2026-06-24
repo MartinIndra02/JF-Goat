@@ -336,6 +336,7 @@
 
   // Reactively load item data whenever itemId changes
   $effect(() => {
+    if (!$location.startsWith("/item")) return;
     const id = itemId;
     if (!id) { push("/home"); return; }
 

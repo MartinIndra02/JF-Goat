@@ -186,7 +186,6 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
         let mut start_index = 0u32;
         let limit = 300u32;
         let mut page = 0;
-        let max_pages = 10; // Fetch up to 3000 items if needed
 
         loop {
             match media::fetch_recent_items(&jf_client, &user_id, start_index, limit).await {
@@ -248,10 +247,6 @@ async fn run_sync(app: &AppHandle) -> Result<(), String> {
 
                     start_index += limit;
                     page += 1;
-                    if page >= max_pages {
-                        println!("Delta sync reached max page limit (3000 items).");
-                        break;
-                    }
 
                     // Tiny pause to be friendly to the server
                     tokio::time::sleep(Duration::from_millis(250)).await;

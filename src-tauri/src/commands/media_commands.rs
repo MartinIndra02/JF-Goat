@@ -1207,7 +1207,9 @@ pub async fn report_playback_lifecycle_internal(
         }
     };
 
-    report_result?;
+    if let Err(e) = report_result {
+        eprintln!("[playback] Failed to report playback lifecycle event to Jellyfin server: {:?}", e);
+    }
 
     let near_end = if safe_duration > 0 {
         let remaining = (safe_duration - safe_position).max(0);
@@ -1219,7 +1221,9 @@ pub async fn report_playback_lifecycle_internal(
     };
 
     if event == PlaybackLifecycleEvent::Stopped && near_end {
-        media_api::mark_played(&jf_client, &user_id, &item_id).await?;
+        if let Err(e) = media_api::mark_played(&jf_client, &user_id, &item_id).await {
+            eprintln!("[playback] Failed to mark item played on Jellyfin server: {:?}", e);
+        }
     }
 
     {

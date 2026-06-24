@@ -22,6 +22,7 @@ import type {
   DirectPlaybackQuery,
   TranscodePlaybackQuery,
   VideoScaleMode,
+  OfflineDownload,
 } from "./types";
 
 function encodeQueryValue(value: string | number): string {
@@ -439,5 +440,39 @@ export async function toggleFavorite(
 
 export async function refreshItemDetails(id: string): Promise<void> {
   return invoke("refresh_item_details", { id });
+}
+
+// ── Offline Downloads ──────────────────────────────────────────────────
+
+export async function startDownload(itemId: string): Promise<void> {
+  return invoke("start_download", { itemId });
+}
+
+export async function pauseDownload(itemId: string): Promise<void> {
+  return invoke("pause_download", { itemId });
+}
+
+export async function resumeDownload(itemId: string): Promise<void> {
+  return invoke("resume_download", { itemId });
+}
+
+export async function cancelDownload(itemId: string): Promise<void> {
+  return invoke("cancel_download", { itemId });
+}
+
+export async function deleteDownload(itemId: string): Promise<void> {
+  return invoke("delete_download", { itemId });
+}
+
+export async function getDownloadStatus(itemId: string): Promise<OfflineDownload | null> {
+  return invoke("get_download_status", { itemId });
+}
+
+export async function getOfflineDownloads(): Promise<OfflineDownload[]> {
+  return invoke("get_offline_downloads");
+}
+
+export async function selectDownloadDirectory(): Promise<string | null> {
+  return invoke("select_download_directory");
 }
 

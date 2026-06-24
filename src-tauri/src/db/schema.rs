@@ -39,20 +39,27 @@ fn migrate(conn: &Connection) -> Result<(), JfgoatError> {
         migrate_v3_to_v4(conn)?;
         migrate_v4_to_v5(conn)?;
         migrate_v5_to_v6(conn)?;
+        migrate_v6_to_v7(conn)?;
     } else if version == "2" {
         migrate_v2_to_v3(conn)?;
         migrate_v3_to_v4(conn)?;
         migrate_v4_to_v5(conn)?;
         migrate_v5_to_v6(conn)?;
+        migrate_v6_to_v7(conn)?;
     } else if version == "3" {
         migrate_v3_to_v4(conn)?;
         migrate_v4_to_v5(conn)?;
         migrate_v5_to_v6(conn)?;
+        migrate_v6_to_v7(conn)?;
     } else if version == "4" {
         migrate_v4_to_v5(conn)?;
         migrate_v5_to_v6(conn)?;
+        migrate_v6_to_v7(conn)?;
     } else if version == "5" {
         migrate_v5_to_v6(conn)?;
+        migrate_v6_to_v7(conn)?;
+    } else if version == "6" {
+        migrate_v6_to_v7(conn)?;
     }
 
     Ok(())
@@ -306,5 +313,31 @@ fn migrate_v5_to_v6(conn: &Connection) -> Result<(), JfgoatError> {
     )?;
 
     println!("Database migrated to v6 (media/sync scope isolation)");
+    Ok(())
+}
+
+fn migrate_v6_to_v7(conn: &Connection) -> Result<(), JfgoatError> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS offline_downloads (
+            id             TEXT NOT NULL,
+            server_id      TEXT NOT NULL,
+            user_id        TEXT NOT NULL,
+            name           TEXT NOT NULL,
+            type           TEXT NOT NULL,
+            local_path     TEXT,
+            status         TEXT NOT NULL,
+            progress       REAL NOT NULL DEFAULT 0.0,
+            downloaded_bytes INTEGER NOT NULL DEFAULT 0,
+            total_bytes    INTEGER NOT NULL DEFAULT 0,
+            speed_bytes_per_sec REAL NOT NULL DEFAULT 0.0,
+            error_message  TEXT,
+            added_at       TEXT NOT NULL,
+            PRIMARY KEY (id, server_id, user_id)
+        );
+
+        UPDATE metadata SET value = '7' WHERE key = 'schema_version';",
+    )?;
+
+    println!("Database migrated to v7 (offline_downloads table)");
     Ok(())
 }
