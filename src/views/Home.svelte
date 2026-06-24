@@ -1983,7 +1983,7 @@
       />
       <MediaRow 
         title="Next Up" 
-        items={nextUpItems.filter(item => !activeCarouselIds.has(item.id))} 
+        items={nextUpItems} 
         landscape={true} 
       />
 
