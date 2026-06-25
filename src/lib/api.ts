@@ -444,8 +444,22 @@ export async function refreshItemDetails(id: string): Promise<void> {
 
 // ── Offline Downloads ──────────────────────────────────────────────────
 
-export async function startDownload(itemId: string): Promise<void> {
-  return invoke("start_download", { itemId });
+export async function startDownload(
+  itemId: string,
+  audioTracks?: number[],
+  subtitleTracks?: number[],
+  transcodeHeight?: number | null,
+  transcodeBitrate?: number | null,
+  mediaStreamsJson?: string | null,
+): Promise<void> {
+  return invoke("start_download", {
+    itemId,
+    audioTracks: audioTracks ?? null,
+    subtitleTracks: subtitleTracks ?? null,
+    transcodeHeight: transcodeHeight ?? null,
+    transcodeBitrate: transcodeBitrate ?? null,
+    mediaStreamsJson: mediaStreamsJson ?? null,
+  });
 }
 
 export async function pauseDownload(itemId: string): Promise<void> {

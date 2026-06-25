@@ -54,7 +54,7 @@
   });
 </script>
 
-{#if !online || degraded}
+{#if degraded}
   <div
     transition:fade={{ duration: 200 }}
     class="fixed top-0 left-0 right-0 z-[60]"
@@ -69,11 +69,7 @@
           />
         </svg>
         <span class="text-sm text-orange-200">
-          {#if !online}
-            Offline mode active. Content may be stale until connection returns.
-          {:else}
-            Degraded network state. {lastNetworkError || "Some live requests failed."}
-          {/if}
+          Degraded network state. {lastNetworkError || "Some live requests failed."}
         </span>
       </div>
     </div>

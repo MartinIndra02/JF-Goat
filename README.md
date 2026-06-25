@@ -78,7 +78,12 @@ npm run release:tauri
 
 ## 📝 Changelog
 
-### v1.2.0 (Current)
+### v1.2.1 (Current)
+This release includes download options and fixes:
+
+* **Download Quality Selection**: Added support for choosing download qualities (Original, 720p, 480p, 360p) with on-the-fly transcoding parameters to save bandwidth and local disk space.
+
+### v1.2.0
 This release includes new features, stability improvements, and layout fixes:
 
 * **App Updater**: Added a built-in application updater featuring auto-detection, manual update check, background downloading with progress tracking, and seamless installation.

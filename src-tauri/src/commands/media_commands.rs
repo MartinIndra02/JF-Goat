@@ -922,6 +922,121 @@ pub async fn get_media_streams(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<MediaStreamInfo, JfgoatError> {
+    if let Ok(db) = state.db.read_conn() {
+        let cached_info: Option<(String, Option<String>, String)> = db.query_row(
+            "SELECT media_streams_json, subtitle_tracks, status FROM offline_downloads WHERE id = ?1",
+            rusqlite::params![id],
+            |row| Ok((row.get::<_, Option<String>>(0)?.unwrap_or_default(), row.get(1)?, row.get(2)?)),
+        ).ok();
+
+        if let Some((json_str, subtitle_tracks_json, status)) = cached_info {
+            if !json_str.is_empty() {
+                if let Ok(mut streams) = serde_json::from_str::<MediaStreamInfo>(&json_str) {
+                    if status == "Completed" {
+                        streams.video_label = Some("Offline".to_string());
+                        let downloaded_indices: Vec<i64> = subtitle_tracks_json
+                            .and_then(|s| serde_json::from_str(&s).ok())
+                            .unwrap_or_default();
+                        streams.subtitle.retain(|track| {
+                            !track.is_external || downloaded_indices.contains(&track.index)
+                        });
+                    }
+                    return Ok(streams);
+                }
+            }
+        }
+
+        // Fallback: check if completed download exists and construct track list from disk
+        let local_path: Option<String> = db.query_row(
+            "SELECT local_path FROM offline_downloads WHERE id = ?1 AND status = 'Completed'",
+            rusqlite::params![id],
+            |row| row.get(0),
+        ).ok();
+
+        if let Some(path_str) = local_path {
+            let mut audio = vec![StreamOption {
+                index: 0,
+                codec: "AAC".to_string(),
+                display_title: "Default Audio".to_string(),
+                language: Some("eng".to_string()),
+                is_default: true,
+                delivery_method: None,
+                is_external: false,
+                height: None,
+                width: None,
+                bit_rate: None,
+                channels: Some(2),
+                channel_layout: Some("stereo".to_string()),
+                video_range: None,
+                video_range_type: None,
+            }];
+
+            let mut subtitle = Vec::new();
+            let path = std::path::PathBuf::from(&path_str);
+            if let Some(parent) = path.parent() {
+                if let Ok(entries) = std::fs::read_dir(parent) {
+                    for entry in entries.filter_map(Result::ok) {
+                        let p = entry.path();
+                        if p.is_file() {
+                            if let Some(fname) = p.file_name().and_then(|s| s.to_str()) {
+                                if fname.starts_with(&id) && fname != path.file_name().and_then(|s| s.to_str()).unwrap_or("") {
+                                    let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+                                    if ext == "srt" || ext == "vtt" || ext == "ass" || ext == "sub" {
+                                        let parts: Vec<&str> = fname.split('.').collect();
+                                        let mut index = subtitle.len() as i64 + 1;
+                                        let mut lang_code = "und".to_string();
+
+                                        if parts.len() >= 3 {
+                                            if let Ok(idx) = parts[1].parse::<i64>() {
+                                                index = idx;
+                                            }
+                                            if parts.len() >= 4 {
+                                                lang_code = parts[2].to_string();
+                                            }
+                                        }
+
+                                        let friendly_lang = get_friendly_language_name(&lang_code);
+                                        let display_title = if lang_code == "und" || lang_code.is_empty() {
+                                            format!("Subtitle #{}", index)
+                                        } else {
+                                            format!("{} (External)", friendly_lang)
+                                        };
+
+                                        subtitle.push(StreamOption {
+                                            index,
+                                            codec: ext.to_uppercase(),
+                                            display_title,
+                                            language: Some(lang_code),
+                                            is_default: false,
+                                            delivery_method: None,
+                                            is_external: true,
+                                            height: None,
+                                            width: None,
+                                            bit_rate: None,
+                                            channels: None,
+                                            channel_layout: None,
+                                            video_range: None,
+                                            video_range_type: None,
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            subtitle.sort_by_key(|s| s.index);
+
+            return Ok(MediaStreamInfo {
+                video: vec![],
+                audio,
+                subtitle,
+                video_label: Some("Offline".to_string()),
+            });
+        }
+    }
+
     let (server_url, token, user_id, device_id) = get_connection_params(&state)?;
 
     let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
@@ -1323,4 +1438,38 @@ pub async fn refresh_item_details(
 
     Ok(())
 }
+
+fn get_friendly_language_name(code: &str) -> String {
+    match code.to_lowercase().as_str() {
+        "eng" | "en" => "English".to_string(),
+        "spa" | "es" => "Spanish".to_string(),
+        "fre" | "fra" | "fr" => "French".to_string(),
+        "ger" | "deu" | "de" => "German".to_string(),
+        "ita" | "it" => "Italian".to_string(),
+        "jpn" | "ja" => "Japanese".to_string(),
+        "chi" | "zho" | "zh" => "Chinese".to_string(),
+        "rus" | "ru" => "Russian".to_string(),
+        "por" | "pt" => "Portuguese".to_string(),
+        "kor" | "ko" => "Korean".to_string(),
+        "dut" | "nld" | "nl" => "Dutch".to_string(),
+        "swe" | "sv" => "Swedish".to_string(),
+        "nor" | "no" => "Norwegian".to_string(),
+        "dan" | "da" => "Danish".to_string(),
+        "fin" | "fi" => "Finnish".to_string(),
+        "pol" | "pl" => "Polish".to_string(),
+        "tur" | "tr" => "Turkish".to_string(),
+        "ara" | "ar" => "Arabic".to_string(),
+        "heb" | "he" => "Hebrew".to_string(),
+        "cze" | "ces" | "cs" => "Czech".to_string(),
+        "und" => "Unknown".to_string(),
+        other => {
+            if other.len() == 3 {
+                other.to_uppercase()
+            } else {
+                format!("Track ({})", other)
+            }
+        }
+    }
+}
+
 

@@ -20,7 +20,7 @@ pub enum MpvCommand {
     SetVideoScale(String),
     SetAudioTrack(i64),
     SetSubtitleTrack(Option<i64>),
-    AddSubtitle(String),
+    AddSubtitle { url: String, select: bool },
     Stop,
 }
 
@@ -446,8 +446,9 @@ fn run_mpv_loop(
                         subtitle_track,
                     );
                 }
-                MpvCommand::AddSubtitle(url) => {
-                    mpv.command("sub-add", &[&url, "select"]).ok();
+                MpvCommand::AddSubtitle { url, select } => {
+                    let flag = if select { "select" } else { "none" };
+                    mpv.command("sub-add", &[&url, flag]).ok();
                 }
                 MpvCommand::Stop => {
                     mpv.command("stop", &[]).ok();
