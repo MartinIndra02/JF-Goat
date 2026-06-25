@@ -40,26 +40,43 @@ fn migrate(conn: &Connection) -> Result<(), JfgoatError> {
         migrate_v4_to_v5(conn)?;
         migrate_v5_to_v6(conn)?;
         migrate_v6_to_v7(conn)?;
+        migrate_v7_to_v8(conn)?;
+        migrate_v8_to_v9(conn)?;
     } else if version == "2" {
         migrate_v2_to_v3(conn)?;
         migrate_v3_to_v4(conn)?;
         migrate_v4_to_v5(conn)?;
         migrate_v5_to_v6(conn)?;
         migrate_v6_to_v7(conn)?;
+        migrate_v7_to_v8(conn)?;
+        migrate_v8_to_v9(conn)?;
     } else if version == "3" {
         migrate_v3_to_v4(conn)?;
         migrate_v4_to_v5(conn)?;
         migrate_v5_to_v6(conn)?;
         migrate_v6_to_v7(conn)?;
+        migrate_v7_to_v8(conn)?;
+        migrate_v8_to_v9(conn)?;
     } else if version == "4" {
         migrate_v4_to_v5(conn)?;
         migrate_v5_to_v6(conn)?;
         migrate_v6_to_v7(conn)?;
+        migrate_v7_to_v8(conn)?;
+        migrate_v8_to_v9(conn)?;
     } else if version == "5" {
         migrate_v5_to_v6(conn)?;
         migrate_v6_to_v7(conn)?;
+        migrate_v7_to_v8(conn)?;
+        migrate_v8_to_v9(conn)?;
     } else if version == "6" {
         migrate_v6_to_v7(conn)?;
+        migrate_v7_to_v8(conn)?;
+        migrate_v8_to_v9(conn)?;
+    } else if version == "7" {
+        migrate_v7_to_v8(conn)?;
+        migrate_v8_to_v9(conn)?;
+    } else if version == "8" {
+        migrate_v8_to_v9(conn)?;
     }
 
     Ok(())
@@ -339,5 +356,28 @@ fn migrate_v6_to_v7(conn: &Connection) -> Result<(), JfgoatError> {
     )?;
 
     println!("Database migrated to v7 (offline_downloads table)");
+    Ok(())
+}
+
+fn migrate_v7_to_v8(conn: &Connection) -> Result<(), JfgoatError> {
+    conn.execute_batch(
+        "ALTER TABLE offline_downloads ADD COLUMN audio_tracks TEXT;
+         ALTER TABLE offline_downloads ADD COLUMN subtitle_tracks TEXT;
+         ALTER TABLE offline_downloads ADD COLUMN transcode_height INTEGER;
+         ALTER TABLE offline_downloads ADD COLUMN transcode_bitrate INTEGER;
+         UPDATE metadata SET value = '8' WHERE key = 'schema_version';",
+    )?;
+
+    println!("Database migrated to v8 (download options columns)");
+    Ok(())
+}
+
+fn migrate_v8_to_v9(conn: &Connection) -> Result<(), JfgoatError> {
+    conn.execute_batch(
+        "ALTER TABLE offline_downloads ADD COLUMN media_streams_json TEXT;
+         UPDATE metadata SET value = '9' WHERE key = 'schema_version';",
+    )?;
+
+    println!("Database migrated to v9 (media_streams_json column)");
     Ok(())
 }

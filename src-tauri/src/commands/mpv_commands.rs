@@ -190,8 +190,33 @@ pub async fn mpv_play(
         ).ok()
     };
 
+    let mut local_subs = Vec::new();
     let url = if let Some(path) = local_path {
         println!("[mpv] Playing offline downloaded file: {}", path);
+        let path_buf = std::path::PathBuf::from(&path);
+        let mut sub_tuples = Vec::new();
+        if let Some(parent) = path_buf.parent() {
+            if let Ok(entries) = std::fs::read_dir(parent) {
+                for entry in entries.filter_map(Result::ok) {
+                    let p = entry.path();
+                    if p.is_file() {
+                        if let Some(fname) = p.file_name().and_then(|s| s.to_str()) {
+                            if fname.starts_with(&item_id) && fname != path_buf.file_name().and_then(|s| s.to_str()).unwrap_or("") {
+                                let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+                                if ext == "srt" || ext == "vtt" || ext == "ass" || ext == "sub" {
+                                    let idx = parse_subtitle_index(fname, &item_id).unwrap_or(i64::MAX);
+                                    sub_tuples.push((idx, p.to_string_lossy().into_owned()));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        sub_tuples.sort_by_key(|t| t.0);
+        for (_idx, sub_path) in sub_tuples {
+            local_subs.push(sub_path);
+        }
         path
     } else {
         build_playback_url_with_options(
@@ -228,6 +253,10 @@ pub async fn mpv_play(
             subtitle_track: None,
         })
         .map_err(|e| JfgoatError::Internal(format!("mpv send failed: {}", e)))?;
+
+    for sub in local_subs {
+        let _ = mpv.cmd_tx.send(MpvCommand::AddSubtitle { url: sub, select: false });
+    }
 
     Ok(())
 }
@@ -365,7 +394,7 @@ pub fn mpv_add_external_subtitle(
     );
 
     mpv.cmd_tx
-        .send(MpvCommand::AddSubtitle(url))
+        .send(MpvCommand::AddSubtitle { url, select: true })
         .map_err(|e| JfgoatError::Internal(e.to_string()))?;
 
     Ok(())
@@ -380,4 +409,18 @@ pub fn mpv_stop(mpv: State<'_, MpvState>) -> Result<(), JfgoatError> {
         .send(MpvCommand::Stop)
         .map_err(|e| JfgoatError::Internal(e.to_string()))?;
     Ok(())
+}
+
+fn parse_subtitle_index(fname: &str, item_id: &str) -> Option<i64> {
+    let prefix = format!("{}.", item_id);
+    if fname.starts_with(&prefix) {
+        let remaining = &fname[prefix.len()..];
+        let parts: Vec<&str> = remaining.split('.').collect();
+        if let Some(first) = parts.first() {
+            if let Ok(idx) = first.parse::<i64>() {
+                return Some(idx);
+            }
+        }
+    }
+    None
 }

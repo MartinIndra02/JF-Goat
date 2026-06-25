@@ -35,6 +35,10 @@ pub struct OfflineDownload {
     pub speed_bytes_per_sec: f64,
     pub error_message: Option<String>,
     pub added_at: String,
+    pub audio_tracks: Option<String>,
+    pub subtitle_tracks: Option<String>,
+    pub transcode_height: Option<i64>,
+    pub transcode_bitrate: Option<i64>,
 }
 
 pub async fn start_download_manager_loop(
@@ -81,7 +85,8 @@ fn get_next_pending_download(ctx: &DownloadContext) -> Result<Option<OfflineDown
     let db = ctx.db.read_conn().map_err(|e| JfgoatError::Internal(e.to_string()))?;
     let mut stmt = db.prepare(
         "SELECT id, server_id, user_id, name, type, local_path, status, progress,
-                downloaded_bytes, total_bytes, speed_bytes_per_sec, error_message, added_at
+                downloaded_bytes, total_bytes, speed_bytes_per_sec, error_message, added_at,
+                audio_tracks, subtitle_tracks, transcode_height, transcode_bitrate
          FROM offline_downloads
          WHERE status = 'Pending'
          ORDER BY added_at ASC
@@ -103,6 +108,10 @@ fn get_next_pending_download(ctx: &DownloadContext) -> Result<Option<OfflineDown
             speed_bytes_per_sec: row.get(10)?,
             error_message: row.get(11)?,
             added_at: row.get(12)?,
+            audio_tracks: row.get(13)?,
+            subtitle_tracks: row.get(14)?,
+            transcode_height: row.get(15)?,
+            transcode_bitrate: row.get(16)?,
         })
     })?;
 
@@ -122,7 +131,7 @@ async fn download_media_item(
     emit_download_progress(&app_handle, ctx, &item.id)?;
 
     // Get connection parameters directly
-    let server_url = ctx.server_url.read().clone().ok_or_else(|| JfgoatError::Auth("No serverconnected".to_string()))?;
+    let server_url = ctx.server_url.read().clone().ok_or_else(|| JfgoatError::Auth("No server connected".to_string()))?;
     let token = ctx.token.read().clone().ok_or_else(|| JfgoatError::Auth("No token".to_string()))?;
 
     pre_download_images(app_handle.clone(), ctx, &item.id, &server_url, &token).await;
@@ -130,13 +139,41 @@ async fn download_media_item(
     let download_dir = get_download_dir(app_handle.clone(), ctx)?;
     let _ = fs::create_dir_all(&download_dir);
 
-    let url = format!(
-        "{}/Videos/{}/stream?api_key={}&static=true&mediaSourceId={}",
-        server_url.trim_end_matches('/'),
-        item.id,
-        token,
-        item.id
-    );
+    let audio_tracks: Vec<i64> = item.audio_tracks.as_ref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+    let subtitle_tracks: Vec<i64> = item.subtitle_tracks.as_ref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+
+    let url = if item.transcode_height.is_some() || item.transcode_bitrate.is_some() {
+        let mut base_url = format!(
+            "{}/Videos/{}/stream?api_key={}&static=false&mediaSourceId={}",
+            server_url.trim_end_matches('/'),
+            item.id,
+            token,
+            item.id
+        );
+        if let Some(height) = item.transcode_height {
+            base_url = format!("{}&MaxHeight={}", base_url, height);
+        }
+        if let Some(bitrate) = item.transcode_bitrate {
+            base_url = format!("{}&MaxStreamingBitrate={}", base_url, bitrate);
+        }
+        if let Some(&first_audio) = audio_tracks.first() {
+            base_url = format!("{}&AudioStreamIndex={}", base_url, first_audio);
+        }
+        base_url = format!("{}&SubtitleStreamIndex=-1", base_url);
+        base_url
+    } else {
+        format!(
+            "{}/Videos/{}/stream?api_key={}&static=true&mediaSourceId={}",
+            server_url.trim_end_matches('/'),
+            item.id,
+            token,
+            item.id
+        )
+    };
 
     let temp_path = download_dir.join(format!("{}.part", item.id));
 
@@ -307,6 +344,55 @@ async fn download_media_item(
         emit_download_progress(&app_handle, ctx, &item.id)?;
         let _ = tokio::fs::remove_file(&temp_path).await;
         return Ok(());
+    }
+
+    // Fetch media streams json to map subtitle track index to language code
+    let media_streams_json: Option<String> = {
+        let db = ctx.db.read_conn().ok();
+        db.and_then(|conn| {
+            conn.query_row(
+                "SELECT media_streams_json FROM offline_downloads WHERE id = ?1",
+                rusqlite::params![item.id],
+                |row| row.get(0),
+            ).ok()
+        })
+    };
+
+    // Download any selected subtitle tracks
+    for sub_idx in subtitle_tracks {
+        let mut lang = "und".to_string();
+        if let Some(ref json_str) = media_streams_json {
+            if let Ok(streams) = serde_json::from_str::<crate::commands::MediaStreamInfo>(json_str) {
+                if let Some(track) = streams.subtitle.iter().find(|s| s.index == sub_idx) {
+                    if let Some(ref l) = track.language {
+                        if !l.is_empty() {
+                            lang = l.clone();
+                        }
+                    }
+                }
+            }
+        }
+
+        let sub_url = format!(
+            "{}/Videos/{}/{}/Subtitles/{}/Stream.srt?api_key={}",
+            server_url.trim_end_matches('/'),
+            item.id,
+            item.id,
+            sub_idx,
+            token
+        );
+        let sub_path = download_dir.join(format!("{}.{}.{}.srt", item.id, sub_idx, lang));
+        
+        println!("[download] Downloading subtitle track {} to {:?}", sub_idx, sub_path);
+        let sub_req = ctx.http_client.get(&sub_url);
+        if let Ok(resp) = sub_req.send().await {
+            if resp.status().is_success() {
+                if let Ok(bytes) = resp.bytes().await {
+                    let _ = std::fs::write(&sub_path, bytes);
+                    println!("[download] Successfully downloaded subtitle track {}", sub_idx);
+                }
+            }
+        }
     }
 
     update_download_completed(ctx, &item.id, &final_path.to_string_lossy())?;
@@ -496,7 +582,8 @@ fn get_download_status_internal(ctx: &DownloadContext, item_id: &str) -> Result<
     let db = ctx.db.read_conn().map_err(|e| JfgoatError::Internal(e.to_string()))?;
     let result = db.query_row(
         "SELECT id, server_id, user_id, name, type, local_path, status, progress,
-                downloaded_bytes, total_bytes, speed_bytes_per_sec, error_message, added_at
+                downloaded_bytes, total_bytes, speed_bytes_per_sec, error_message, added_at,
+                audio_tracks, subtitle_tracks, transcode_height, transcode_bitrate
          FROM offline_downloads
          WHERE id = ?1",
         rusqlite::params![item_id],
@@ -515,6 +602,10 @@ fn get_download_status_internal(ctx: &DownloadContext, item_id: &str) -> Result<
                 speed_bytes_per_sec: row.get(10)?,
                 error_message: row.get(11)?,
                 added_at: row.get(12)?,
+                audio_tracks: row.get(13)?,
+                subtitle_tracks: row.get(14)?,
+                transcode_height: row.get(15)?,
+                transcode_bitrate: row.get(16)?,
             })
         },
     );
@@ -561,6 +652,11 @@ pub async fn start_download(
     state: State<'_, AppState>,
     app_handle: tauri::AppHandle,
     item_id: String,
+    audio_tracks: Option<Vec<i64>>,
+    subtitle_tracks: Option<Vec<i64>>,
+    transcode_height: Option<i64>,
+    transcode_bitrate: Option<i64>,
+    media_streams_json: Option<String>,
 ) -> Result<(), JfgoatError> {
     let (server_id, user_id) = {
         let server_id = state.get_server_id()?;
@@ -585,11 +681,34 @@ pub async fn start_download(
         .as_millis()
         .to_string();
 
+    let audio_tracks_json = audio_tracks.map(|v| serde_json::to_string(&v).ok()).flatten();
+    let subtitle_tracks_json = subtitle_tracks.map(|v| serde_json::to_string(&v).ok()).flatten();
+
     db.execute(
-        "INSERT INTO offline_downloads (id, server_id, user_id, name, type, status, progress, added_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, 'Pending', 0.0, ?6)
-         ON CONFLICT(id, server_id, user_id) DO UPDATE SET status = 'Pending', error_message = NULL",
-        rusqlite::params![item_id, server_id, user_id, name, item_type, now_ms],
+        "INSERT INTO offline_downloads (id, server_id, user_id, name, type, status, progress, added_at, audio_tracks, subtitle_tracks, transcode_height, transcode_bitrate, media_streams_json)
+         VALUES (?1, ?2, ?3, ?4, ?5, 'Pending', 0.0, ?6, ?7, ?8, ?9, ?10, ?11)
+         ON CONFLICT(id, server_id, user_id) DO UPDATE SET
+            status = 'Pending',
+            error_message = NULL,
+            audio_tracks = ?7,
+            subtitle_tracks = ?8,
+            transcode_height = ?9,
+            transcode_bitrate = ?10,
+            media_streams_json = ?11,
+            added_at = ?6",
+        rusqlite::params![
+            item_id,
+            server_id,
+            user_id,
+            name,
+            item_type,
+            now_ms,
+            audio_tracks_json,
+            subtitle_tracks_json,
+            transcode_height,
+            transcode_bitrate,
+            media_streams_json,
+        ],
     ).map_err(|e| JfgoatError::Database(e.to_string()))?;
 
     let _ = state.download_trigger.send(());
@@ -640,6 +759,23 @@ pub async fn cancel_download(
         if let Ok(download_dir) = get_download_dir(app_handle.clone(), &ctx) {
             let temp_path = download_dir.join(format!("{}.part", item_id));
             let _ = std::fs::remove_file(temp_path);
+            
+            // Clean up downloaded subtitles
+            if let Ok(entries) = std::fs::read_dir(&download_dir) {
+                for entry in entries.filter_map(Result::ok) {
+                    let p = entry.path();
+                    if p.is_file() {
+                        if let Some(fname) = p.file_name().and_then(|s| s.to_str()) {
+                            if fname.starts_with(&item_id) {
+                                let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+                                if ext == "srt" || ext == "vtt" || ext == "ass" || ext == "sub" {
+                                    let _ = std::fs::remove_file(p);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
     emit_download_progress(&app_handle, &ctx, &item_id)?;
@@ -664,7 +800,26 @@ pub async fn delete_download(
 
     if let Some(path_str) = local_path {
         let path = std::path::PathBuf::from(path_str);
-        let _ = std::fs::remove_file(path);
+        let _ = std::fs::remove_file(&path);
+        
+        // Clean up downloaded subtitles in same directory
+        if let Some(parent) = path.parent() {
+            if let Ok(entries) = std::fs::read_dir(parent) {
+                for entry in entries.filter_map(Result::ok) {
+                    let p = entry.path();
+                    if p.is_file() {
+                        if let Some(fname) = p.file_name().and_then(|s| s.to_str()) {
+                            if fname.starts_with(&item_id) {
+                                let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+                                if ext == "srt" || ext == "vtt" || ext == "ass" || ext == "sub" {
+                                    let _ = std::fs::remove_file(p);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     delete_download_from_db(&ctx, &item_id)?;
@@ -688,7 +843,8 @@ pub async fn get_offline_downloads(
     let db = state.db.read_conn().map_err(|e| JfgoatError::Internal(e.to_string()))?;
     let mut stmt = db.prepare(
         "SELECT id, server_id, user_id, name, type, local_path, status, progress,
-                downloaded_bytes, total_bytes, speed_bytes_per_sec, error_message, added_at
+                downloaded_bytes, total_bytes, speed_bytes_per_sec, error_message, added_at,
+                audio_tracks, subtitle_tracks, transcode_height, transcode_bitrate
          FROM offline_downloads
          ORDER BY added_at DESC"
     )?;
@@ -708,6 +864,10 @@ pub async fn get_offline_downloads(
             speed_bytes_per_sec: row.get(10)?,
             error_message: row.get(11)?,
             added_at: row.get(12)?,
+            audio_tracks: row.get(13)?,
+            subtitle_tracks: row.get(14)?,
+            transcode_height: row.get(15)?,
+            transcode_bitrate: row.get(16)?,
         })
     })?;
 

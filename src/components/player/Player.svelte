@@ -647,6 +647,23 @@
   }
 
   function mapSubtitleIndexToMpvId(streams: MediaStreamInfo, streamIndex: number): number | null {
+    const isOffline = streams.video_label === "Offline";
+    if (isOffline) {
+      const embeddedTracks = streams.subtitle.filter(t => !t.is_external);
+      const externalTracks = streams.subtitle.filter(t => t.is_external).sort((a, b) => a.index - b.index);
+      
+      const embeddedIdx = embeddedTracks.findIndex(t => t.index === streamIndex);
+      if (embeddedIdx !== -1) {
+        return embeddedIdx + 1;
+      }
+      
+      const extIdx = externalTracks.findIndex(t => t.index === streamIndex);
+      if (extIdx !== -1) {
+        return embeddedTracks.length + extIdx + 1;
+      }
+      return null;
+    }
+
     let mpvId = 1;
     for (const track of streams.subtitle) {
       if (track.index === streamIndex) {

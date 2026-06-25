@@ -169,6 +169,10 @@ export interface OfflineDownload {
   speed_bytes_per_sec: number;
   error_message: string | null;
   added_at: string;
+  audio_tracks?: string | null;
+  subtitle_tracks?: string | null;
+  transcode_height?: number | null;
+  transcode_bitrate?: number | null;
 }
 
 // ── Player types ────────────────────────────────────────────────
