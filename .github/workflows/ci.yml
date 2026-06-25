@@ -29,17 +29,27 @@ jobs:
         run: npm run ci:frontend
 
   rust-tests:
-    name: Rust Unit Tests
-    runs-on: windows-latest
+    name: Rust Unit Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Create LFS config hash
+      - name: Install dependencies (macOS)
+        if: matrix.os == 'macos-latest'
+        run: brew install mpv pkg-config
+
+      - name: Create LFS config hash (Windows)
+        if: matrix.os == 'windows-latest'
         id: lfs-cache-key
         run: echo "hash=${{ hashFiles('src-tauri/bin/mpv-2.dll') }}" >> $GITHUB_OUTPUT
         shell: bash
 
-      - name: Cache Git LFS files
+      - name: Cache Git LFS files (Windows)
+        if: matrix.os == 'windows-latest'
         uses: actions/cache@v4
         id: lfs-cache
         with:
@@ -48,7 +58,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-lfs-
 
-      - name: Explicitly download LFS files
+      - name: Explicitly download LFS files (Windows)
+        if: matrix.os == 'windows-latest'
         run: git lfs pull
 
       - name: Setup Rust

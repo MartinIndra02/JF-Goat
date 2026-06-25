@@ -2,6 +2,9 @@ use serde::Serialize;
 use std::sync::mpsc;
 use tauri::Emitter;
 
+#[cfg(target_os = "macos")]
+use objc::{msg_send, sel, sel_impl};
+
 /// Commands sent from Tauri command handlers to the MPV thread.
 pub enum MpvCommand {
     LoadFile {
@@ -178,6 +181,7 @@ pub fn resize_mpv_window(child_hwnd: isize, width: u32, height: u32) {
 #[cfg(target_os = "windows")]
 pub fn set_mpv_dll_directory(resource_dir: &std::path::Path) {
     use windows_sys::Win32::System::LibraryLoader::SetDllDirectoryW;
+    use std::os::windows::ffi::OsStrExt;
 
     let wide: Vec<u16> = resource_dir
         .as_os_str()
@@ -190,8 +194,53 @@ pub fn set_mpv_dll_directory(resource_dir: &std::path::Path) {
     }
 }
 
-#[cfg(target_os = "windows")]
-use std::os::windows::ffi::OsStrExt;
+#[cfg(target_os = "macos")]
+pub fn create_mpv_child_view(parent_view: isize) -> Result<isize, String> {
+    use cocoa::base::id;
+    use cocoa::base::nil;
+    use cocoa::appkit::NSView as CocoaNSView;
+
+    unsafe {
+        let view_class = objc::runtime::Class::get("NSView")
+            .ok_or_else(|| "NSView class not found".to_string())?;
+        let child_view: id = msg_send![view_class, alloc];
+        let child_view: id = msg_send![child_view, init];
+
+        if child_view.is_null() {
+            return Err("Failed to allocate and initialize NSView".to_string());
+        }
+
+        // Get frame/bounds from parent and apply to child
+        let parent: id = parent_view as id;
+        let frame = parent.frame();
+        let (): () = msg_send![child_view, setFrame: frame];
+
+        // NSViewWidthSizable (2) | NSViewHeightSizable (8) = 10
+        let mask: usize = 10;
+        let (): () = msg_send![child_view, setAutoresizingMask: mask];
+
+        // Add subview below all others (NSWindowBelow = -1)
+        let () = msg_send![parent, addSubview:child_view positioned:-1isize relativeTo:nil];
+
+        Ok(child_view as isize)
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub fn show_mpv_window(child_view: isize) {
+    use cocoa::base::id;
+    unsafe {
+        let () = msg_send![child_view as id, setHidden: false];
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub fn hide_mpv_window(child_view: isize) {
+    use cocoa::base::id;
+    unsafe {
+        let () = msg_send![child_view as id, setHidden: true];
+    }
+}
 
 // ── MPV thread ──────────────────────────────────────────────────────────
 

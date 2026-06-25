@@ -20,7 +20,18 @@ use state::{AppState, DbPool, SyncStatus};
 pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_updater::Builder::new().build());
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .on_window_event(|_window, event| match event {
+            tauri::WindowEvent::CloseRequested { api, .. } => {
+                #[cfg(target_os = "macos")]
+                {
+                    api.prevent_close();
+                    let _ = _window.hide();
+                }
+                let _ = api;
+            }
+            _ => {}
+        });
 
     image_cache::register_jfimage_protocol(builder)
         .setup(|app| {
@@ -104,33 +115,81 @@ pub fn run() {
 
             app.manage(app_state);
 
-            // ── MPV Player Setup (Windows) ─────────────────────────────────
-            #[cfg(target_os = "windows")]
+            // ── macOS Native Menu Setup ─────────────────────────────────────
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::menu::{MenuBuilder, SubmenuBuilder};
+                let app_menu = SubmenuBuilder::new(app, app.package_info().name.clone())
+                    .about(None)
+                    .separator()
+                    .services()
+                    .separator()
+                    .hide()
+                    .hide_others()
+                    .show_all()
+                    .separator()
+                    .quit()
+                    .build()?;
+                let edit_menu = SubmenuBuilder::new(app, "Edit")
+                    .undo()
+                    .redo()
+                    .separator()
+                    .cut()
+                    .copy()
+                    .paste()
+                    .select_all()
+                    .build()?;
+                let menu = MenuBuilder::new(app)
+                    .items(&[&app_menu, &edit_menu])
+                    .build()?;
+                app.set_menu(menu)?;
+            }
+
+            // ── MPV Player Setup (Windows/macOS) ───────────────────────────
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
             {
                 use raw_window_handle::HasWindowHandle;
                 use raw_window_handle::RawWindowHandle;
-
-                // Set DLL search directory so libmpv2 can find mpv-2.dll
-                if let Ok(resource_dir) = app.path().resource_dir() {
-                    mpv::set_mpv_dll_directory(&resource_dir);
-                    info!(target: "mpv", dll_dir = %resource_dir.display(), "Configured MPV DLL search directory");
-                }
 
                 let window = app
                     .get_webview_window("main")
                     .expect("No 'main' window found");
 
-                let parent_hwnd = match window
-                    .window_handle()
-                    .expect("Failed to get window handle")
-                    .as_raw()
-                {
-                    RawWindowHandle::Win32(h) => h.hwnd.get() as isize,
-                    _ => panic!("Expected Win32 window handle"),
+                #[cfg(target_os = "windows")]
+                let child_hwnd = {
+                    // Set DLL search directory so libmpv2 can find mpv-2.dll
+                    if let Ok(resource_dir) = app.path().resource_dir() {
+                        mpv::set_mpv_dll_directory(&resource_dir);
+                        info!(target: "mpv", dll_dir = %resource_dir.display(), "Configured MPV DLL search directory");
+                    }
+
+                    let parent_hwnd = match window
+                        .window_handle()
+                        .expect("Failed to get window handle")
+                        .as_raw()
+                    {
+                        RawWindowHandle::Win32(h) => h.hwnd.get() as isize,
+                        _ => panic!("Expected Win32 window handle"),
+                    };
+
+                    mpv::create_mpv_child_window(parent_hwnd)
+                        .expect("Failed to create mpv child window")
                 };
 
-                let child_hwnd = mpv::create_mpv_child_window(parent_hwnd)
-                    .expect("Failed to create mpv child window");
+                #[cfg(target_os = "macos")]
+                let child_hwnd = {
+                    let parent_view = match window
+                        .window_handle()
+                        .expect("Failed to get window handle")
+                        .as_raw()
+                    {
+                        RawWindowHandle::AppKit(h) => h.ns_view.get() as isize,
+                        _ => panic!("Expected AppKit window handle"),
+                    };
+
+                    mpv::create_mpv_child_view(parent_view)
+                        .expect("Failed to create mpv child view")
+                };
 
                 let (cmd_tx, cmd_rx) = std::sync::mpsc::channel();
                 let app_handle = app.handle().clone();
@@ -139,17 +198,20 @@ pub fn run() {
 
                 app.manage(mpv::MpvState { cmd_tx, child_hwnd });
 
-                // Resize mpv child window when the main window is resized
-                let mpv_hwnd = child_hwnd;
-                window.on_window_event(move |event| {
-                    if let tauri::WindowEvent::Resized(size) = event {
-                        mpv::resize_mpv_window(mpv_hwnd, size.width, size.height);
-                    }
-                });
+                // Resize mpv child window when the main window is resized (Windows only)
+                #[cfg(target_os = "windows")]
+                {
+                    let mpv_hwnd = child_hwnd;
+                    window.on_window_event(move |event| {
+                        if let tauri::WindowEvent::Resized(size) = event {
+                            mpv::resize_mpv_window(mpv_hwnd, size.width, size.height);
+                        }
+                    });
 
-                // Sync initial window size
-                if let Ok(size) = window.inner_size() {
-                    mpv::resize_mpv_window(child_hwnd, size.width, size.height);
+                    // Sync initial window size
+                    if let Ok(size) = window.inner_size() {
+                        mpv::resize_mpv_window(child_hwnd, size.width, size.height);
+                    }
                 }
             }
 
@@ -215,8 +277,18 @@ pub fn run() {
             commands::select_download_directory,
             commands::restart_app,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|_app_handle, event| match event {
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::Reopen { .. } => {
+                if let Some(window) = _app_handle.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+            _ => {}
+        });
 }
 
 

@@ -8,22 +8,32 @@ on:
 
 jobs:
   build-release:
-    name: Build Signed Release Artifacts
-    runs-on: windows-latest
+    name: Build Signed Release Artifacts (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
     env:
       WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Create LFS config hash
+      - name: Install dependencies (macOS)
+        if: matrix.os == 'macos-latest'
+        run: brew install mpv pkg-config dylibbundler
+
+      - name: Create LFS config hash (Windows)
+        if: matrix.os == 'windows-latest'
         id: lfs-cache-key
         run: echo "hash=${{ hashFiles('src-tauri/bin/mpv-2.dll') }}" >> $GITHUB_OUTPUT
         shell: bash
 
-      - name: Cache Git LFS files
+      - name: Cache Git LFS files (Windows)
+        if: matrix.os == 'windows-latest'
         uses: actions/cache@v4
         id: lfs-cache
         with:
@@ -32,7 +42,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-lfs-
 
-      - name: Explicitly download LFS files
+      - name: Explicitly download LFS files (Windows)
+        if: matrix.os == 'windows-latest'
         run: git lfs pull
 
       - name: Setup Node
@@ -52,8 +63,8 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Decode Windows certificate
-        if: ${{ env.WINDOWS_CERTIFICATE_BASE64 != '' }}
+      - name: Decode Windows certificate (Windows)
+        if: matrix.os == 'windows-latest' && env.WINDOWS_CERTIFICATE_BASE64 != ''
         shell: pwsh
         run: |
           $certPath = Join-Path $env:RUNNER_TEMP "jfgoat-signing-cert.pfx"
@@ -73,7 +84,7 @@ jobs:
       - name: Upload release artifacts (workflow)
         uses: actions/upload-artifact@v4
         with:
-          name: jfgoat-release-bundle
+          name: jfgoat-release-bundle-${{ matrix.os }}
           path: |
             src-tauri/target/release/bundle/**/*
 
@@ -84,6 +95,8 @@ jobs:
           files: |
             src-tauri/target/release/bundle/**/*.msi
             src-tauri/target/release/bundle/**/*.exe
+            src-tauri/target/release/bundle/**/*.dmg
+            src-tauri/target/release/bundle/**/*.app.tar.gz
             src-tauri/target/release/bundle/**/*.zip
             src-tauri/target/release/bundle/**/*.sig
             src-tauri/target/release/bundle/**/latest*.json
