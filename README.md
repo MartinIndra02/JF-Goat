@@ -78,7 +78,14 @@ npm run release:tauri
 
 ## 📝 Changelog
 
-### v1.1.0 (Current)
+### v1.2.0 (Current)
+This release includes new features, stability improvements, and layout fixes:
+
+* **App Updater**: Added a built-in application updater featuring auto-detection, manual update check, background downloading with progress tracking, and seamless installation.
+* **Offline Authentication Persistence**: Fixed offline login issues by preventing token clearing during network errors and connection timeouts, allowing players to launch and play offline.
+* **Next Up Layout Fit**: Resolved a styling bug to prevent the Next Up section elements from overflowing or breaking out of the Carousel container.
+
+### v1.1.0
 This release includes major new features, performance enhancements, and UI design updates:
 
 * **Offline Downloads**: Added full support for downloading series/episodes for offline playback, featuring auto-resuming of interrupted or failed downloads and offline sync logic.

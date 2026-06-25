@@ -197,9 +197,19 @@ pub async fn check_auth(
                 // Token is definitively invalid — clear it
                 keyring_clear_token()?;
             }
-            _ => {
-                // Network error or unexpected status — keep the token (it may still
-                // be valid). Don't clear credentials on transient failures.
+            Ok(r) => {
+                // Other unexpected HTTP status code (e.g. server error, gateway timeout)
+                // Return an HTTP error to indicate verification failed, but don't log out.
+                return Err(JfgoatError::Http(format!(
+                    "Server returned status code {}",
+                    r.status()
+                )));
+            }
+            Err(e) => {
+                // Network error — keep the token (it may still be valid).
+                // Do not clear credentials, but return the error so the client knows
+                // that verification failed instead of saying the session is invalid.
+                return Err(e);
             }
         }
     }

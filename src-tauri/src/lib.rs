@@ -503,6 +503,7 @@ pub fn run() {
             commands::get_download_status,
             commands::get_offline_downloads,
             commands::select_download_directory,
+            commands::restart_app,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

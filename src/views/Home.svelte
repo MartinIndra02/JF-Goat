@@ -24,6 +24,17 @@
     resumeDownload,
     cancelDownload,
   } from "../lib/api";
+  import { getVersion } from "@tauri-apps/api/app";
+  import {
+    getUpdateStatus,
+    getUpdateInfo,
+    getDownloadProgress,
+    getUpdateError,
+    checkForUpdates,
+    installUpdate,
+    performRestart,
+    dismissUpdate,
+  } from "../lib/stores/updater.svelte";
   import {
     filterSuppressedNextUp,
     HOMEPAGE_CACHE_UPDATED_EVENT,
@@ -94,6 +105,12 @@
 
   let runningResync = $state(false);
   let downloadingDiagnostics = $state(false);
+  let appVersion = $state("...");
+
+  const updaterStatus = $derived(getUpdateStatus());
+  const updaterInfo = $derived(getUpdateInfo());
+  const updaterProgress = $derived(getDownloadProgress());
+  const updaterError = $derived(getUpdateError());
   let refreshTimer: ReturnType<typeof setInterval> | null = null;
   let staleClockTimer: ReturnType<typeof setInterval> | null = null;
   let cacheFreshnessNow = $state(Date.now());
@@ -266,6 +283,7 @@
     subtitlePositionPercent = readStoredSubtitlePositionPercent();
 
     void initializeHome();
+    getVersion().then((v) => (appVersion = v)).catch(() => (appVersion = "unknown"));
 
     return () => {
       window.removeEventListener(
@@ -1811,6 +1829,115 @@
           </div>
         </div>
 
+        <!-- App Updates -->
+        <div class="glass-panel rounded-2xl p-4">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-semibold">App Updates</h3>
+            <span class="text-[11px] app-pill px-2 py-0.5">v{appVersion}</span>
+          </div>
+
+          {#if updaterStatus === "idle" || updaterStatus === "upToDate" || updaterStatus === "error"}
+            <div class="flex flex-col gap-3">
+              {#if updaterStatus === "upToDate"}
+                <div class="flex items-center gap-2 text-sm text-emerald-300">
+                  <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                  </svg>
+                  <span>You're on the latest version.</span>
+                </div>
+              {/if}
+
+              {#if updaterStatus === "error" && updaterError}
+                <div class="rounded-xl border border-red-300/30 bg-red-500/12 px-3 py-2.5 text-sm text-red-200">
+                  <p class="font-medium">Update check failed</p>
+                  <p class="text-xs app-faint mt-1 break-words">{updaterError}</p>
+                </div>
+              {/if}
+
+              <Button variant="secondary" onclick={checkForUpdates}>
+                <span class="text-sm">Check for Updates</span>
+              </Button>
+            </div>
+          {:else if updaterStatus === "checking"}
+            <div class="flex items-center gap-3 text-sm app-muted">
+              <svg class="w-5 h-5 animate-spin text-cyan-400" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" class="opacity-25" />
+                <path d="M4 12a8 8 0 018-8" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
+              </svg>
+              <span>Checking for updates...</span>
+            </div>
+          {:else if updaterStatus === "available" && updaterInfo}
+            <div class="flex flex-col gap-3">
+              <div class="rounded-xl border border-cyan-400/25 bg-cyan-500/8 px-4 py-3">
+                <div class="flex items-center gap-2 mb-2">
+                  <svg class="w-5 h-5 text-cyan-300 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+                  </svg>
+                  <span class="text-sm font-semibold text-cyan-100">Version {updaterInfo.version} is available</span>
+                </div>
+
+                {#if updaterInfo.body}
+                  <div class="text-xs text-[var(--text-secondary)] space-y-1 max-h-40 overflow-y-auto pr-2 leading-relaxed whitespace-pre-wrap">
+                    {updaterInfo.body}
+                  </div>
+                {/if}
+              </div>
+
+              <div class="flex gap-2">
+                <Button variant="primary" onclick={installUpdate}>
+                  <div class="flex items-center gap-1.5">
+                    <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                      <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                    </svg>
+                    <span class="text-sm font-semibold">Install Update</span>
+                  </div>
+                </Button>
+                <Button variant="secondary" onclick={dismissUpdate}>
+                  <span class="text-sm">Later</span>
+                </Button>
+              </div>
+            </div>
+          {:else if updaterStatus === "downloading" || updaterStatus === "installing"}
+            <div class="flex flex-col gap-2">
+              <div class="flex items-center gap-3 text-sm">
+                <svg class="w-5 h-5 animate-spin text-cyan-400 shrink-0" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" class="opacity-25" />
+                  <path d="M4 12a8 8 0 018-8" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
+                </svg>
+                <span class="text-[var(--text-secondary)]">
+                  {updaterStatus === "installing" ? "Installing update..." : "Downloading update..."}
+                </span>
+              </div>
+              {#if updaterProgress !== null}
+                <div class="h-2 w-full bg-white/10 rounded-full overflow-hidden">
+                  <div
+                    class="h-full bg-gradient-to-r from-cyan-500 to-cyan-300 rounded-full transition-all duration-300"
+                    style="width: {updaterProgress}%"
+                  ></div>
+                </div>
+                <p class="text-xs app-faint text-right">{updaterProgress}%</p>
+              {/if}
+            </div>
+          {:else if updaterStatus === "readyToRestart"}
+            <div class="flex flex-col gap-3">
+              <div class="flex items-center gap-2 text-sm text-emerald-300">
+                <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                </svg>
+                <span>Update installed! Restart to apply.</span>
+              </div>
+              <Button variant="primary" onclick={performRestart}>
+                <div class="flex items-center gap-1.5">
+                  <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/>
+                  </svg>
+                  <span class="text-sm font-semibold">Restart Now</span>
+                </div>
+              </Button>
+            </div>
+          {/if}
+        </div>
+
         <div class="glass-panel rounded-2xl p-4">
           <h3 class="text-sm font-semibold mb-2">Maintenance</h3>
           <div class="flex flex-wrap gap-3">
@@ -1856,7 +1983,7 @@
       />
       <MediaRow 
         title="Next Up" 
-        items={nextUpItems.filter(item => !activeCarouselIds.has(item.id))} 
+        items={nextUpItems} 
         landscape={true} 
       />
 
