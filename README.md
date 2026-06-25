@@ -78,7 +78,12 @@ npm run release:tauri
 
 ## 📝 Changelog
 
-### v1.2.2 (Current)
+### v1.3.0 (Current)
+This release includes backend updates and fixes:
+
+* **Backend Refactoring**: Refactored the backend structure and optimized updater generator logic.
+
+### v1.2.2
 This release includes a critical bugfix:
 
 * **Updater Endpoint Hotfix**: Fixed the application updater endpoint URL by pointing it to the correct `jfFast` repository name instead of the old `JF-Goat` name, resolving the update check 404 error.
