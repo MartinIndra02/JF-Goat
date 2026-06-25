@@ -22,10 +22,15 @@
   } from "../../lib/api";
   import { listen } from "@tauri-apps/api/event";
   import {
-    seasonNumber, formatRuntime, formatDate,
-    progressPercent, handleImageLoad, backdropUrl, personImageUrl, scrollCarousel,
+    seasonNumber, formatRuntime,
+    progressPercent, handleImageLoad, personImageUrl,
     episodeThumbnailUrl,
   } from "./detailHelpers";
+
+  import DetailBackdrop from "./components/DetailBackdrop.svelte";
+  import DetailMetadata from "./components/DetailMetadata.svelte";
+  import DownloadModal from "./components/DownloadModal.svelte";
+  import HorizontalCarousel from "./components/HorizontalCarousel.svelte";
 
   let {
     item,
@@ -54,12 +59,9 @@
   let selectedAudioIndex = $state<number | null>(null);
   let selectedSubtitleIndex = $state<number | null>(null);
   let selectedQualityKey = $state("original");
-  let siblingScrollEl = $state<HTMLElement | null>(null);
-  let castScrollEl = $state<HTMLElement | null>(null);
 
   let download = $state<OfflineDownload | null>(null);
   let showDownloadModal = $state(false);
-  let downloadQualitySelection = $state<"original" | "720" | "480" | "360">("original");
 
   async function loadDownloadStatus() {
     try {
@@ -98,11 +100,10 @@
   });
 
   function openDownloadModal() {
-    downloadQualitySelection = "original";
     showDownloadModal = true;
   }
 
-  async function handleConfirmDownload() {
+  async function handleConfirmDownload(quality: "original" | "720" | "480" | "360") {
     showDownloadModal = false;
     
     const audioIndices = mediaStreams ? mediaStreams.audio.map(a => a.index) : [];
@@ -111,13 +112,13 @@
     let height: number | null = null;
     let bitrate: number | null = null;
 
-    if (downloadQualitySelection === "720") {
+    if (quality === "720") {
       height = 720;
       bitrate = 4500000;
-    } else if (downloadQualitySelection === "480") {
+    } else if (quality === "480") {
       height = 480;
       bitrate = 2000000;
-    } else if (downloadQualitySelection === "360") {
+    } else if (quality === "360") {
       height = 360;
       bitrate = 1000000;
     }
@@ -220,8 +221,6 @@
     return match ?? qualityOptions[0];
   });
 
-
-
   $effect(() => {
     const options = qualityOptions;
     if (!options.some((option) => option.key === selectedQualityKey)) {
@@ -256,30 +255,7 @@
 
 <main class="app-stage min-h-screen text-[var(--text-primary)]">
   <!-- Hero Backdrop -->
-  <div class="relative w-full overflow-hidden" style="height: clamp(340px, 55vh, 560px);">
-    {#if backdropUrl(item)}
-      <img
-        src={backdropUrl(item)}
-        alt=""
-        onload={handleImageLoad}
-        class="absolute inset-0 w-full h-full object-cover object-top transition-opacity duration-500 opacity-0"
-      />
-    {/if}
-    <div class="absolute inset-0 bg-[rgba(5,7,13,0.5)] -z-10"></div>
-    <div class="absolute inset-0 bg-gradient-to-t from-[var(--bg-0)] via-[rgba(5,7,13,0.4)] to-transparent"></div>
-
-    <!-- Back button -->
-    <button
-      aria-label="Go back"
-      onclick={goBack}
-      class="absolute top-4 left-4 z-10 h-10 w-10 grid place-items-center bg-[rgba(10,18,31,0.64)] border border-white/22 rounded-xl backdrop-blur-xl text-[var(--text-primary)] hover:bg-[rgba(22,34,54,0.76)] transition-colors"
-    >
-      <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
-      </svg>
-    </button>
-
-  </div>
+  <DetailBackdrop {item} {goBack} />
 
   <div class="relative -mt-32 z-10 px-5 pb-16 max-w-3xl mx-auto">
     <!-- Header -->
@@ -302,47 +278,8 @@
         {/if}
       </h1>
 
-      <!-- Metadata row -->
-      <div class="flex flex-wrap items-center justify-center gap-2 mb-3">
-        {#if item.official_rating}
-          <span class="inline-flex items-center gap-1 text-xs font-semibold text-gray-200 bg-white/10 px-2.5 py-1 rounded-md border border-white/15">{item.official_rating}</span>
-          <span class="w-1 h-1 rounded-full bg-gray-500"></span>
-        {/if}
-        {#if item.date_created && item.type === "Episode"}
-          <span class="inline-flex items-center gap-1.5 text-xs text-gray-300 bg-white/8 px-2.5 py-1 rounded-md">
-            <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"/></svg>
-            {formatDate(item.date_created)}
-          </span>
-        {:else if item.production_year}
-          <span class="inline-flex items-center gap-1.5 text-xs text-gray-300 bg-white/8 px-2.5 py-1 rounded-md">
-            <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"/></svg>
-            {item.production_year}
-          </span>
-        {/if}
-        {#if item.run_time_ticks}
-          <span class="w-1 h-1 rounded-full bg-gray-500"></span>
-          <span class="inline-flex items-center gap-1.5 text-xs text-gray-300 bg-white/8 px-2.5 py-1 rounded-md">
-            <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/></svg>
-            {formatRuntime(item.run_time_ticks)}
-          </span>
-        {/if}
-        {#if item.community_rating}
-          <span class="w-1 h-1 rounded-full bg-gray-500"></span>
-          <span class="inline-flex items-center gap-1.5 text-xs font-medium bg-amber-500/20 text-amber-300 px-2.5 py-1 rounded-md">
-            <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
-            {item.community_rating.toFixed(1)}
-          </span>
-        {/if}
-      </div>
-
-      <!-- Genre badges -->
-      {#if item.genres}
-        <div class="flex flex-wrap justify-center gap-1.5 mb-4">
-          {#each item.genres.split(",").slice(0, 6) as genre}
-            <span class="text-xs text-gray-300 bg-white/10 px-2.5 py-1 rounded-full border border-white/5">{genre.trim()}</span>
-          {/each}
-        </div>
-      {/if}
+      <!-- Metadata block component -->
+      <DetailMetadata {item} />
     </div>
 
     <!-- Play / Resume button -->
@@ -384,7 +321,7 @@
             >
               <svg class="w-3.5 h-3.5 text-cyan-200" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071a1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
               {selectedAudioLabel()}
-              <svg class="w-3 h-3 text-cyan-200" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+              <svg class="w-3.5 h-3.5 text-cyan-200" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
             </button>
             {#if audioDropdownOpen}
               <div onclick={() => audioDropdownOpen = false} class="fixed inset-0 z-40"></div>
@@ -416,7 +353,7 @@
             >
               <svg class="w-3.5 h-3.5 text-emerald-200" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm2 3a1 1 0 000 2h3a1 1 0 000-2H6zm0 4a1 1 0 000 2h8a1 1 0 100-2H6zm0 4a1 1 0 100 2h5a1 1 0 100-2H6z" clip-rule="evenodd"/></svg>
               {selectedSubtitleLabel() ?? "Subtitles"}
-              <svg class="w-3 h-3 text-emerald-200" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+              <svg class="w-3.5 h-3.5 text-emerald-200" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
             </button>
             {#if subtitleDropdownOpen}
               <div onclick={() => subtitleDropdownOpen = false} class="fixed inset-0 z-40"></div>
@@ -546,79 +483,69 @@
 
     <!-- Cast & Crew -->
     {#if people.length > 0}
-      <div class="mb-8">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-base font-semibold text-white">Cast & Crew</h2>
-          <div class="flex items-center gap-1">
-            <button aria-label="Scroll cast left" onclick={() => scrollCarousel(castScrollEl, 'left')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"/></svg></button>
-            <button aria-label="Scroll cast right" onclick={() => scrollCarousel(castScrollEl, 'right')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg></button>
-          </div>
-        </div>
-        <div bind:this={castScrollEl} class="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-5 px-5">
-          {#each people as person, i (person.id + '-' + i)}
-            <div class="flex-shrink-0 w-[80px] text-center">
-              <div class="relative w-[72px] h-[72px] mx-auto rounded-lg overflow-hidden bg-gray-800 mb-1.5 ring-1 ring-white/10">
-                {#if person.image_tag}
-                  <img src={personImageUrl(person.id, person.image_tag)} alt={person.name} onload={handleImageLoad} class="w-full h-full object-cover transition-opacity duration-300 opacity-0" />
-                {:else}
-                  <div class="w-full h-full flex items-center justify-center">
-                    <svg class="w-7 h-7 text-gray-600" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/></svg>
-                  </div>
-                {/if}
-              </div>
-              <p class="text-[11px] text-white font-medium truncate leading-tight">{person.name}</p>
-              {#if person.role}
-                <p class="text-[10px] text-gray-500 truncate leading-tight">{person.role}</p>
-              {:else if person.person_type}
-                <p class="text-[10px] text-gray-500 truncate leading-tight">{person.person_type}</p>
+      <HorizontalCarousel
+        title="Cast & Crew"
+        items={people}
+        getKey={(person, i) => person.id + '-' + i}
+      >
+        {#snippet renderCard(person)}
+          <div class="flex-shrink-0 w-[80px] text-center">
+            <div class="relative w-[72px] h-[72px] mx-auto rounded-lg overflow-hidden bg-gray-800 mb-1.5 ring-1 ring-white/10">
+              {#if person.image_tag}
+                <img src={personImageUrl(person.id, person.image_tag)} alt={person.name} onload={handleImageLoad} class="w-full h-full object-cover transition-opacity duration-300 opacity-0" />
+              {:else}
+                <div class="w-full h-full flex items-center justify-center">
+                  <svg class="w-7 h-7 text-gray-600" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/></svg>
+                </div>
               {/if}
             </div>
-          {/each}
-        </div>
-      </div>
+            <p class="text-[11px] text-white font-medium truncate leading-tight">{person.name}</p>
+            {#if person.role}
+              <p class="text-[10px] text-gray-500 truncate leading-tight">{person.role}</p>
+            {:else if person.person_type}
+              <p class="text-[10px] text-gray-500 truncate leading-tight">{person.person_type}</p>
+            {/if}
+          </div>
+        {/snippet}
+      </HorizontalCarousel>
     {/if}
 
     <!-- More from season X -->
     {#if item.type === "Episode" && siblingEpisodes.length > 1}
-      <div class="mb-8">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-base font-semibold text-white">More from {item.season_name ?? "this season"}</h2>
-          <div class="flex items-center gap-1">
-            <button aria-label="Scroll episodes left" onclick={() => scrollCarousel(siblingScrollEl, 'left')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"/></svg></button>
-            <button aria-label="Scroll episodes right" onclick={() => scrollCarousel(siblingScrollEl, 'right')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg></button>
-          </div>
-        </div>
-        <div bind:this={siblingScrollEl} class="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-5 px-5">
-          {#each siblingEpisodes as episode (episode.id)}
-            <button
-              onclick={() => navigateToItem(episode.id)}
-              class="flex-shrink-0 w-48 rounded-xl overflow-hidden bg-white/5 hover:bg-white/10 transition-colors text-left cursor-pointer {episode.id === item?.id ? 'ring-2 ring-cyan-400/80' : ''}"
-            >
-              <div class="relative">
-                {#if episodeThumbnailUrl(episode)}
-                  <img src={episodeThumbnailUrl(episode)} alt={episode.name} onload={handleImageLoad} class="w-full aspect-video object-cover transition-opacity duration-300 opacity-0" />
-                {:else}
-                  <div class="w-full aspect-video bg-gray-800 flex items-center justify-center"><span class="text-gray-500 text-xs">E{episode.index_number ?? "?"}</span></div>
-                {/if}
-                <div class="absolute inset-0 bg-gray-800 -z-10"></div>
-                {#if episode.played}
-                  <div class="absolute top-1.5 right-1.5 bg-green-500/90 rounded-full p-0.5"><svg class="w-3 h-3 text-white" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg></div>
-                {/if}
-                {#if progressPercent(episode) > 0}
-                  <div class="absolute bottom-0 left-0 right-0 h-1 bg-black/50"><div class="h-full bg-blue-500 rounded-r-full" style="width: {progressPercent(episode)}%"></div></div>
-                {/if}
-              </div>
-              <div class="p-2.5">
-                <p class="text-[11px] text-gray-500 mb-0.5">
-                  S{seasonNumber(episode.season_name)} - E{episode.index_number ?? "?"}
-                  {#if episode.run_time_ticks}<span class="ml-1">· {formatRuntime(episode.run_time_ticks)}</span>{/if}
-                </p>
-                <p class="text-sm text-white truncate font-medium">{episode.name}</p>
-              </div>
-            </button>
-          {/each}
-        </div>
-      </div>
+      <HorizontalCarousel
+        title={`More from ${item.season_name ?? "this season"}`}
+        items={siblingEpisodes}
+        getKey={(episode) => episode.id}
+      >
+        {#snippet renderCard(episode)}
+          <button
+            onclick={() => navigateToItem(episode.id)}
+            class="flex-shrink-0 w-48 rounded-xl overflow-hidden bg-white/5 hover:bg-white/10 transition-colors text-left cursor-pointer {episode.id === item?.id ? 'ring-2 ring-cyan-400/80' : ''}"
+          >
+            <div class="relative">
+              {#if episodeThumbnailUrl(episode)}
+                <img src={episodeThumbnailUrl(episode)} alt={episode.name} onload={handleImageLoad} class="w-full aspect-video object-cover transition-opacity duration-300 opacity-0" />
+              {:else}
+                <div class="w-full aspect-video bg-gray-800 flex items-center justify-center"><span class="text-gray-500 text-xs">E{episode.index_number ?? "?"}</span></div>
+              {/if}
+              <div class="absolute inset-0 bg-gray-800 -z-10"></div>
+              {#if episode.played}
+                <div class="absolute top-1.5 right-1.5 bg-green-500/90 rounded-full p-0.5"><svg class="w-3 h-3 text-white" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg></div>
+              {/if}
+              {#if progressPercent(episode) > 0}
+                <div class="absolute bottom-0 left-0 right-0 h-1 bg-black/50"><div class="h-full bg-blue-500 rounded-r-full" style="width: {progressPercent(episode)}%"></div></div>
+              {/if}
+            </div>
+            <div class="p-2.5">
+              <p class="text-[11px] text-gray-500 mb-0.5">
+                S{seasonNumber(episode.season_name)} - E{episode.index_number ?? "?"}
+                {#if episode.run_time_ticks}<span class="ml-1">· {formatRuntime(episode.run_time_ticks)}</span>{/if}
+              </p>
+              <p class="text-sm text-white truncate font-medium">{episode.name}</p>
+            </div>
+          </button>
+        {/snippet}
+      </HorizontalCarousel>
     {/if}
 
     <!-- External Links -->
@@ -638,115 +565,9 @@
   </div>
 
   {#if showDownloadModal}
-    <!-- Modal Backdrop -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <div
-      onclick={() => showDownloadModal = false}
-      class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md"
-    >
-      <!-- Modal Container -->
-      <div
-        onclick={(e) => e.stopPropagation()}
-        class="w-full max-w-md bg-[rgba(10,18,31,0.92)] border border-white/20 rounded-2xl shadow-2xl backdrop-blur-2xl overflow-hidden max-h-[85vh] flex flex-col"
-      >
-        <!-- Modal Header -->
-        <div class="px-5 py-4 border-b border-white/10 flex items-center justify-between">
-          <h3 class="text-base font-bold text-white">Download Options</h3>
-          <button
-            onclick={() => showDownloadModal = false}
-            class="text-gray-400 hover:text-white transition-colors"
-            aria-label="Close dialog"
-          >
-            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        <!-- Modal Body -->
-        <div class="p-5 space-y-5 overflow-y-auto flex-1">
-          <!-- Quality / Transcode option -->
-          <div>
-            <span class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Quality / Size</span>
-            <div class="space-y-2">
-              <label class="flex items-center gap-3 p-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/8 transition-all cursor-pointer">
-                <input
-                  type="radio"
-                  name="download-quality"
-                  value="original"
-                  bind:group={downloadQualitySelection}
-                  class="accent-cyan-400"
-                />
-                <div class="min-w-0">
-                  <p class="text-sm font-semibold text-white">Original Quality</p>
-                  <p class="text-xs text-gray-400">Download the source file directly without quality loss</p>
-                </div>
-              </label>
-
-              <label class="flex items-center gap-3 p-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/8 transition-all cursor-pointer">
-                <input
-                  type="radio"
-                  name="download-quality"
-                  value="720"
-                  bind:group={downloadQualitySelection}
-                  class="accent-cyan-400"
-                />
-                <div class="min-w-0">
-                  <p class="text-sm font-semibold text-white">720p (Transcoded)</p>
-                  <p class="text-xs text-gray-400">Smaller file size (~4.5 Mbps, optimized for mobile devices)</p>
-                </div>
-              </label>
-
-              <label class="flex items-center gap-3 p-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/8 transition-all cursor-pointer">
-                <input
-                  type="radio"
-                  name="download-quality"
-                  value="480"
-                  bind:group={downloadQualitySelection}
-                  class="accent-cyan-400"
-                />
-                <div class="min-w-0">
-                  <p class="text-sm font-semibold text-white">480p (Transcoded)</p>
-                  <p class="text-xs text-gray-400">Very small file size (~2.0 Mbps, standard definition)</p>
-                </div>
-              </label>
-
-              <label class="flex items-center gap-3 p-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/8 transition-all cursor-pointer">
-                <input
-                  type="radio"
-                  name="download-quality"
-                  value="360"
-                  bind:group={downloadQualitySelection}
-                  class="accent-cyan-400"
-                />
-                <div class="min-w-0">
-                  <p class="text-sm font-semibold text-white">360p (Transcoded)</p>
-                  <p class="text-xs text-gray-400">Tiny file size (~1.0 Mbps, ideal for low storage)</p>
-                </div>
-              </label>
-            </div>
-          </div>
-
-
-        </div>
-
-        <!-- Modal Footer -->
-        <div class="px-5 py-4 border-t border-white/10 flex items-center justify-end gap-3 bg-[rgba(6,10,18,0.4)]">
-          <button
-            onclick={() => showDownloadModal = false}
-            class="px-4 py-2 text-xs font-semibold border border-white/15 rounded-xl text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onclick={handleConfirmDownload}
-            class="px-4 py-2 text-xs font-semibold rounded-xl text-slate-950 bg-gradient-to-br from-cyan-200 via-sky-300 to-amber-300 hover:brightness-110 shadow-lg transition-all"
-          >
-            Start Download
-          </button>
-        </div>
-      </div>
-    </div>
+    <DownloadModal
+      onClose={() => showDownloadModal = false}
+      onConfirm={handleConfirmDownload}
+    />
   {/if}
 </main>

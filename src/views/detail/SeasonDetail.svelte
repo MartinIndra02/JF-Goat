@@ -3,9 +3,13 @@
   import type { MediaItem, Person } from "../../lib/types";
   import {
     seasonNumber, formatRuntime,
-    progressPercent, handleImageLoad, backdropUrl, personImageUrl, scrollCarousel,
+    progressPercent, handleImageLoad, personImageUrl,
     episodeThumbnailUrl,
   } from "./detailHelpers";
+
+  import DetailBackdrop from "./components/DetailBackdrop.svelte";
+  import DetailMetadata from "./components/DetailMetadata.svelte";
+  import HorizontalCarousel from "./components/HorizontalCarousel.svelte";
 
   let {
     item,
@@ -23,7 +27,6 @@
 
   let overviewExpanded = $state(false);
   let seasonEpisodesViewMode = $state<"list" | "grid">("list");
-  let castScrollEl = $state<HTMLElement | null>(null);
 
   function navigateToItem(id: string) { push(`/item?id=${id}`); }
   function goBack() { window.history.length > 1 ? window.history.back() : push("/home"); }
@@ -31,23 +34,13 @@
 
 <main class="app-stage min-h-screen text-[var(--text-primary)]">
   <!-- Hero Backdrop -->
-  <div class="relative w-full overflow-hidden" style="height: clamp(300px, 50vh, 500px);">
-    {#if backdropUrl(item)}
-      <img src={backdropUrl(item)} alt="" onload={handleImageLoad} class="absolute inset-0 w-full h-full object-cover object-top transition-opacity duration-500 opacity-0" />
-    {/if}
-    <div class="absolute inset-0 bg-[rgba(5,7,13,0.5)] -z-10"></div>
-    <div class="absolute inset-0 bg-gradient-to-t from-[var(--bg-0)] via-[rgba(5,7,13,0.4)] to-transparent"></div>
-
-    <button aria-label="Go back" onclick={goBack} class="absolute top-4 left-4 z-10 h-10 w-10 grid place-items-center bg-[rgba(10,18,31,0.64)] border border-white/22 rounded-xl backdrop-blur-xl text-[var(--text-primary)] hover:bg-[rgba(22,34,54,0.76)] transition-colors">
-      <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
-    </button>
-
-    <div class="absolute top-4 right-4 z-10 flex items-center gap-1.5">
+  <DetailBackdrop {item} {goBack} clampHeight="clamp(300px, 50vh, 500px)">
+    {#snippet rightControls()}
       <button class="h-10 w-10 grid place-items-center bg-[rgba(10,18,31,0.64)] border border-white/22 rounded-xl backdrop-blur-xl text-[var(--text-primary)] hover:bg-[rgba(22,34,54,0.76)] transition-colors" aria-label="Download"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/></svg></button>
       <button class="h-10 w-10 grid place-items-center bg-[rgba(10,18,31,0.64)] border border-white/22 rounded-xl backdrop-blur-xl text-[var(--text-primary)] hover:bg-[rgba(22,34,54,0.76)] transition-colors" aria-label="Layout"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg></button>
       <button class="h-10 w-10 grid place-items-center bg-[rgba(10,18,31,0.64)] border border-white/22 rounded-xl backdrop-blur-xl text-[var(--text-primary)] hover:bg-[rgba(22,34,54,0.76)] transition-colors" aria-label="Sync"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg></button>
-    </div>
-  </div>
+    {/snippet}
+  </DetailBackdrop>
 
   <div class="relative -mt-28 z-10 px-5 pb-16 max-w-3xl mx-auto">
     <div class="text-center mb-5">
@@ -58,21 +51,8 @@
       {/if}
       <h1 class="text-2xl font-bold text-white mb-3">{item.name}</h1>
 
-      <div class="flex flex-wrap items-center justify-center gap-2 mb-3">
-        {#if item.production_year}
-          <span class="inline-flex items-center gap-1.5 text-xs text-gray-300 bg-white/8 px-2.5 py-1 rounded-md">
-            <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"/></svg>
-            {item.production_year}
-          </span>
-        {/if}
-        {#if item.community_rating}
-          <span class="w-1 h-1 rounded-full bg-gray-500"></span>
-          <span class="inline-flex items-center gap-1.5 text-xs font-medium bg-amber-500/20 text-amber-300 px-2.5 py-1 rounded-md">
-            <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
-            {item.community_rating.toFixed(1)}
-          </span>
-        {/if}
-      </div>
+      <!-- Metadata block component -->
+      <DetailMetadata {item} />
     </div>
 
     <!-- Actions row -->
@@ -170,28 +150,23 @@
 
     <!-- Cast & Crew -->
     {#if people.length > 0}
-      <div class="mb-8">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-base font-semibold text-white">Cast & Crew</h2>
-          <div class="flex items-center gap-1">
-            <button aria-label="Scroll cast left" onclick={() => scrollCarousel(castScrollEl, 'left')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"/></svg></button>
-            <button aria-label="Scroll cast right" onclick={() => scrollCarousel(castScrollEl, 'right')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg></button>
-          </div>
-        </div>
-        <div bind:this={castScrollEl} class="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-5 px-5">
-          {#each people as person, i (person.id + '-' + i)}
-            <div class="flex-shrink-0 w-[80px] text-center">
-              <div class="relative w-[72px] h-[72px] mx-auto rounded-lg overflow-hidden bg-gray-800 mb-1.5 ring-1 ring-white/10">
-                {#if person.image_tag}<img src={personImageUrl(person.id, person.image_tag)} alt={person.name} onload={handleImageLoad} class="w-full h-full object-cover transition-opacity duration-300 opacity-0" />
-                {:else}<div class="w-full h-full flex items-center justify-center"><svg class="w-7 h-7 text-gray-600" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/></svg></div>{/if}
-              </div>
-              <p class="text-[11px] text-white font-medium truncate leading-tight">{person.name}</p>
-              {#if person.role}<p class="text-[10px] text-gray-500 truncate leading-tight">{person.role}</p>
-              {:else if person.person_type}<p class="text-[10px] text-gray-500 truncate leading-tight">{person.person_type}</p>{/if}
+      <HorizontalCarousel
+        title="Cast & Crew"
+        items={people}
+        getKey={(person, i) => person.id + '-' + i}
+      >
+        {#snippet renderCard(person)}
+          <div class="flex-shrink-0 w-[80px] text-center">
+            <div class="relative w-[72px] h-[72px] mx-auto rounded-lg overflow-hidden bg-gray-800 mb-1.5 ring-1 ring-white/10">
+              {#if person.image_tag}<img src={personImageUrl(person.id, person.image_tag)} alt={person.name} onload={handleImageLoad} class="w-full h-full object-cover transition-opacity duration-300 opacity-0" />
+              {:else}<div class="w-full h-full flex items-center justify-center"><svg class="w-7 h-7 text-gray-600" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/></svg></div>{/if}
             </div>
-          {/each}
-        </div>
-      </div>
+            <p class="text-[11px] text-white font-medium truncate leading-tight">{person.name}</p>
+            {#if person.role}<p class="text-[10px] text-gray-500 truncate leading-tight">{person.role}</p>
+            {:else if person.person_type}<p class="text-[10px] text-gray-500 truncate leading-tight">{person.person_type}</p>{/if}
+          </div>
+        {/snippet}
+      </HorizontalCarousel>
     {/if}
   </div>
 </main>

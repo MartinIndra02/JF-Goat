@@ -3,7 +3,13 @@ use tauri::{Manager, State};
 
 use crate::api::client::JellyfinClient;
 use crate::api::media as media_api;
-use crate::db::media::{to_paginated_result, MediaItem, PaginationScope};
+use crate::db::media::{
+    MediaItem,
+    query_local_library_items_by_parent, query_local_library_items_by_server_type,
+    get_recent_movies_db, get_recent_series_db, get_continue_watching_db, get_latest_media_db,
+    get_local_item_by_id, get_local_seasons, get_local_episodes, get_series_id_for_season,
+    get_offline_media_stream_cache, update_playback_ticks, is_db_lock_contention,
+};
 use crate::error::JfgoatError;
 use crate::state::AppState;
 use super::media_types::{Person, UserLibrary, HomepageCache, StreamOption, MediaStreamInfo, ExternalUrl, ChapterInfo};
@@ -25,55 +31,6 @@ impl PlaybackLifecycleEvent {
         }
     }
 }
-
-
-
-fn row_to_media_item(row: &rusqlite::Row) -> rusqlite::Result<MediaItem> {
-    Ok(MediaItem {
-        id: row.get(0)?,
-        name: row.get(1)?,
-        item_type: row.get(2)?,
-        parent_id: row.get(3)?,
-        series_id: row.get(4)?,
-        series_name: row.get(5)?,
-        season_id: row.get(6)?,
-        season_name: row.get(7)?,
-        index_number: row.get(8)?,
-        production_year: row.get(9)?,
-        overview: row.get(10)?,
-        image_tag: row.get(11)?,
-        backdrop_tag: row.get(12)?,
-        date_created: row.get(13)?,
-        date_updated: row.get(14)?,
-        community_rating: row.get(15)?,
-        official_rating: row.get(16)?,
-        genres: row.get(17)?,
-        run_time_ticks: row.get(18)?,
-        played: row.get::<_, i32>(19)? != 0,
-        play_count: row.get(20)?,
-        playback_ticks: row.get(21)?,
-        is_favorite: row.get::<_, i32>(22)? != 0,
-        server_id: row.get(23)?,
-        user_id: row.get(24)?,
-    })
-}
-
-fn is_db_lock_contention(err: &rusqlite::Error) -> bool {
-    matches!(
-        err,
-        rusqlite::Error::SqliteFailure(inner, _)
-            if matches!(
-                inner.code,
-                rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked
-            )
-    )
-}
-
-const SELECT_COLUMNS: &str = "id, name, type, parent_id, series_id, series_name,
-     season_id, season_name, index_number, production_year,
-     overview, image_tag, backdrop_tag, date_created, date_updated,
-     community_rating, official_rating, genres, run_time_ticks,
-    played, play_count, playback_ticks, is_favorite, server_id, user_id";
 
 /// Convert a Jellyfin API item into our local MediaItem format.
 fn jf_item_to_media_item(
@@ -104,106 +61,6 @@ fn get_active_scope(state: &AppState) -> Result<(String, String), JfgoatError> {
     Ok((server_id, user_id))
 }
 
-fn query_local_library_items_by_parent(
-    state: &AppState,
-    parent_id: &str,
-    server_id: &str,
-    user_id: &str,
-    start_index: u32,
-    limit: u32,
-) -> Result<media_api::PaginatedResult<MediaItem>, JfgoatError> {
-    let db = state
-        .db
-        .read_conn()
-        .map_err(|e| JfgoatError::Internal(e.to_string()))?;
-
-    let total_count: u32 = db.query_row(
-        "SELECT COUNT(*) FROM media_items WHERE parent_id = ?1 AND server_id = ?2 AND user_id = ?3",
-        rusqlite::params![parent_id, server_id, user_id],
-        |row| row.get(0),
-    )?;
-
-    let sql = format!(
-        "SELECT {} FROM media_items
-         WHERE parent_id = ?1 AND server_id = ?2 AND user_id = ?3
-         ORDER BY COALESCE(date_updated, date_created) DESC, name ASC
-         LIMIT ?4 OFFSET ?5",
-        SELECT_COLUMNS
-    );
-
-    let mut stmt = db.prepare(&sql)?;
-    let rows = stmt.query_map(
-        rusqlite::params![
-            parent_id,
-            server_id,
-            user_id,
-            limit as i64,
-            start_index as i64
-        ],
-        row_to_media_item,
-    )?;
-
-    let mut items = Vec::new();
-    for row in rows {
-        items.push(row?);
-    }
-
-    Ok(to_paginated_result(
-        items,
-        PaginationScope { start_index, limit },
-        Some(total_count),
-    ))
-}
-
-fn query_local_library_items_by_server_type(
-    state: &AppState,
-    server_id: &str,
-    user_id: &str,
-    start_index: u32,
-    limit: u32,
-) -> Result<media_api::PaginatedResult<MediaItem>, JfgoatError> {
-    let db = state
-        .db
-        .read_conn()
-        .map_err(|e| JfgoatError::Internal(e.to_string()))?;
-
-    let total_count: u32 = db.query_row(
-        "SELECT COUNT(*) FROM media_items
-         WHERE server_id = ?1
-           AND user_id = ?2
-           AND type IN ('Movie', 'Series', 'Season')",
-        rusqlite::params![server_id, user_id],
-        |row| row.get(0),
-    )?;
-
-    let sql = format!(
-        "SELECT {} FROM media_items
-         WHERE server_id = ?1
-           AND user_id = ?2
-           AND type IN ('Movie', 'Series', 'Season')
-         ORDER BY COALESCE(date_updated, date_created) DESC, name ASC
-         LIMIT ?3 OFFSET ?4",
-        SELECT_COLUMNS
-    );
-
-    let mut stmt = db.prepare(&sql)?;
-    let rows = stmt.query_map(
-        rusqlite::params![server_id, user_id, limit as i64, start_index as i64],
-        row_to_media_item,
-    )?;
-
-    let mut items = Vec::new();
-    for row in rows {
-        items.push(row?);
-    }
-
-    Ok(to_paginated_result(
-        items,
-        PaginationScope { start_index, limit },
-        Some(total_count),
-    ))
-}
-
 fn get_library_items_from_local_fallback(
     state: &AppState,
     parent_id: &str,
@@ -211,9 +68,13 @@ fn get_library_items_from_local_fallback(
     limit: u32,
 ) -> Result<media_api::PaginatedResult<MediaItem>, JfgoatError> {
     let (server_id, user_id) = get_active_scope(state)?;
+    let db = state
+        .db
+        .read_conn()
+        .map_err(|e| JfgoatError::Internal(e.to_string()))?;
 
     let by_parent = query_local_library_items_by_parent(
-        state,
+        &db,
         parent_id,
         &server_id,
         &user_id,
@@ -225,7 +86,7 @@ fn get_library_items_from_local_fallback(
         return Ok(by_parent);
     }
 
-    query_local_library_items_by_server_type(state, &server_id, &user_id, start_index, limit)
+    query_local_library_items_by_server_type(&db, &server_id, &user_id, start_index, limit)
 }
 
 // ── Local DB queries (used as fallback / for search) ────────────────────
@@ -241,18 +102,7 @@ pub fn get_recent_movies(
         .read_conn()
         .map_err(|e| JfgoatError::Internal(e.to_string()))?;
 
-    let sql = format!(
-        "SELECT {} FROM media_items WHERE type = 'Movie' AND server_id = ?1 AND user_id = ?2 ORDER BY date_created DESC LIMIT ?3",
-        SELECT_COLUMNS
-    );
-    let mut stmt = db.prepare(&sql)?;
-    let rows = stmt.query_map(rusqlite::params![server_id, user_id, limit], |row| row_to_media_item(row))?;
-
-    let mut items = Vec::new();
-    for row in rows {
-        items.push(row?);
-    }
-    Ok(items)
+    get_recent_movies_db(&db, &server_id, &user_id, limit)
 }
 
 #[tauri::command]
@@ -266,18 +116,7 @@ pub fn get_recent_series(
         .read_conn()
         .map_err(|e| JfgoatError::Internal(e.to_string()))?;
 
-    let sql = format!(
-        "SELECT {} FROM media_items WHERE type = 'Series' AND server_id = ?1 AND user_id = ?2 ORDER BY date_created DESC LIMIT ?3",
-        SELECT_COLUMNS
-    );
-    let mut stmt = db.prepare(&sql)?;
-    let rows = stmt.query_map(rusqlite::params![server_id, user_id, limit], |row| row_to_media_item(row))?;
-
-    let mut items = Vec::new();
-    for row in rows {
-        items.push(row?);
-    }
-    Ok(items)
+    get_recent_series_db(&db, &server_id, &user_id, limit)
 }
 
 #[tauri::command]
@@ -291,21 +130,7 @@ pub fn get_continue_watching(
         .read_conn()
         .map_err(|e| JfgoatError::Internal(e.to_string()))?;
 
-    let sql = format!(
-        "SELECT {} FROM media_items
-         WHERE playback_ticks > 0 AND played = 0 AND server_id = ?1 AND user_id = ?2
-         ORDER BY date_updated DESC
-         LIMIT ?3",
-        SELECT_COLUMNS
-    );
-    let mut stmt = db.prepare(&sql)?;
-    let rows = stmt.query_map(rusqlite::params![server_id, user_id, limit], |row| row_to_media_item(row))?;
-
-    let mut items = Vec::new();
-    for row in rows {
-        items.push(row?);
-    }
-    Ok(items)
+    get_continue_watching_db(&db, &server_id, &user_id, limit)
 }
 
 #[tauri::command]
@@ -319,26 +144,10 @@ pub fn get_latest_media(
         .read_conn()
         .map_err(|e| JfgoatError::Internal(e.to_string()))?;
 
-    let sql = format!(
-        "SELECT {} FROM media_items
-         WHERE backdrop_tag IS NOT NULL AND type IN ('Movie', 'Series') AND server_id = ?1 AND user_id = ?2
-         ORDER BY date_created DESC
-         LIMIT ?3",
-        SELECT_COLUMNS
-    );
-    let mut stmt = db.prepare(&sql)?;
-    let rows = stmt.query_map(rusqlite::params![server_id, user_id, limit], |row| row_to_media_item(row))?;
-
-    let mut items = Vec::new();
-    for row in rows {
-        items.push(row?);
-    }
-    Ok(items)
+    get_latest_media_db(&db, &server_id, &user_id, limit)
 }
 
 // ── Live Jellyfin API commands (real-time data from server) ─────────────
-
-
 
 /// Persist the homepage dashboard data to a JSON file for instant startup.
 #[tauri::command]
@@ -489,20 +298,8 @@ pub async fn get_item_by_id(
             .read_conn()
             .map_err(|e| JfgoatError::Internal(e.to_string()))?;
 
-        let sql = format!(
-            "SELECT {} FROM media_items WHERE id = ?1 AND server_id = ?2 AND user_id = ?3",
-            SELECT_COLUMNS
-        );
-        let mut stmt = db.prepare(&sql)?;
-        let result = stmt.query_row(
-            rusqlite::params![id, scope_server_id, scope_user_id],
-            |row| row_to_media_item(row),
-        );
-
-        match result {
-            Ok(item) => return Ok(Some(item)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => { /* fall through to API */ }
-            Err(e) => return Err(e.into()),
+        if let Ok(Some(item)) = get_local_item_by_id(&db, &id, &scope_server_id, &scope_user_id) {
+            return Ok(Some(item));
         }
     }
 
@@ -540,22 +337,10 @@ pub async fn get_series_seasons(
             .read_conn()
             .map_err(|e| JfgoatError::Internal(e.to_string()))?;
 
-        let sql = format!(
-            "SELECT {} FROM media_items WHERE series_id = ?1 AND type = 'Season' AND server_id = ?2 AND user_id = ?3 ORDER BY index_number ASC",
-            SELECT_COLUMNS
-        );
-        let mut stmt = db.prepare(&sql)?;
-        let rows = stmt.query_map(
-            rusqlite::params![series_id, scope_server_id, scope_user_id],
-            |row| row_to_media_item(row),
-        )?;
-
-        let mut items = Vec::new();
-        for row in rows {
-            items.push(row?);
-        }
-        if !items.is_empty() {
-            return Ok(items);
+        if let Ok(items) = get_local_seasons(&db, &series_id, &scope_server_id, &scope_user_id) {
+            if !items.is_empty() {
+                return Ok(items);
+            }
         }
     }
 
@@ -594,38 +379,19 @@ pub async fn get_season_episodes(
     let (scope_server_id, scope_user_id) = get_active_scope(&state)?;
 
     // 1. Try local DB first
-    let series_id_for_fallback: Option<String>;
-    {
+    let series_id_for_fallback: Option<String> = {
         let db = state
             .db
             .read_conn()
             .map_err(|e| JfgoatError::Internal(e.to_string()))?;
 
-        let sql = format!(
-            "SELECT {} FROM media_items WHERE season_id = ?1 AND type = 'Episode' AND server_id = ?2 AND user_id = ?3 ORDER BY index_number ASC",
-            SELECT_COLUMNS
-        );
-        let local_items_result: Result<Vec<MediaItem>, rusqlite::Error> = (|| {
-            let mut stmt = db.prepare_cached(&sql)?;
-            let rows = stmt.query_map(
-                rusqlite::params![&season_id, scope_server_id, scope_user_id],
-                row_to_media_item,
-            )?;
-
-            let mut items = Vec::new();
-            for row in rows {
-                items.push(row?);
-            }
-            Ok(items)
-        })();
-
-        match local_items_result {
+        match get_local_episodes(&db, &season_id, &scope_server_id, &scope_user_id) {
             Ok(items) => {
                 if !items.is_empty() {
                     return Ok(items);
                 }
             }
-            Err(e) if is_db_lock_contention(&e) => {
+            Err(ref e) if is_db_lock_contention(e) => {
                 println!(
                     "[detail] Local season episode query hit SQLite contention; falling back to API: {}",
                     e
@@ -636,14 +402,9 @@ pub async fn get_season_episodes(
 
         // For API fallback we need the series_id; try to get it from the season record.
         // During sync writes we tolerate transient lock contention and continue with API fallback.
-        series_id_for_fallback = match db.query_row(
-            "SELECT series_id FROM media_items WHERE id = ?1 AND server_id = ?2 AND user_id = ?3",
-            rusqlite::params![&season_id, scope_server_id, scope_user_id],
-            |row| row.get::<_, Option<String>>(0),
-        ) {
+        match get_series_id_for_season(&db, &season_id, &scope_server_id, &scope_user_id) {
             Ok(value) => value,
-            Err(rusqlite::Error::QueryReturnedNoRows) => None,
-            Err(e) if is_db_lock_contention(&e) => {
+            Err(ref e) if is_db_lock_contention(e) => {
                 println!(
                     "[detail] Local season->series lookup hit SQLite contention; falling back to API: {}",
                     e
@@ -651,8 +412,8 @@ pub async fn get_season_episodes(
                 None
             }
             Err(e) => return Err(e.into()),
-        };
-    }
+        }
+    };
 
     // 2. Fallback: fetch from Jellyfin API
     //    If we don't have the series_id from the local DB (season not synced),
@@ -844,8 +605,6 @@ pub async fn get_similar_items(
 
 // ── Media streams and external URLs for detail pages ────────────────────
 
-
-
 /// Fetch media stream info (video quality, audio tracks, subtitles) for a media item.
 #[tauri::command]
 pub async fn get_media_streams(
@@ -853,117 +612,111 @@ pub async fn get_media_streams(
     id: String,
 ) -> Result<MediaStreamInfo, JfgoatError> {
     if let Ok(db) = state.db.read_conn() {
-        let cached_info: Option<(String, Option<String>, String)> = db.query_row(
-            "SELECT media_streams_json, subtitle_tracks, status FROM offline_downloads WHERE id = ?1",
-            rusqlite::params![id],
-            |row| Ok((row.get::<_, Option<String>>(0)?.unwrap_or_default(), row.get(1)?, row.get(2)?)),
-        ).ok();
-
-        if let Some((json_str, subtitle_tracks_json, status)) = cached_info {
-            if !json_str.is_empty() {
-                if let Ok(mut streams) = serde_json::from_str::<MediaStreamInfo>(&json_str) {
-                    if status == "Completed" {
-                        streams.video_label = Some("Offline".to_string());
-                        let downloaded_indices: Vec<i64> = subtitle_tracks_json
-                            .and_then(|s| serde_json::from_str(&s).ok())
-                            .unwrap_or_default();
-                        streams.subtitle.retain(|track| {
-                            !track.is_external || downloaded_indices.contains(&track.index)
-                        });
+        let cached = get_offline_media_stream_cache(&db, &id).ok();
+        if let Some((streams_json_opt, subtitle_tracks_json, status_opt, local_path_opt)) = cached {
+            if let Some(status) = status_opt {
+                if let Some(streams_json) = streams_json_opt {
+                    if !streams_json.is_empty() {
+                        if let Ok(mut streams) = serde_json::from_str::<MediaStreamInfo>(&streams_json) {
+                            if status == "Completed" {
+                                streams.video_label = Some("Offline".to_string());
+                                let downloaded_indices: Vec<i64> = subtitle_tracks_json
+                                    .and_then(|s| serde_json::from_str(&s).ok())
+                                    .unwrap_or_default();
+                                streams.subtitle.retain(|track| {
+                                    !track.is_external || downloaded_indices.contains(&track.index)
+                                });
+                            }
+                            return Ok(streams);
+                        }
                     }
-                    return Ok(streams);
                 }
-            }
-        }
 
-        // Fallback: check if completed download exists and construct track list from disk
-        let local_path: Option<String> = db.query_row(
-            "SELECT local_path FROM offline_downloads WHERE id = ?1 AND status = 'Completed'",
-            rusqlite::params![id],
-            |row| row.get(0),
-        ).ok();
+                if status == "Completed" {
+                    if let Some(path_str) = local_path_opt {
+                        let audio = vec![StreamOption {
+                            index: 0,
+                            codec: "AAC".to_string(),
+                            display_title: "Default Audio".to_string(),
+                            language: Some("eng".to_string()),
+                            is_default: true,
+                            delivery_method: None,
+                            is_external: false,
+                            height: None,
+                            width: None,
+                            bit_rate: None,
+                            channels: Some(2),
+                            channel_layout: Some("stereo".to_string()),
+                            video_range: None,
+                            video_range_type: None,
+                        }];
 
-        if let Some(path_str) = local_path {
-            let audio = vec![StreamOption {
-                index: 0,
-                codec: "AAC".to_string(),
-                display_title: "Default Audio".to_string(),
-                language: Some("eng".to_string()),
-                is_default: true,
-                delivery_method: None,
-                is_external: false,
-                height: None,
-                width: None,
-                bit_rate: None,
-                channels: Some(2),
-                channel_layout: Some("stereo".to_string()),
-                video_range: None,
-                video_range_type: None,
-            }];
+                        let mut subtitle = Vec::new();
+                        let path = std::path::PathBuf::from(&path_str);
+                        if let Some(parent) = path.parent() {
+                            if let Ok(entries) = std::fs::read_dir(parent) {
+                                for entry in entries.filter_map(Result::ok) {
+                                    let p = entry.path();
+                                    if p.is_file() {
+                                        if let Some(fname) = p.file_name().and_then(|s| s.to_str()) {
+                                            if fname.starts_with(&id) && fname != path.file_name().and_then(|s| s.to_str()).unwrap_or("") {
+                                                let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+                                                if ext == "srt" || ext == "vtt" || ext == "ass" || ext == "sub" {
+                                                    let parts: Vec<&str> = fname.split('.').collect();
+                                                    let mut index = subtitle.len() as i64 + 1;
+                                                    let mut lang_code = "und".to_string();
 
-            let mut subtitle = Vec::new();
-            let path = std::path::PathBuf::from(&path_str);
-            if let Some(parent) = path.parent() {
-                if let Ok(entries) = std::fs::read_dir(parent) {
-                    for entry in entries.filter_map(Result::ok) {
-                        let p = entry.path();
-                        if p.is_file() {
-                            if let Some(fname) = p.file_name().and_then(|s| s.to_str()) {
-                                if fname.starts_with(&id) && fname != path.file_name().and_then(|s| s.to_str()).unwrap_or("") {
-                                    let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
-                                    if ext == "srt" || ext == "vtt" || ext == "ass" || ext == "sub" {
-                                        let parts: Vec<&str> = fname.split('.').collect();
-                                        let mut index = subtitle.len() as i64 + 1;
-                                        let mut lang_code = "und".to_string();
+                                                    if parts.len() >= 3 {
+                                                        if let Ok(idx) = parts[1].parse::<i64>() {
+                                                            index = idx;
+                                                        }
+                                                        if parts.len() >= 4 {
+                                                            lang_code = parts[2].to_string();
+                                                        }
+                                                    }
 
-                                        if parts.len() >= 3 {
-                                            if let Ok(idx) = parts[1].parse::<i64>() {
-                                                index = idx;
-                                            }
-                                            if parts.len() >= 4 {
-                                                lang_code = parts[2].to_string();
+                                                    let friendly_lang = get_friendly_language_name(&lang_code);
+                                                    let display_title = if lang_code == "und" || lang_code.is_empty() {
+                                                        format!("Subtitle #{}", index)
+                                                    } else {
+                                                        format!("{} (External)", friendly_lang)
+                                                    };
+
+                                                    subtitle.push(StreamOption {
+                                                        index,
+                                                        codec: ext.to_uppercase(),
+                                                        display_title,
+                                                        language: Some(lang_code),
+                                                        is_default: false,
+                                                        delivery_method: None,
+                                                        is_external: true,
+                                                        height: None,
+                                                        width: None,
+                                                        bit_rate: None,
+                                                        channels: None,
+                                                        channel_layout: None,
+                                                        video_range: None,
+                                                        video_range_type: None,
+                                                    });
+                                                }
                                             }
                                         }
-
-                                        let friendly_lang = get_friendly_language_name(&lang_code);
-                                        let display_title = if lang_code == "und" || lang_code.is_empty() {
-                                            format!("Subtitle #{}", index)
-                                        } else {
-                                            format!("{} (External)", friendly_lang)
-                                        };
-
-                                        subtitle.push(StreamOption {
-                                            index,
-                                            codec: ext.to_uppercase(),
-                                            display_title,
-                                            language: Some(lang_code),
-                                            is_default: false,
-                                            delivery_method: None,
-                                            is_external: true,
-                                            height: None,
-                                            width: None,
-                                            bit_rate: None,
-                                            channels: None,
-                                            channel_layout: None,
-                                            video_range: None,
-                                            video_range_type: None,
-                                        });
                                     }
                                 }
                             }
                         }
+
+                        subtitle.sort_by_key(|s| s.index);
+
+                        return Ok(MediaStreamInfo {
+                            video: vec![],
+                            audio,
+                            subtitle,
+                            video_label: Some("Offline".to_string()),
+                        });
                     }
                 }
             }
-
-            subtitle.sort_by_key(|s| s.index);
-
-            return Ok(MediaStreamInfo {
-                video: vec![],
-                audio,
-                subtitle,
-                video_label: Some("Offline".to_string()),
-            });
         }
     }
 
@@ -1168,62 +921,6 @@ pub async fn toggle_favorite(
     Ok(new_favorite)
 }
 
-pub fn apply_user_data_refresh_batch(
-    state: &AppState,
-    server_id: &str,
-    user_id: &str,
-    items: &[media_api::JellyfinItem],
-) -> Result<u32, JfgoatError> {
-    if items.is_empty() {
-        return Ok(0);
-    }
-
-    let db = state
-        .db
-        .write_conn()
-        .map_err(|e| JfgoatError::Internal(e.to_string()))?;
-    let tx = db.unchecked_transaction()?;
-    let mut updated = 0u32;
-
-    {
-        let mut stmt = tx.prepare_cached(
-            "UPDATE media_items
-             SET played = ?1,
-                 play_count = ?2,
-                 playback_ticks = ?3,
-                 is_favorite = ?4
-             WHERE id = ?5 AND server_id = ?6 AND user_id = ?7",
-        )?;
-
-        for item in items {
-            let user_data = item.user_data.as_ref();
-            let played = user_data.and_then(|d| d.played).unwrap_or(false) as i32;
-            let play_count = user_data.and_then(|d| d.play_count).unwrap_or(0);
-            let playback_ticks = user_data
-                .and_then(|d| d.playback_position_ticks)
-                .unwrap_or(0)
-                .max(0);
-            let is_favorite = user_data
-                .and_then(|d| d.is_favorite)
-                .unwrap_or(false) as i32;
-
-            let rows = stmt.execute(rusqlite::params![
-                played,
-                play_count,
-                playback_ticks,
-                is_favorite,
-                item.id,
-                server_id,
-                user_id,
-            ])?;
-            updated += rows as u32;
-        }
-    }
-
-    tx.commit()?;
-    Ok(updated)
-}
-
 /// Report playback lifecycle events to Jellyfin and keep local playback flags in sync.
 pub async fn report_playback_lifecycle_internal(
     state: &AppState,
@@ -1278,15 +975,9 @@ pub async fn report_playback_lifecycle_internal(
             .map_err(|e| JfgoatError::Internal(e.to_string()))?;
 
         if event == PlaybackLifecycleEvent::Stopped && near_end {
-            db.execute(
-                "UPDATE media_items SET played = 1, playback_ticks = 0 WHERE id = ?1 AND server_id = ?2 AND user_id = ?3",
-                rusqlite::params![item_id, server_id, user_id],
-            )?;
+            update_playback_ticks(&db, item_id, &server_id, &user_id, 0, true)?;
         } else {
-            db.execute(
-                "UPDATE media_items SET played = 0, playback_ticks = ?1 WHERE id = ?2 AND server_id = ?3 AND user_id = ?4",
-                rusqlite::params![safe_position, item_id, server_id, user_id],
-            )?;
+            update_playback_ticks(&db, item_id, &server_id, &user_id, safe_position, false)?;
         }
     }
 
@@ -1401,5 +1092,3 @@ fn get_friendly_language_name(code: &str) -> String {
         }
     }
 }
-
-

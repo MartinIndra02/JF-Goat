@@ -381,6 +381,410 @@ pub fn clear_all_checkpoints(
     Ok(())
 }
 
+pub const SELECT_COLUMNS: &str = "id, name, type, parent_id, series_id, series_name,
+     season_id, season_name, index_number, production_year,
+     overview, image_tag, backdrop_tag, date_created, date_updated,
+     community_rating, official_rating, genres, run_time_ticks,
+     played, play_count, playback_ticks, is_favorite, server_id, user_id";
+
+pub fn row_to_media_item(row: &rusqlite::Row) -> rusqlite::Result<MediaItem> {
+    Ok(MediaItem {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        item_type: row.get(2)?,
+        parent_id: row.get(3)?,
+        series_id: row.get(4)?,
+        series_name: row.get(5)?,
+        season_id: row.get(6)?,
+        season_name: row.get(7)?,
+        index_number: row.get(8)?,
+        production_year: row.get(9)?,
+        overview: row.get(10)?,
+        image_tag: row.get(11)?,
+        backdrop_tag: row.get(12)?,
+        date_created: row.get(13)?,
+        date_updated: row.get(14)?,
+        community_rating: row.get(15)?,
+        official_rating: row.get(16)?,
+        genres: row.get(17)?,
+        run_time_ticks: row.get(18)?,
+        played: row.get::<_, i32>(19)? != 0,
+        play_count: row.get(20)?,
+        playback_ticks: row.get(21)?,
+        is_favorite: row.get::<_, i32>(22)? != 0,
+        server_id: row.get(23)?,
+        user_id: row.get(24)?,
+    })
+}
+
+pub fn is_db_lock_contention(err: &rusqlite::Error) -> bool {
+    matches!(
+        err,
+        rusqlite::Error::SqliteFailure(inner, _)
+            if matches!(
+                inner.code,
+                rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked
+            )
+    )
+}
+
+pub fn query_local_library_items_by_parent(
+    conn: &Connection,
+    parent_id: &str,
+    server_id: &str,
+    user_id: &str,
+    start_index: u32,
+    limit: u32,
+) -> Result<ApiPaginatedResult<MediaItem>, JfgoatError> {
+    let total_count: u32 = conn.query_row(
+        "SELECT COUNT(*) FROM media_items WHERE parent_id = ?1 AND server_id = ?2 AND user_id = ?3",
+        rusqlite::params![parent_id, server_id, user_id],
+        |row| row.get(0),
+    )?;
+
+    let sql = format!(
+        "SELECT {} FROM media_items
+         WHERE parent_id = ?1 AND server_id = ?2 AND user_id = ?3
+         ORDER BY COALESCE(date_updated, date_created) DESC, name ASC
+         LIMIT ?4 OFFSET ?5",
+        SELECT_COLUMNS
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(
+        rusqlite::params![
+            parent_id,
+            server_id,
+            user_id,
+            limit as i64,
+            start_index as i64
+        ],
+        row_to_media_item,
+    )?;
+
+    let mut items = Vec::new();
+    for row in rows {
+        items.push(row?);
+    }
+
+    Ok(to_paginated_result(
+        items,
+        PaginationScope { start_index, limit },
+        Some(total_count),
+    ))
+}
+
+pub fn query_local_library_items_by_server_type(
+    conn: &Connection,
+    server_id: &str,
+    user_id: &str,
+    start_index: u32,
+    limit: u32,
+) -> Result<ApiPaginatedResult<MediaItem>, JfgoatError> {
+    let total_count: u32 = conn.query_row(
+        "SELECT COUNT(*) FROM media_items
+         WHERE server_id = ?1
+           AND user_id = ?2
+           AND type IN ('Movie', 'Series', 'Season')",
+         rusqlite::params![server_id, user_id],
+         |row| row.get(0),
+    )?;
+
+    let sql = format!(
+        "SELECT {} FROM media_items
+         WHERE server_id = ?1
+           AND user_id = ?2
+           AND type IN ('Movie', 'Series', 'Season')
+         ORDER BY COALESCE(date_updated, date_created) DESC, name ASC
+         LIMIT ?3 OFFSET ?4",
+        SELECT_COLUMNS
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(
+        rusqlite::params![server_id, user_id, limit as i64, start_index as i64],
+        row_to_media_item,
+    )?;
+
+    let mut items = Vec::new();
+    for row in rows {
+        items.push(row?);
+    }
+
+    Ok(to_paginated_result(
+        items,
+        PaginationScope { start_index, limit },
+        Some(total_count),
+    ))
+}
+
+pub fn get_recent_movies_db(
+    conn: &Connection,
+    server_id: &str,
+    user_id: &str,
+    limit: u32,
+) -> Result<Vec<MediaItem>, JfgoatError> {
+    let sql = format!(
+        "SELECT {} FROM media_items WHERE type = 'Movie' AND server_id = ?1 AND user_id = ?2 ORDER BY date_created DESC LIMIT ?3",
+        SELECT_COLUMNS
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(rusqlite::params![server_id, user_id, limit], row_to_media_item)?;
+
+    let mut items = Vec::new();
+    for row in rows {
+        items.push(row?);
+    }
+    Ok(items)
+}
+
+pub fn get_recent_series_db(
+    conn: &Connection,
+    server_id: &str,
+    user_id: &str,
+    limit: u32,
+) -> Result<Vec<MediaItem>, JfgoatError> {
+    let sql = format!(
+        "SELECT {} FROM media_items WHERE type = 'Series' AND server_id = ?1 AND user_id = ?2 ORDER BY date_created DESC LIMIT ?3",
+        SELECT_COLUMNS
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(rusqlite::params![server_id, user_id, limit], row_to_media_item)?;
+
+    let mut items = Vec::new();
+    for row in rows {
+        items.push(row?);
+    }
+    Ok(items)
+}
+
+pub fn get_continue_watching_db(
+    conn: &Connection,
+    server_id: &str,
+    user_id: &str,
+    limit: u32,
+) -> Result<Vec<MediaItem>, JfgoatError> {
+    let sql = format!(
+        "SELECT {} FROM media_items
+         WHERE playback_ticks > 0 AND played = 0 AND server_id = ?1 AND user_id = ?2
+         ORDER BY date_updated DESC
+         LIMIT ?3",
+        SELECT_COLUMNS
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(rusqlite::params![server_id, user_id, limit], row_to_media_item)?;
+
+    let mut items = Vec::new();
+    for row in rows {
+        items.push(row?);
+    }
+    Ok(items)
+}
+
+pub fn get_latest_media_db(
+    conn: &Connection,
+    server_id: &str,
+    user_id: &str,
+    limit: u32,
+) -> Result<Vec<MediaItem>, JfgoatError> {
+    let sql = format!(
+        "SELECT {} FROM media_items
+         WHERE backdrop_tag IS NOT NULL AND type IN ('Movie', 'Series') AND server_id = ?1 AND user_id = ?2
+         ORDER BY date_created DESC
+         LIMIT ?3",
+        SELECT_COLUMNS
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(rusqlite::params![server_id, user_id, limit], row_to_media_item)?;
+
+    let mut items = Vec::new();
+    for row in rows {
+        items.push(row?);
+    }
+    Ok(items)
+}
+
+pub fn get_local_item_by_id(
+    conn: &Connection,
+    id: &str,
+    server_id: &str,
+    user_id: &str,
+) -> Result<Option<MediaItem>, JfgoatError> {
+    let sql = format!(
+        "SELECT {} FROM media_items WHERE id = ?1 AND server_id = ?2 AND user_id = ?3",
+        SELECT_COLUMNS
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let result = stmt.query_row(
+        rusqlite::params![id, server_id, user_id],
+        row_to_media_item,
+    );
+
+    match result {
+        Ok(item) => Ok(Some(item)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
+pub fn get_local_seasons(
+    conn: &Connection,
+    series_id: &str,
+    server_id: &str,
+    user_id: &str,
+) -> Result<Vec<MediaItem>, JfgoatError> {
+    let sql = format!(
+        "SELECT {} FROM media_items WHERE series_id = ?1 AND type = 'Season' AND server_id = ?2 AND user_id = ?3 ORDER BY index_number ASC",
+        SELECT_COLUMNS
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(
+        rusqlite::params![series_id, server_id, user_id],
+        row_to_media_item,
+    )?;
+
+    let mut items = Vec::new();
+    for row in rows {
+        items.push(row?);
+    }
+    Ok(items)
+}
+
+pub fn get_local_episodes(
+    conn: &Connection,
+    season_id: &str,
+    server_id: &str,
+    user_id: &str,
+) -> Result<Vec<MediaItem>, rusqlite::Error> {
+    let sql = format!(
+        "SELECT {} FROM media_items WHERE season_id = ?1 AND type = 'Episode' AND server_id = ?2 AND user_id = ?3 ORDER BY index_number ASC",
+        SELECT_COLUMNS
+    );
+    let mut stmt = conn.prepare_cached(&sql)?;
+    let rows = stmt.query_map(
+        rusqlite::params![season_id, server_id, user_id],
+        row_to_media_item,
+    )?;
+
+    let mut items = Vec::new();
+    for row in rows {
+        items.push(row?);
+    }
+    Ok(items)
+}
+
+pub fn get_series_id_for_season(
+    conn: &Connection,
+    season_id: &str,
+    server_id: &str,
+    user_id: &str,
+) -> Result<Option<String>, rusqlite::Error> {
+    let result = conn.query_row(
+        "SELECT series_id FROM media_items WHERE id = ?1 AND server_id = ?2 AND user_id = ?3",
+        rusqlite::params![season_id, server_id, user_id],
+        |row| row.get::<_, Option<String>>(0),
+    );
+
+    match result {
+        Ok(value) => Ok(value),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+pub fn get_offline_media_stream_cache(
+    conn: &Connection,
+    id: &str,
+) -> Result<(Option<String>, Option<String>, Option<String>, Option<String>), JfgoatError> {
+    let result = conn.query_row(
+        "SELECT media_streams_json, subtitle_tracks, status, local_path FROM offline_downloads WHERE id = ?1",
+        rusqlite::params![id],
+        |row| Ok((
+            row.get::<_, Option<String>>(0)?,
+            row.get::<_, Option<String>>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, Option<String>>(3)?
+        )),
+    );
+
+    match result {
+        Ok((streams_json, subtitle_tracks, status, local_path)) => {
+            Ok((streams_json, subtitle_tracks, Some(status), local_path))
+        }
+        Err(rusqlite::Error::QueryReturnedNoRows) => {
+            Ok((None, None, None, None))
+        }
+        Err(e) => Err(e.into())
+    }
+}
+
+pub fn update_playback_ticks(
+    conn: &Connection,
+    item_id: &str,
+    server_id: &str,
+    user_id: &str,
+    playback_ticks: i64,
+    played: bool,
+) -> Result<(), JfgoatError> {
+    conn.execute(
+        "UPDATE media_items SET played = ?1, playback_ticks = ?2 WHERE id = ?3 AND server_id = ?4 AND user_id = ?5",
+        rusqlite::params![played as i32, playback_ticks, item_id, server_id, user_id],
+    )?;
+    Ok(())
+}
+
+pub fn apply_user_data_refresh_batch(
+    conn: &Connection,
+    server_id: &str,
+    user_id: &str,
+    items: &[crate::api::media::JellyfinItem],
+) -> Result<u32, JfgoatError> {
+    if items.is_empty() {
+        return Ok(0);
+    }
+
+    let tx = conn.unchecked_transaction()?;
+    let mut updated = 0u32;
+
+    {
+        let mut stmt = tx.prepare_cached(
+            "UPDATE media_items
+             SET played = ?1,
+                 play_count = ?2,
+                 playback_ticks = ?3,
+                 is_favorite = ?4
+             WHERE id = ?5 AND server_id = ?6 AND user_id = ?7",
+        )?;
+
+        for item in items {
+            let user_data = item.user_data.as_ref();
+            let played = user_data.and_then(|d| d.played).unwrap_or(false) as i32;
+            let play_count = user_data.and_then(|d| d.play_count).unwrap_or(0);
+            let playback_ticks = user_data
+                .and_then(|d| d.playback_position_ticks)
+                .unwrap_or(0)
+                .max(0);
+            let is_favorite = user_data
+                .and_then(|d| d.is_favorite)
+                .unwrap_or(false) as i32;
+
+            let rows = stmt.execute(rusqlite::params![
+                played,
+                play_count,
+                playback_ticks,
+                is_favorite,
+                item.id,
+                server_id,
+                user_id,
+            ])?;
+            updated += rows as u32;
+        }
+    }
+
+    tx.commit()?;
+    Ok(updated)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{

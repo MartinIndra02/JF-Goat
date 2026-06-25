@@ -5,7 +5,7 @@ use tauri::{AppHandle, Manager};
 use crate::state::{AppState, SyncStatus};
 use crate::api::client::JellyfinClient;
 use crate::api::media;
-use crate::commands::media_commands::apply_user_data_refresh_batch;
+
 
 const INCREMENTAL_REFRESH_INTERVAL_SECS: u64 = 240;
 const INCREMENTAL_REFRESH_BATCH_SIZE: u32 = 1000;
@@ -100,7 +100,8 @@ async fn refresh_user_data_once(state: &AppState) -> Result<u32, String> {
             break;
         }
 
-        let updated = apply_user_data_refresh_batch(state, &server_id, &user_id, &response.items)
+        let db = state.db.write_conn().map_err(|e| e.to_string())?;
+        let updated = crate::db::media::apply_user_data_refresh_batch(&db, &server_id, &user_id, &response.items)
             .map_err(|e| e.to_string())?;
         total_updated += updated;
 
