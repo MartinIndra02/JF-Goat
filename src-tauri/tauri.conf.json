@@ -1,12 +1,13 @@
 {
   "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-config-schema/schema.json",
   "productName": "JF Goat",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "identifier": "com.jfgoat.client",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "npm run build",
+    "beforeBundleCommand": "node ./scripts/before-bundle.cjs",
     "frontendDist": "../dist"
   },
   "app": {
@@ -28,6 +29,9 @@
     "active": true,
     "targets": "all",
     "createUpdaterArtifacts": true,
+    "macOS": {
+      "entitlements": "./capabilities/entitlements.plist"
+    },
     "windows": {
       "digestAlgorithm": "sha256",
       "timestampUrl": "http://timestamp.digicert.com",
