@@ -8,7 +8,7 @@ if (!target) {
   throw new Error("Missing #app root element");
 }
 
-let app: ReturnType<typeof mount>;
+let app: ReturnType<typeof mount> | undefined = undefined;
 
 try {
   app = mount(App, {

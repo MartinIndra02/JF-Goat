@@ -6,7 +6,6 @@
     getSyncErrors,
   } from "../../lib/stores/sync.svelte";
   import {
-    isOnline,
     isDegraded,
     getLastNetworkError,
   } from "../../lib/stores/connectivity.svelte";
@@ -17,7 +16,6 @@
   const progress = $derived(getSyncProgress());
   const fatalError = $derived(getFatalError());
   const syncErrors = $derived(getSyncErrors());
-  const online = $derived(isOnline());
   const degraded = $derived(isDegraded());
   const lastNetworkError = $derived(getLastNetworkError());
 

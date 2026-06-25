@@ -19,10 +19,6 @@
   import {
     getDownloadStatus,
     startDownload,
-    pauseDownload,
-    resumeDownload,
-    cancelDownload,
-    deleteDownload,
   } from "../../lib/api";
   import { listen } from "@tauri-apps/api/event";
   import {
@@ -55,7 +51,6 @@
   let contextMenuOpen = $state(false);
   let audioDropdownOpen = $state(false);
   let subtitleDropdownOpen = $state(false);
-  let qualityDropdownOpen = $state(false);
   let selectedAudioIndex = $state<number | null>(null);
   let selectedSubtitleIndex = $state<number | null>(null);
   let selectedQualityKey = $state("original");
@@ -152,7 +147,6 @@
     contextMenuOpen = false;
     audioDropdownOpen = false;
     subtitleDropdownOpen = false;
-    qualityDropdownOpen = false;
     selectedAudioIndex = null;
     selectedSubtitleIndex = null;
     selectedQualityKey = "original";
@@ -226,7 +220,7 @@
     return match ?? qualityOptions[0];
   });
 
-  const selectedQualityLabel = $derived(() => selectedQuality().label);
+
 
   $effect(() => {
     const options = qualityOptions;
@@ -258,11 +252,6 @@
   function navigateToItem(id: string) { push(`/item?id=${id}`); }
   function goBack() { window.history.length > 1 ? window.history.back() : push("/home"); }
   function closeContextMenu() { contextMenuOpen = false; }
-  function closeDropdowns() {
-    audioDropdownOpen = false;
-    subtitleDropdownOpen = false;
-    qualityDropdownOpen = false;
-  }
 </script>
 
 <main class="app-stage min-h-screen text-[var(--text-primary)]">
