@@ -78,7 +78,12 @@ npm run release:tauri
 
 ## 📝 Changelog
 
-### v1.2.1 (Current)
+### v1.2.2 (Current)
+This release includes a critical bugfix:
+
+* **Updater Endpoint Hotfix**: Fixed the application updater endpoint URL by pointing it to the correct `jfFast` repository name instead of the old `JF-Goat` name, resolving the update check 404 error.
+
+### v1.2.1
 This release includes download options and fixes:
 
 * **Download Quality Selection**: Added support for choosing download qualities (Original, 720p, 480p, 360p) with on-the-fly transcoding parameters to save bandwidth and local disk space.
