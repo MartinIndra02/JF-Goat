@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, tick, untrack } from "svelte";
-  import { listen } from "@tauri-apps/api/event";
+
   import { location, push, querystring, replace } from "svelte-spa-router";
   import {
     getLatestItems,
@@ -11,14 +11,7 @@
     getUserViews,
     loadHomepageCache,
     saveHomepageCache,
-    searchItems,
     startSync,
-    getOfflineDownloads,
-    deleteDownload,
-    mpvPlay,
-    pauseDownload,
-    resumeDownload,
-    cancelDownload,
   } from "../lib/api";
   import {
     filterSuppressedNextUp,
@@ -29,7 +22,7 @@
     isPreferencesLoaded,
     loadPreferences,
   } from "../lib/stores/preferences.svelte";
-  import { showPlayer } from "../lib/stores/player.svelte";
+
   import {
     getLastNetworkError,
     isDegraded,
@@ -44,23 +37,20 @@
     markSyncTriggered,
   } from "../lib/stores/sync.svelte";
   import SettingsView from "./home/SettingsView.svelte";
+  import OfflineView from "./home/OfflineView.svelte";
+  import SearchView from "./home/SearchView.svelte";
   import SyncIndicator from "../components/layout/SyncIndicator.svelte";
   import MediaRow from "../components/media/MediaRow.svelte";
   import HeroCarousel from "../components/media/HeroCarousel.svelte";
   import PosterCard from "../components/media/PosterCard.svelte";
-  import Button from "../components/ui/Button.svelte";
+
   import TextInput from "../components/ui/TextInput.svelte";
-  import type { HomepageCache, MediaItem, UserLibrary, OfflineDownload } from "../lib/types";
+  import type { HomepageCache, MediaItem, UserLibrary } from "../lib/types";
 
   const session = getSession();
 
   let searchQuery = $state("");
-  let searchResults = $state<MediaItem[]>([]);
-  let searchSource = $state("");
-  let searching = $state(false);
   let searchTimer: ReturnType<typeof setTimeout> | null = null;
-  let lastSearchTerm = "";
-  let searchRequestId = 0;
   let searchInput = $state<HTMLInputElement | null>(null);
 
   let resumeItems = $state<MediaItem[]>([]);
@@ -101,20 +91,7 @@
   const isSearchRoute = $derived(currentPath === "/search");
   const isSettingsRoute = $derived(currentPath === "/settings");
 
-  const movieResults = $derived(searchResults.filter((item) => item.type === "Movie"));
-  const showResults = $derived(
-    searchResults.filter((item) => item.type === "Series" || item.type === "Season"),
-  );
-  const episodeResults = $derived(searchResults.filter((item) => item.type === "Episode"));
-  const otherResults = $derived(
-    searchResults.filter(
-      (item) =>
-        item.type !== "Movie"
-        && item.type !== "Series"
-        && item.type !== "Season"
-        && item.type !== "Episode",
-    ),
-  );
+
 
   const selectedLibraryId = $derived(routeQuery.get("view") ?? "");
   const carouselItems = $derived(
@@ -291,18 +268,6 @@
 
     if (untrack(() => searchQuery) !== routeSearch) {
       searchQuery = routeSearch;
-    }
-
-    if (!routeSearch) {
-      lastSearchTerm = "";
-      searching = false;
-      searchResults = [];
-      searchSource = "";
-      return;
-    }
-
-    if (routeSearch !== lastSearchTerm) {
-      void runSearch(routeSearch);
     }
   });
 
@@ -534,30 +499,7 @@
     return merged;
   }
 
-  async function runSearch(query: string) {
-    const trimmed = query.trim();
-    if (!trimmed) return;
 
-    const requestId = ++searchRequestId;
-    searching = true;
-    lastSearchTerm = trimmed;
-
-    try {
-      const result = await searchItems(trimmed);
-      if (requestId !== searchRequestId) return;
-      searchResults = result.items;
-      searchSource = result.source;
-    } catch (error) {
-      if (requestId !== searchRequestId) return;
-      pushErrorToast("api", error, "Search failed", "search-failed");
-      searchResults = [];
-      searchSource = "";
-    } finally {
-      if (requestId === searchRequestId) {
-        searching = false;
-      }
-    }
-  }
 
   function triggerSearchImmediately() {
     if (searchTimer) {
@@ -570,9 +512,6 @@
       if (isSearchRoute) {
         replace("/search");
       }
-      searchResults = [];
-      searchSource = "";
-      lastSearchTerm = "";
       return;
     }
 
@@ -765,100 +704,7 @@
     }
   }
 
-  let offlineDownloads = $state<OfflineDownload[]>([]);
-  let loadingOffline = $state(false);
 
-  async function loadOfflineDownloads() {
-    loadingOffline = true;
-    try {
-      offlineDownloads = await getOfflineDownloads();
-    } catch (error) {
-      console.error("Failed to load offline downloads:", error);
-    } finally {
-      loadingOffline = false;
-    }
-  }
-
-  $effect(() => {
-    if (isOfflineRoute) {
-      void loadOfflineDownloads();
-    }
-  });
-
-  onMount(() => {
-    let unlistenProgress: (() => void) | null = null;
-
-    const setupListener = async () => {
-      unlistenProgress = await listen<OfflineDownload>("download-progress", (event) => {
-        const payload = event.payload;
-        
-        const index = offlineDownloads.findIndex(d => d.id === payload.id);
-        if (index !== -1) {
-          if (payload.status === "Deleted" || payload.status === "Cancelled") {
-            offlineDownloads = offlineDownloads.filter(d => d.id !== payload.id);
-          } else {
-            offlineDownloads[index] = { ...offlineDownloads[index], ...payload };
-            offlineDownloads = [...offlineDownloads];
-          }
-        } else if (payload.status !== "Deleted" && payload.status !== "Cancelled") {
-          offlineDownloads = [payload, ...offlineDownloads];
-        }
-      });
-    };
-
-    void setupListener();
-
-    return () => {
-      if (unlistenProgress) unlistenProgress();
-    };
-  });
-
-  async function playDownloadedItem(download: OfflineDownload) {
-    showPlayer(download.id, download.name);
-    try {
-      await mpvPlay({
-        itemId: download.id,
-        startTicks: 0,
-      });
-    } catch (error) {
-      pushErrorToast("player", error, "Failed to start offline playback", "offline-play-failed");
-    }
-  }
-
-  async function handlePauseDownload(download: OfflineDownload) {
-    try {
-      await pauseDownload(download.id);
-    } catch (error) {
-      pushErrorToast("api", error, "Failed to pause download", "offline-pause-failed");
-    }
-  }
-
-  async function handleResumeDownload(download: OfflineDownload) {
-    try {
-      await resumeDownload(download.id);
-    } catch (error) {
-      pushErrorToast("api", error, "Failed to resume download", "offline-resume-failed");
-    }
-  }
-
-  async function handleCancelDownload(download: OfflineDownload) {
-    try {
-      await cancelDownload(download.id);
-    } catch (error) {
-      pushErrorToast("api", error, "Failed to cancel download", "offline-cancel-failed");
-    }
-  }
-
-  async function handleDeleteDownload(download: OfflineDownload) {
-    if (!confirm(`Are you sure you want to delete "${download.name}" from your offline synced media?`)) {
-      return;
-    }
-    try {
-      await deleteDownload(download.id);
-    } catch (error) {
-      pushErrorToast("api", error, "Failed to delete download", "offline-delete-failed");
-    }
-  }
 </script>
 
 <main class="min-h-screen text-[var(--text-primary)] pb-16">
@@ -960,73 +806,7 @@
   {/if}
 
   {#if isSearchRoute}
-    <section class="px-6 pt-6 pb-10 app-animate-fade-up" aria-label="Search results">
-      <h2 bind:this={activeRouteHeading} tabindex="-1" class="sr-only">Search results</h2>
-      {#if !searchQuery.trim()}
-        <p class="app-muted text-sm">Type in the search field to browse your media.</p>
-      {:else if searching}
-        <p class="app-muted text-sm">Searching...</p>
-      {:else if searchResults.length === 0}
-        <p class="app-muted text-sm">No results found.</p>
-      {:else}
-        <p class="app-faint text-xs mb-4">
-          {searchResults.length} results (from {searchSource === "remote" ? "remote Jellyfin API" : "local SQLite database"})
-        </p>
-        <div class="space-y-8">
-          {#if movieResults.length > 0}
-            <section class="glass-panel rounded-2xl p-4 sm:p-5">
-              <h2 class="text-sm font-semibold text-[var(--text-primary)] mb-3">Movies ({movieResults.length})</h2>
-              <div class="flex flex-wrap gap-3" role="list" aria-label="Movie results">
-                {#each movieResults as item (item.id)}
-                  <div role="listitem">
-                    <PosterCard {item} />
-                  </div>
-                {/each}
-              </div>
-            </section>
-          {/if}
-
-          {#if showResults.length > 0}
-            <section class="glass-panel rounded-2xl p-4 sm:p-5">
-              <h2 class="text-sm font-semibold text-[var(--text-primary)] mb-3">Shows ({showResults.length})</h2>
-              <div class="flex flex-wrap gap-3" role="list" aria-label="Show results">
-                {#each showResults as item (item.id)}
-                  <div role="listitem">
-                    <PosterCard {item} />
-                  </div>
-                {/each}
-              </div>
-            </section>
-          {/if}
-
-          {#if episodeResults.length > 0}
-            <section class="glass-panel rounded-2xl p-4 sm:p-5">
-              <h2 class="text-sm font-semibold text-[var(--text-primary)] mb-3">Episodes ({episodeResults.length})</h2>
-              <div class="flex flex-wrap gap-3" role="list" aria-label="Episode results">
-                {#each episodeResults as item (item.id)}
-                  <div role="listitem">
-                    <PosterCard {item} />
-                  </div>
-                {/each}
-              </div>
-            </section>
-          {/if}
-
-          {#if otherResults.length > 0}
-            <section class="glass-panel rounded-2xl p-4 sm:p-5">
-              <h2 class="text-sm font-semibold text-[var(--text-secondary)] mb-3">Other ({otherResults.length})</h2>
-              <div class="flex flex-wrap gap-3" role="list" aria-label="Other results">
-                {#each otherResults as item (item.id)}
-                  <div role="listitem">
-                    <PosterCard {item} />
-                  </div>
-                {/each}
-              </div>
-            </section>
-          {/if}
-        </div>
-      {/if}
-    </section>
+    <SearchView />
   {:else if isLibraryRoute}
     <section class="px-6 pt-6 pb-10 app-animate-fade-up" aria-label="Library browsing">
       <div class="flex flex-wrap items-center gap-3 mb-4">
@@ -1219,155 +999,7 @@
       {/if}
     </section>
   {:else if isOfflineRoute}
-    <section class="px-6 pt-6 pb-10 max-w-4xl app-animate-fade-up" aria-label="Offline synced media">
-      <div class="flex items-center justify-between gap-3 mb-6">
-        <h2 bind:this={activeRouteHeading} tabindex="-1" class="text-xl font-semibold">Offline Synced Media</h2>
-        <span class="text-xs app-badge px-2.5 py-1">
-          {offlineDownloads.length} {offlineDownloads.length === 1 ? 'item' : 'items'} synced
-        </span>
-      </div>
-
-      {#if loadingOffline && offlineDownloads.length === 0}
-        <div class="flex items-center justify-center h-48">
-          <p class="app-muted text-sm">Loading synced media...</p>
-        </div>
-      {:else if offlineDownloads.length === 0}
-        <div class="glass-panel rounded-2xl p-8 text-center flex flex-col items-center justify-center min-h-[300px]">
-          <svg
-            class="w-16 h-16 text-gray-700 mb-4"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.5"
-            aria-hidden="true"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
-            />
-          </svg>
-          <h3 class="text-base font-semibold text-white mb-1">No Offline Media</h3>
-          <p class="app-muted text-sm max-w-sm mb-4">
-            You haven't downloaded any media yet. Go to any Movie or Episode details page to download it for offline viewing.
-          </p>
-          <Button variant="secondary" onclick={() => navigateTo("/home")}>
-            <span class="text-sm">Browse Home</span>
-          </Button>
-        </div>
-      {:else}
-        <div class="space-y-3">
-          {#each offlineDownloads as download (download.id)}
-            <div class="glass-panel rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-white/20 transition-colors">
-              <div class="flex items-center gap-4 min-w-0">
-                <div class="w-16 h-24 rounded-xl overflow-hidden bg-[rgba(8,13,24,0.84)] shrink-0 border border-white/10 relative">
-                  <img
-                    src={`http://jfimage.localhost/poster/${download.id}?tag=${download.id}`}
-                    alt={download.name}
-                    loading="lazy"
-                    class="w-full h-full object-cover"
-                    onerror={(e) => {
-                      const target = e.target as HTMLImageElement;
-                      target.style.display = "none";
-                    }}
-                  />
-                  <div class="absolute inset-0 flex items-center justify-center text-gray-500 text-[10px] bg-slate-950/20 text-center px-1 pointer-events-none">
-                    {#if download.type === "Episode"}
-                      EP
-                    {:else}
-                      MV
-                    {/if}
-                  </div>
-                </div>
-
-                <div class="min-w-0">
-                  <h3 class="text-sm font-semibold text-white truncate">{download.name}</h3>
-                  <p class="text-xs app-muted mt-1">
-                    {download.type}
-                    {#if download.status === "Completed"}
-                      · Synced successfully
-                    {/if}
-                  </p>
-
-                  {#if download.status === "Downloading"}
-                    <div class="mt-2 flex flex-col gap-1 w-64 max-w-full">
-                      <div class="flex justify-between text-[11px] app-faint">
-                        <span>Downloading ({download.progress.toFixed(0)}%)</span>
-                        {#if download.speed_bytes_per_sec > 0}
-                          <span>{(download.speed_bytes_per_sec / (1024 * 1024)).toFixed(1)} MB/s</span>
-                        {/if}
-                      </div>
-                      <div class="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
-                        <div class="h-full bg-cyan-400 rounded-full transition-all duration-300" style="width: {download.progress}%"></div>
-                      </div>
-                    </div>
-                  {:else if download.status === "Pending"}
-                    <span class="mt-2 inline-flex items-center gap-1.5 text-xs text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
-                      <svg class="w-3 h-3 animate-pulse" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/></svg>
-                      Queued
-                    </span>
-                  {:else if download.status === "Paused"}
-                    <span class="mt-2 inline-flex items-center gap-1.5 text-xs text-gray-300 bg-white/8 px-2 py-0.5 rounded-md">
-                      Paused ({download.progress.toFixed(0)}%)
-                    </span>
-                  {:else if download.status === "Failed"}
-                    <div class="mt-2 text-xs text-red-400 flex flex-col gap-0.5">
-                      <span class="font-semibold">Failed to download</span>
-                      {#if download.error_message}
-                        <span class="app-faint text-[10px] truncate max-w-xs">{download.error_message}</span>
-                      {/if}
-                    </div>
-                  {/if}
-                </div>
-              </div>
-
-              <div class="flex items-center gap-2 self-end sm:self-center shrink-0">
-                {#if download.status === "Completed"}
-                  <Button variant="primary" onclick={() => playDownloadedItem(download)}>
-                    <div class="flex items-center gap-1.5">
-                      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-                      <span class="text-sm font-semibold">Play</span>
-                    </div>
-                  </Button>
-                  <button
-                    onclick={() => handleDeleteDownload(download)}
-                    class="h-10 w-10 grid place-items-center rounded-xl bg-white/5 hover:bg-red-500/15 border border-white/10 hover:border-red-500/30 text-gray-400 hover:text-red-400 transition-all cursor-pointer"
-                    aria-label="Delete download"
-                  >
-                    <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
-                  </button>
-                {:else if download.status === "Downloading"}
-                  <Button variant="secondary" onclick={() => handlePauseDownload(download)}>
-                    <span class="text-xs">Pause</span>
-                  </Button>
-                  <Button variant="secondary" onclick={() => handleCancelDownload(download)}>
-                    <span class="text-xs">Cancel</span>
-                  </Button>
-                {:else if download.status === "Paused"}
-                  <Button variant="secondary" onclick={() => handleResumeDownload(download)}>
-                    <span class="text-xs">Resume</span>
-                  </Button>
-                  <Button variant="secondary" onclick={() => handleCancelDownload(download)}>
-                    <span class="text-xs">Cancel</span>
-                  </Button>
-                {:else if download.status === "Pending"}
-                  <Button variant="secondary" onclick={() => handleCancelDownload(download)}>
-                    <span class="text-xs">Cancel</span>
-                  </Button>
-                {:else if download.status === "Failed"}
-                  <Button variant="secondary" onclick={() => handleResumeDownload(download)}>
-                    <span class="text-xs">Retry</span>
-                  </Button>
-                  <Button variant="secondary" onclick={() => handleCancelDownload(download)}>
-                    <span class="text-xs">Cancel</span>
-                  </Button>
-                {/if}
-              </div>
-            </div>
-          {/each}
-        </div>
-      {/if}
-    </section>
+    <OfflineView />
   {:else if isSettingsRoute}
     <SettingsView onResync={handleSettingsResync} />
   {:else if loading && !hasCachedData}
