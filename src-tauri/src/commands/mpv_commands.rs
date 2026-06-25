@@ -9,7 +9,7 @@ use crate::error::JfgoatError;
 use crate::mpv::{MpvCommand, MpvState};
 use crate::state::AppState;
 
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 use crate::mpv::{hide_mpv_window, show_mpv_window};
 
 fn to_absolute_url(server_url: &str, raw_url: &str) -> String {
@@ -232,13 +232,16 @@ pub async fn mpv_play(
     let safe_ticks = start_ticks.max(0);
     let start_seconds = safe_ticks as f64 / 10_000_000.0;
 
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
     {
-        use tauri::Manager;
         show_mpv_window(mpv.child_hwnd);
-        if let Some(window) = app.get_webview_window("main") {
-            if let Ok(size) = window.inner_size() {
-                crate::mpv::resize_mpv_window(mpv.child_hwnd, size.width, size.height);
+        #[cfg(target_os = "windows")]
+        {
+            use tauri::Manager;
+            if let Some(window) = app.get_webview_window("main") {
+                if let Ok(size) = window.inner_size() {
+                    crate::mpv::resize_mpv_window(mpv.child_hwnd, size.width, size.height);
+                }
             }
         }
     }
@@ -402,7 +405,7 @@ pub fn mpv_add_external_subtitle(
 
 #[tauri::command]
 pub fn mpv_stop(mpv: State<'_, MpvState>) -> Result<(), JfgoatError> {
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
     hide_mpv_window(mpv.child_hwnd);
 
     mpv.cmd_tx

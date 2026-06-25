@@ -145,33 +145,51 @@ pub fn run() {
                 app.set_menu(menu)?;
             }
 
-            // ── MPV Player Setup (Windows) ─────────────────────────────────
-            #[cfg(target_os = "windows")]
+            // ── MPV Player Setup (Windows/macOS) ───────────────────────────
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
             {
                 use raw_window_handle::HasWindowHandle;
                 use raw_window_handle::RawWindowHandle;
-
-                // Set DLL search directory so libmpv2 can find mpv-2.dll
-                if let Ok(resource_dir) = app.path().resource_dir() {
-                    mpv::set_mpv_dll_directory(&resource_dir);
-                    info!(target: "mpv", dll_dir = %resource_dir.display(), "Configured MPV DLL search directory");
-                }
 
                 let window = app
                     .get_webview_window("main")
                     .expect("No 'main' window found");
 
-                let parent_hwnd = match window
-                    .window_handle()
-                    .expect("Failed to get window handle")
-                    .as_raw()
-                {
-                    RawWindowHandle::Win32(h) => h.hwnd.get() as isize,
-                    _ => panic!("Expected Win32 window handle"),
+                #[cfg(target_os = "windows")]
+                let child_hwnd = {
+                    // Set DLL search directory so libmpv2 can find mpv-2.dll
+                    if let Ok(resource_dir) = app.path().resource_dir() {
+                        mpv::set_mpv_dll_directory(&resource_dir);
+                        info!(target: "mpv", dll_dir = %resource_dir.display(), "Configured MPV DLL search directory");
+                    }
+
+                    let parent_hwnd = match window
+                        .window_handle()
+                        .expect("Failed to get window handle")
+                        .as_raw()
+                    {
+                        RawWindowHandle::Win32(h) => h.hwnd.get() as isize,
+                        _ => panic!("Expected Win32 window handle"),
+                    };
+
+                    mpv::create_mpv_child_window(parent_hwnd)
+                        .expect("Failed to create mpv child window")
                 };
 
-                let child_hwnd = mpv::create_mpv_child_window(parent_hwnd)
-                    .expect("Failed to create mpv child window");
+                #[cfg(target_os = "macos")]
+                let child_hwnd = {
+                    let parent_view = match window
+                        .window_handle()
+                        .expect("Failed to get window handle")
+                        .as_raw()
+                    {
+                        RawWindowHandle::AppKit(h) => h.ns_view.get() as isize,
+                        _ => panic!("Expected AppKit window handle"),
+                    };
+
+                    mpv::create_mpv_child_view(parent_view)
+                        .expect("Failed to create mpv child view")
+                };
 
                 let (cmd_tx, cmd_rx) = std::sync::mpsc::channel();
                 let app_handle = app.handle().clone();
@@ -180,17 +198,20 @@ pub fn run() {
 
                 app.manage(mpv::MpvState { cmd_tx, child_hwnd });
 
-                // Resize mpv child window when the main window is resized
-                let mpv_hwnd = child_hwnd;
-                window.on_window_event(move |event| {
-                    if let tauri::WindowEvent::Resized(size) = event {
-                        mpv::resize_mpv_window(mpv_hwnd, size.width, size.height);
-                    }
-                });
+                // Resize mpv child window when the main window is resized (Windows only)
+                #[cfg(target_os = "windows")]
+                {
+                    let mpv_hwnd = child_hwnd;
+                    window.on_window_event(move |event| {
+                        if let tauri::WindowEvent::Resized(size) = event {
+                            mpv::resize_mpv_window(mpv_hwnd, size.width, size.height);
+                        }
+                    });
 
-                // Sync initial window size
-                if let Ok(size) = window.inner_size() {
-                    mpv::resize_mpv_window(child_hwnd, size.width, size.height);
+                    // Sync initial window size
+                    if let Ok(size) = window.inner_size() {
+                        mpv::resize_mpv_window(child_hwnd, size.width, size.height);
+                    }
                 }
             }
 
