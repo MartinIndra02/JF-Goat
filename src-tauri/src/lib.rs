@@ -183,7 +183,7 @@ pub fn run() {
                         .expect("Failed to get window handle")
                         .as_raw()
                     {
-                        RawWindowHandle::AppKit(h) => h.ns_view.get() as isize,
+                        RawWindowHandle::AppKit(h) => h.ns_view.as_ptr() as isize,
                         _ => panic!("Expected AppKit window handle"),
                     };
 
