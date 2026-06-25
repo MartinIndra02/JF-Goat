@@ -71,6 +71,8 @@ jobs:
           workspaces: src-tauri
 
       - name: Run Rust tests
+        env:
+          LIBRARY_PATH: /opt/homebrew/lib:/usr/local/lib
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib
 
   a6-integration-gate:
