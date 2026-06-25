@@ -20,7 +20,18 @@ use state::{AppState, DbPool, SyncStatus};
 pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_updater::Builder::new().build());
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .on_window_event(|_window, event| match event {
+            tauri::WindowEvent::CloseRequested { api, .. } => {
+                #[cfg(target_os = "macos")]
+                {
+                    api.prevent_close();
+                    let _ = _window.hide();
+                }
+                let _ = api;
+            }
+            _ => {}
+        });
 
     image_cache::register_jfimage_protocol(builder)
         .setup(|app| {
@@ -103,6 +114,36 @@ pub fn run() {
             ));
 
             app.manage(app_state);
+
+            // ── macOS Native Menu Setup ─────────────────────────────────────
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::menu::{MenuBuilder, SubmenuBuilder};
+                let app_menu = SubmenuBuilder::new(app, app.package_info().name.clone())
+                    .about(None)
+                    .separator()
+                    .services()
+                    .separator()
+                    .hide()
+                    .hide_others()
+                    .show_all()
+                    .separator()
+                    .quit()
+                    .build()?;
+                let edit_menu = SubmenuBuilder::new(app, "Edit")
+                    .undo()
+                    .redo()
+                    .separator()
+                    .cut()
+                    .copy()
+                    .paste()
+                    .select_all()
+                    .build()?;
+                let menu = MenuBuilder::new(app)
+                    .items(&[&app_menu, &edit_menu])
+                    .build()?;
+                app.set_menu(menu)?;
+            }
 
             // ── MPV Player Setup (Windows) ─────────────────────────────────
             #[cfg(target_os = "windows")]
@@ -215,8 +256,18 @@ pub fn run() {
             commands::select_download_directory,
             commands::restart_app,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|_app_handle, event| match event {
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::Reopen { .. } => {
+                if let Some(window) = _app_handle.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+            _ => {}
+        });
 }
 
 
