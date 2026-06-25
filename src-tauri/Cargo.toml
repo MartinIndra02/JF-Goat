@@ -1,6 +1,6 @@
 [package]
 name = "jfgoat"
-version = "1.1.0"
+version = "1.2.0"
 description = "Ultra-fast Jellyfin client for Windows"
 authors = ["you"]
 edition = "2021"
