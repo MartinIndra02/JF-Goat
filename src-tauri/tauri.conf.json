@@ -64,7 +64,7 @@
       "active": true,
       "dialog": false,
       "endpoints": [
-        "https://github.com/MartinIndra02/jfFast/releases/latest/download/latest.json"
+        "https://github.com/MartinIndra02/JF-Goat/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDYxMTc1QThFRTRCODM5MkYKUldRdk9iamtqbG9YWVYyVlQ5L0ltK1ArTisxcmZycnhqUkwxNlZIQXJuZDJzeTdlcGV4Z0g5NzYK"
     }

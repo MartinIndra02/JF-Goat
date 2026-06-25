@@ -61,6 +61,46 @@ fn keyring_clear_password() -> Result<(), JfgoatError> {
     }
 }
 
+fn db_store_token(state: &AppState, token: &str) -> Result<(), JfgoatError> {
+    let db = state
+        .db
+        .write_conn()
+        .map_err(|e| JfgoatError::Internal(e.to_string()))?;
+    db.execute(
+        "INSERT INTO metadata (key, value)
+         VALUES ('session_token', ?1)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        rusqlite::params![token],
+    )?;
+    Ok(())
+}
+
+fn db_load_token(state: &AppState) -> Result<Option<String>, JfgoatError> {
+    let db = state
+        .db
+        .read_conn()
+        .map_err(|e| JfgoatError::Internal(e.to_string()))?;
+    let maybe_token: Result<String, rusqlite::Error> = db.query_row(
+        "SELECT value FROM metadata WHERE key = 'session_token'",
+        [],
+        |row| row.get(0),
+    );
+    match maybe_token {
+        Ok(token) => Ok(Some(token)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(JfgoatError::Database(e.to_string())),
+    }
+}
+
+fn db_clear_token(state: &AppState) -> Result<(), JfgoatError> {
+    let db = state
+        .db
+        .write_conn()
+        .map_err(|e| JfgoatError::Internal(e.to_string()))?;
+    db.execute("DELETE FROM metadata WHERE key = 'session_token'", [])?;
+    Ok(())
+}
+
 /// Cache token, server URL, and user ID in AppState after successful authentication.
 fn update_app_state_after_auth(
     state: &AppState,
@@ -81,6 +121,7 @@ pub async fn connect_to_server(
     // Prevent credential bleed when switching servers/accounts.
     keyring_clear_token()?;
     keyring_clear_password()?;
+    db_clear_token(&state)?;
 
     let device_id = get_device_id(&state)?;
 
@@ -123,8 +164,9 @@ pub async fn login(
     let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id);
     let (token, mut result) = auth::authenticate_by_name(&jf_client, &username, &password).await?;
 
-    // Store token in OS credential store
+    // Store token in OS credential store & DB fallback
     keyring_store_token(&token)?;
+    db_store_token(&state, &token)?;
 
     // Clear legacy password if any
     let _ = keyring_clear_password();
@@ -171,8 +213,13 @@ pub async fn check_auth(
 
     let device_id = get_device_id(&state)?;
 
-    // Try to validate the stored token first
-    if let Some(token) = keyring_load_token()? {
+    // Try to load token from keyring first, fallback to DB if missing or error
+    let token_opt = match keyring_load_token() {
+        Ok(Some(token)) => Some(token),
+        _ => db_load_token(&state)?,
+    };
+
+    if let Some(token) = token_opt {
         let jf_client = JellyfinClient::new(&state.http_client, &server.url, &device_id)
             .with_token(&token);
 
@@ -183,7 +230,11 @@ pub async fn check_auth(
         match resp {
             Ok(r) if r.status().is_success() => {
                 // Token is valid — cache in AppState
-                update_app_state_after_auth(&state, token, &server.url, &user_id)?;
+                update_app_state_after_auth(&state, token.clone(), &server.url, &user_id)?;
+
+                // Ensure token is synced to both stores
+                let _ = keyring_store_token(&token);
+                let _ = db_store_token(&state, &token);
 
                 return Ok(Some(SessionInfo {
                     user_id,
@@ -196,6 +247,7 @@ pub async fn check_auth(
             Ok(r) if r.status() == reqwest::StatusCode::UNAUTHORIZED => {
                 // Token is definitively invalid — clear it
                 keyring_clear_token()?;
+                db_clear_token(&state)?;
             }
             Ok(r) => {
                 // Other unexpected HTTP status code (e.g. server error, gateway timeout)
@@ -242,7 +294,12 @@ pub async fn check_auth_offline(
     };
 
     // Check if a token exists but don't verify it over the network
-    let token = match keyring_load_token()? {
+    let token = match keyring_load_token() {
+        Ok(Some(t)) => Some(t),
+        _ => db_load_token(&state)?,
+    };
+
+    let token = match token {
         Some(t) => t,
         None => return Ok(None),
     };
@@ -263,9 +320,10 @@ pub async fn check_auth_offline(
 pub async fn logout(
     state: State<'_, AppState>,
 ) -> Result<(), JfgoatError> {
-    // Clear OS credential store
+    // Clear OS credential store & DB fallback
     keyring_clear_token()?;
     keyring_clear_password()?;
+    db_clear_token(&state)?;
 
     // Clear cached state
     state.update_session(None, None, None);

@@ -73,7 +73,9 @@ function run() {
     repoName = 'JF-Goat';
   }
 
-  const url = `https://github.com/${repoOwner}/${repoName}/releases/download/v${version}/${installerFilename}`;
+  // GitHub release uploads replace spaces in filenames with dots
+  const sanitizedFilename = installerFilename.replace(/ /g, '.');
+  const url = `https://github.com/${repoOwner}/${repoName}/releases/download/v${version}/${sanitizedFilename}`;
   console.log(`Installer download URL: ${url}`);
 
   let platformKey = '';
