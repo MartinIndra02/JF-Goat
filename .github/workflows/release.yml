@@ -67,6 +67,9 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
 
+      - name: Generate updater latest.json
+        run: node src-tauri/scripts/generate-updater-json.js
+
       - name: Upload release artifacts (workflow)
         uses: actions/upload-artifact@v4
         with:

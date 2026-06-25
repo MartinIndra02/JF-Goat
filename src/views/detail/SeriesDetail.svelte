@@ -3,9 +3,13 @@
   import type { MediaItem, Person, MediaStreamInfo, ExternalUrl } from "../../lib/types";
   import {
     IMAGE_BASE, seasonNumber, formatRuntime,
-    progressPercent, handleImageLoad, backdropUrl, personImageUrl, scrollCarousel,
+    progressPercent, handleImageLoad, personImageUrl,
     episodeThumbnailUrl,
   } from "./detailHelpers";
+
+  import DetailBackdrop from "./components/DetailBackdrop.svelte";
+  import DetailMetadata from "./components/DetailMetadata.svelte";
+  import HorizontalCarousel from "./components/HorizontalCarousel.svelte";
 
   let {
     item,
@@ -43,10 +47,6 @@
   let subtitleDropdownOpen = $state(false);
   let selectedAudioIndex = $state<number | null>(null);
   let selectedSubtitleIndex = $state<number | null>(null);
-  let episodeScrollEl = $state<HTMLElement | null>(null);
-  let seasonScrollEl = $state<HTMLElement | null>(null);
-  let castScrollEl = $state<HTMLElement | null>(null);
-  let relatedScrollEl = $state<HTMLElement | null>(null);
 
   // Resume episode: find in-progress or first unwatched
   const resumeEpisode = $derived.by(() => {
@@ -91,63 +91,20 @@
 
 <main class="app-stage min-h-screen text-[var(--text-primary)]">
   <!-- Hero Backdrop -->
-  <div class="relative w-full overflow-hidden" style="height: clamp(340px, 55vh, 560px);">
-    {#if backdropUrl(item)}
-      <img src={backdropUrl(item)} alt="" onload={handleImageLoad} class="absolute inset-0 w-full h-full object-cover object-top transition-opacity duration-500 opacity-0" />
-    {/if}
-    <div class="absolute inset-0 bg-[rgba(5,7,13,0.5)] -z-10"></div>
-    <div class="absolute inset-0 bg-gradient-to-t from-[var(--bg-0)] via-[rgba(5,7,13,0.4)] to-transparent"></div>
-
-    <button aria-label="Go back" onclick={goBack} class="absolute top-4 left-4 z-10 h-10 w-10 grid place-items-center bg-[rgba(10,18,31,0.64)] border border-white/22 rounded-xl backdrop-blur-xl text-[var(--text-primary)] hover:bg-[rgba(22,34,54,0.76)] transition-colors">
-      <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
-    </button>
-
-    <div class="absolute top-4 right-4 z-10 flex items-center gap-1.5">
+  <DetailBackdrop {item} {goBack}>
+    {#snippet rightControls()}
       <button class="h-10 w-10 grid place-items-center bg-[rgba(10,18,31,0.64)] border border-white/22 rounded-xl backdrop-blur-xl text-[var(--text-primary)] hover:bg-[rgba(22,34,54,0.76)] transition-colors" aria-label="Download"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/></svg></button>
       <button class="h-10 w-10 grid place-items-center bg-[rgba(10,18,31,0.64)] border border-white/22 rounded-xl backdrop-blur-xl text-[var(--text-primary)] hover:bg-[rgba(22,34,54,0.76)] transition-colors" aria-label="Layout"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg></button>
       <button class="h-10 w-10 grid place-items-center bg-[rgba(10,18,31,0.64)] border border-white/22 rounded-xl backdrop-blur-xl text-[var(--text-primary)] hover:bg-[rgba(22,34,54,0.76)] transition-colors" aria-label="Sync"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg></button>
-    </div>
-  </div>
+    {/snippet}
+  </DetailBackdrop>
 
   <div class="relative -mt-32 z-10 px-5 pb-16 max-w-3xl mx-auto">
     <div class="text-center mb-6">
       <h1 class="text-3xl sm:text-4xl font-bold text-white leading-tight mb-3">{item.name}</h1>
 
-      <!-- Metadata -->
-      <div class="flex flex-wrap items-center justify-center gap-2 mb-3">
-        {#if item.official_rating}
-          <span class="inline-flex items-center gap-1 text-xs font-semibold text-gray-200 bg-white/10 px-2.5 py-1 rounded-md border border-white/15">{item.official_rating}</span>
-          <span class="w-1 h-1 rounded-full bg-gray-500"></span>
-        {/if}
-        {#if item.production_year}
-          <span class="inline-flex items-center gap-1.5 text-xs text-gray-300 bg-white/8 px-2.5 py-1 rounded-md">
-            <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"/></svg>
-            {item.production_year}
-          </span>
-        {/if}
-        {#if item.run_time_ticks}
-          <span class="w-1 h-1 rounded-full bg-gray-500"></span>
-          <span class="inline-flex items-center gap-1.5 text-xs text-gray-300 bg-white/8 px-2.5 py-1 rounded-md">
-            <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/></svg>
-            {formatRuntime(item.run_time_ticks)}
-          </span>
-        {/if}
-        {#if item.community_rating}
-          <span class="w-1 h-1 rounded-full bg-gray-500"></span>
-          <span class="inline-flex items-center gap-1.5 text-xs font-medium bg-amber-500/20 text-amber-300 px-2.5 py-1 rounded-md">
-            <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
-            {item.community_rating.toFixed(1)}
-          </span>
-        {/if}
-      </div>
-
-      {#if item.genres}
-        <div class="flex flex-wrap justify-center gap-1.5 mb-4">
-          {#each item.genres.split(",").slice(0, 6) as genre}
-            <span class="text-xs text-gray-300 bg-white/10 px-2.5 py-1 rounded-full border border-white/5">{genre.trim()}</span>
-          {/each}
-        </div>
-      {/if}
+      <!-- Metadata block component -->
+      <DetailMetadata {item} />
     </div>
 
     <!-- Play / Resume button -->
@@ -253,150 +210,135 @@
 
     <!-- Episodes section with season dropdown -->
     {#if seasons.length > 0}
-      <div class="mb-8">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-base font-semibold text-white">Episodes</h2>
-          <div class="relative">
-            <select
-              onchange={(e) => { const target = e.target as HTMLSelectElement; onLoadSeasonEpisodes(target.value); }}
-              value={selectedSeasonId ?? ""}
-              aria-label="Select season"
-              class="appearance-none bg-white/5 text-[var(--text-primary)] text-sm px-3.5 py-2 pr-9 rounded-xl border border-white/10 focus:outline-none focus:ring-2 focus:ring-cyan-400 cursor-pointer transition-all hover:bg-white/10"
-            >
-              {#each seasons as season (season.id)}
-                <option value={season.id} class="bg-gray-800">{season.name}</option>
-              {/each}
-            </select>
-            <svg class="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+      {#if episodesLoading}
+        <div class="mb-8">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-base font-semibold text-white">Episodes</h2>
           </div>
-        </div>
-
-        {#if episodesLoading}
           <div class="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-5 px-5" aria-hidden="true">
             {#each Array.from({ length: 4 }) as _}
               <div class="flex-shrink-0 w-48 rounded-xl overflow-hidden">
-                <div class="skeleton-card aspect-video"></div>
+                <div class="skeleton-card aspect-video animate-pulse bg-white/5"></div>
                 <div class="p-2.5">
-                  <div class="skeleton-line skeleton-line--text w-3/4"></div>
-                  <div class="mt-2 skeleton-line skeleton-line--text skeleton-line--muted w-11/12"></div>
+                  <div class="h-3 bg-white/10 rounded w-3/4 animate-pulse"></div>
+                  <div class="mt-2 h-3 bg-white/5 rounded w-11/12 animate-pulse"></div>
                 </div>
               </div>
             {/each}
           </div>
-        {:else if episodes.length > 0}
-          <div class="relative">
-            <div class="flex items-center justify-end gap-1 mb-2">
-              <button aria-label="Scroll episodes left" onclick={() => scrollCarousel(episodeScrollEl, 'left')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"/></svg></button>
-              <button aria-label="Scroll episodes right" onclick={() => scrollCarousel(episodeScrollEl, 'right')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg></button>
+        </div>
+      {:else if episodes.length > 0}
+        <HorizontalCarousel
+          title="Episodes"
+          items={episodes}
+          getKey={(episode) => episode.id}
+        >
+          {#snippet headerExtra()}
+            <div class="relative">
+              <select
+                onchange={(e) => { const target = e.target as HTMLSelectElement; onLoadSeasonEpisodes(target.value); }}
+                value={selectedSeasonId ?? ""}
+                aria-label="Select season"
+                class="appearance-none bg-white/5 text-[var(--text-primary)] text-sm px-3.5 py-2 pr-9 rounded-xl border border-white/10 focus:outline-none focus:ring-2 focus:ring-cyan-400 cursor-pointer transition-all hover:bg-white/10"
+              >
+                {#each seasons as season (season.id)}
+                  <option value={season.id} class="bg-gray-800">{season.name}</option>
+                {/each}
+              </select>
+              <svg class="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
             </div>
-            <div bind:this={episodeScrollEl} class="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-5 px-5">
-              {#each episodes as episode (episode.id)}
-                <button onclick={() => navigateToItem(episode.id)} class="flex-shrink-0 w-48 rounded-xl overflow-hidden bg-white/5 hover:bg-white/10 transition-colors text-left cursor-pointer">
-                  <div class="relative">
-                    {#if episodeThumbnailUrl(episode)}
-                      <img src={episodeThumbnailUrl(episode)} alt={episode.name} onload={handleImageLoad} class="w-full aspect-video object-cover transition-opacity duration-300 opacity-0" />
-                    {:else}
-                      <div class="w-full aspect-video bg-gray-800 flex items-center justify-center"><span class="text-gray-500 text-xs">E{episode.index_number ?? "?"}</span></div>
-                    {/if}
-                    <div class="absolute inset-0 bg-gray-800 -z-10"></div>
-                    {#if episode.played}<div class="absolute top-1.5 right-1.5 bg-green-500/90 rounded-full p-0.5"><svg class="w-3 h-3 text-white" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg></div>{/if}
-                    {#if progressPercent(episode) > 0}<div class="absolute bottom-0 left-0 right-0 h-1 bg-black/50"><div class="h-full bg-blue-500 rounded-r-full" style="width: {progressPercent(episode)}%"></div></div>{/if}
-                  </div>
-                  <div class="p-2.5">
-                    <p class="text-[11px] text-gray-500 mb-0.5">S{seasonNumber(episode.season_name)} - E{episode.index_number ?? "?"}{#if episode.run_time_ticks}<span class="ml-1">· {formatRuntime(episode.run_time_ticks)}</span>{/if}</p>
-                    <p class="text-sm text-white truncate font-medium">{episode.name}</p>
-                  </div>
-                </button>
-              {/each}
-            </div>
-          </div>
-        {:else}
-          <p class="text-gray-500 text-sm text-center py-6">No episodes found for this season.</p>
-        {/if}
-      </div>
+          {/snippet}
+
+          {#snippet renderCard(episode)}
+            <button onclick={() => navigateToItem(episode.id)} class="flex-shrink-0 w-48 rounded-xl overflow-hidden bg-white/5 hover:bg-white/10 transition-colors text-left cursor-pointer">
+              <div class="relative">
+                {#if episodeThumbnailUrl(episode)}
+                  <img src={episodeThumbnailUrl(episode)} alt={episode.name} onload={handleImageLoad} class="w-full aspect-video object-cover transition-opacity duration-300 opacity-0" />
+                {:else}
+                  <div class="w-full aspect-video bg-gray-800 flex items-center justify-center"><span class="text-gray-500 text-xs">E{episode.index_number ?? "?"}</span></div>
+                {/if}
+                <div class="absolute inset-0 bg-gray-800 -z-10"></div>
+                {#if episode.played}<div class="absolute top-1.5 right-1.5 bg-green-500/90 rounded-full p-0.5"><svg class="w-3 h-3 text-white" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg></div>{/if}
+                {#if progressPercent(episode) > 0}<div class="absolute bottom-0 left-0 right-0 h-1 bg-black/50"><div class="h-full bg-blue-500 rounded-r-full" style="width: {progressPercent(episode)}%"></div></div>{/if}
+              </div>
+              <div class="p-2.5">
+                <p class="text-[11px] text-gray-500 mb-0.5">S{seasonNumber(episode.season_name)} - E{episode.index_number ?? "?"}{#if episode.run_time_ticks}<span class="ml-1">· {formatRuntime(episode.run_time_ticks)}</span>{/if}</p>
+                <p class="text-sm text-white truncate font-medium">{episode.name}</p>
+              </div>
+            </button>
+          {/snippet}
+        </HorizontalCarousel>
+      {:else}
+        <p class="text-gray-500 text-sm text-center py-6">No episodes found for this season.</p>
+      {/if}
     {/if}
 
     <!-- Seasons carousel -->
     {#if seasons.length > 1}
-      <div class="mb-8">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-base font-semibold text-white">Seasons</h2>
-          <div class="flex items-center gap-1">
-            <button aria-label="Scroll seasons left" onclick={() => scrollCarousel(seasonScrollEl, 'left')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"/></svg></button>
-            <button aria-label="Scroll seasons right" onclick={() => scrollCarousel(seasonScrollEl, 'right')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg></button>
-          </div>
-        </div>
-        <div bind:this={seasonScrollEl} class="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-5 px-5">
-          {#each seasons as season (season.id)}
-            <button onclick={() => navigateToItem(season.id)} class="flex-shrink-0 w-28 rounded-xl overflow-hidden bg-white/5 hover:bg-white/10 transition-colors text-left cursor-pointer group">
-              <div class="relative">
-                {#if season.image_tag}
-                  <img src={`${IMAGE_BASE}/poster/${season.id}?tag=${season.image_tag}`} alt={season.name} onload={handleImageLoad} class="w-full aspect-[2/3] object-cover transition-opacity duration-300 opacity-0" />
-                {:else}
-                  <div class="w-full aspect-[2/3] bg-gray-800 flex items-center justify-center"><span class="text-gray-500 text-xs text-center px-2">{season.name}</span></div>
-                {/if}
-                <div class="absolute inset-0 bg-gray-800 -z-10"></div>
-                {#if season.played}<div class="absolute top-1.5 right-1.5 bg-green-500/90 rounded-full p-0.5"><svg class="w-3 h-3 text-white" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg></div>{/if}
-              </div>
-              <div class="p-2"><p class="text-xs text-white truncate font-medium">{season.name}</p></div>
-            </button>
-          {/each}
-        </div>
-      </div>
+      <HorizontalCarousel
+        title="Seasons"
+        items={seasons}
+        getKey={(season) => season.id}
+      >
+        {#snippet renderCard(season)}
+          <button onclick={() => navigateToItem(season.id)} class="flex-shrink-0 w-28 rounded-xl overflow-hidden bg-white/5 hover:bg-white/10 transition-colors text-left cursor-pointer group">
+            <div class="relative">
+              {#if season.image_tag}
+                <img src={`${IMAGE_BASE}/poster/${season.id}?tag=${season.image_tag}`} alt={season.name} onload={handleImageLoad} class="w-full aspect-[2/3] object-cover transition-opacity duration-300 opacity-0" />
+              {:else}
+                <div class="w-full aspect-[2/3] bg-gray-800 flex items-center justify-center"><span class="text-gray-500 text-xs text-center px-2">{season.name}</span></div>
+              {/if}
+              <div class="absolute inset-0 bg-gray-800 -z-10"></div>
+              {#if season.played}<div class="absolute top-1.5 right-1.5 bg-green-500/90 rounded-full p-0.5"><svg class="w-3 h-3 text-white" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg></div>{/if}
+            </div>
+            <div class="p-2"><p class="text-xs text-white truncate font-medium">{season.name}</p></div>
+          </button>
+        {/snippet}
+      </HorizontalCarousel>
     {/if}
 
     <!-- Cast & Crew -->
     {#if people.length > 0}
-      <div class="mb-8">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-base font-semibold text-white">Cast & Crew</h2>
-          <div class="flex items-center gap-1">
-            <button aria-label="Scroll cast left" onclick={() => scrollCarousel(castScrollEl, 'left')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"/></svg></button>
-            <button aria-label="Scroll cast right" onclick={() => scrollCarousel(castScrollEl, 'right')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg></button>
-          </div>
-        </div>
-        <div bind:this={castScrollEl} class="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-5 px-5">
-          {#each people as person, i (person.id + '-' + i)}
-            <div class="flex-shrink-0 w-[80px] text-center">
-              <div class="relative w-[72px] h-[72px] mx-auto rounded-lg overflow-hidden bg-gray-800 mb-1.5 ring-1 ring-white/10">
-                {#if person.image_tag}<img src={personImageUrl(person.id, person.image_tag)} alt={person.name} onload={handleImageLoad} class="w-full h-full object-cover transition-opacity duration-300 opacity-0" />
-                {:else}<div class="w-full h-full flex items-center justify-center"><svg class="w-7 h-7 text-gray-600" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/></svg></div>{/if}
-              </div>
-              <p class="text-[11px] text-white font-medium truncate leading-tight">{person.name}</p>
-              {#if person.role}<p class="text-[10px] text-gray-500 truncate leading-tight">{person.role}</p>
-              {:else if person.person_type}<p class="text-[10px] text-gray-500 truncate leading-tight">{person.person_type}</p>{/if}
+      <HorizontalCarousel
+        title="Cast & Crew"
+        items={people}
+        getKey={(person, i) => person.id + '-' + i}
+      >
+        {#snippet renderCard(person)}
+          <div class="flex-shrink-0 w-[80px] text-center">
+            <div class="relative w-[72px] h-[72px] mx-auto rounded-lg overflow-hidden bg-gray-800 mb-1.5 ring-1 ring-white/10">
+              {#if person.image_tag}<img src={personImageUrl(person.id, person.image_tag)} alt={person.name} onload={handleImageLoad} class="w-full h-full object-cover transition-opacity duration-300 opacity-0" />
+              {:else}<div class="w-full h-full flex items-center justify-center"><svg class="w-7 h-7 text-gray-600" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/></svg></div>{/if}
             </div>
-          {/each}
-        </div>
-      </div>
+            <p class="text-[11px] text-white font-medium truncate leading-tight">{person.name}</p>
+            {#if person.role}<p class="text-[10px] text-gray-500 truncate leading-tight">{person.role}</p>
+            {:else if person.person_type}<p class="text-[10px] text-gray-500 truncate leading-tight">{person.person_type}</p>{/if}
+          </div>
+        {/snippet}
+      </HorizontalCarousel>
     {/if}
 
     <!-- Related -->
     {#if similarItems.length > 0}
-      <div class="mb-8">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-base font-semibold text-white">Related</h2>
-          <div class="flex items-center gap-1">
-            <button aria-label="Scroll related items left" onclick={() => scrollCarousel(relatedScrollEl, 'left')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"/></svg></button>
-            <button aria-label="Scroll related items right" onclick={() => scrollCarousel(relatedScrollEl, 'right')} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-gray-400"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg></button>
-          </div>
-        </div>
-        <div bind:this={relatedScrollEl} class="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-5 px-5">
-          {#each similarItems as related (related.id)}
-            <button onclick={() => navigateToItem(related.id)} class="flex-shrink-0 w-28 rounded-xl overflow-hidden bg-white/5 hover:bg-white/10 transition-colors text-left cursor-pointer group">
-              <div class="relative">
-                {#if related.image_tag}<img src={`${IMAGE_BASE}/poster/${related.id}?tag=${related.image_tag}`} alt={related.name} onload={handleImageLoad} class="w-full aspect-[2/3] object-cover transition-opacity duration-300 opacity-0" />
-                {:else}<div class="w-full aspect-[2/3] bg-gray-800 flex items-center justify-center"><span class="text-gray-500 text-xs text-center px-2">{related.name}</span></div>{/if}
-                <div class="absolute inset-0 bg-gray-800 -z-10"></div>
-              </div>
-              <div class="p-2">
-                <p class="text-xs text-white truncate font-medium">{related.name}</p>
-                {#if related.production_year}<p class="text-[11px] text-gray-500">{related.production_year}</p>{/if}
-              </div>
-            </button>
-          {/each}
-        </div>
-      </div>
+      <HorizontalCarousel
+        title="Related"
+        items={similarItems}
+        getKey={(related) => related.id}
+      >
+        {#snippet renderCard(related)}
+          <button onclick={() => navigateToItem(related.id)} class="flex-shrink-0 w-28 rounded-xl overflow-hidden bg-white/5 hover:bg-white/10 transition-colors text-left cursor-pointer group">
+            <div class="relative">
+              {#if related.image_tag}<img src={`${IMAGE_BASE}/poster/${related.id}?tag=${related.image_tag}`} alt={related.name} onload={handleImageLoad} class="w-full aspect-[2/3] object-cover transition-opacity duration-300 opacity-0" />
+              {:else}<div class="w-full aspect-[2/3] bg-gray-800 flex items-center justify-center"><span class="text-gray-500 text-xs text-center px-2">{related.name}</span></div>{/if}
+              <div class="absolute inset-0 bg-gray-800 -z-10"></div>
+            </div>
+            <div class="p-2">
+              <p class="text-xs text-white truncate font-medium">{related.name}</p>
+              {#if related.production_year}<p class="text-[11px] text-gray-500">{related.production_year}</p>{/if}
+            </div>
+          </button>
+        {/snippet}
+      </HorizontalCarousel>
     {/if}
 
     <!-- External Links -->
