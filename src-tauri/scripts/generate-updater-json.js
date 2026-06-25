@@ -76,12 +76,26 @@ function run() {
   const url = `https://github.com/${repoOwner}/${repoName}/releases/download/v${version}/${installerFilename}`;
   console.log(`Installer download URL: ${url}`);
 
+  let platformKey = '';
+  if (process.platform === 'win32') {
+    platformKey = 'windows-x86_64';
+  } else if (process.platform === 'darwin') {
+    platformKey = process.arch === 'arm64' ? 'darwin-aarch64' : 'darwin-x86_64';
+  } else if (process.platform === 'linux') {
+    platformKey = 'linux-x86_64';
+  }
+
+  if (!platformKey) {
+    console.error(`Unsupported platform: ${process.platform} ${process.arch}`);
+    process.exit(1);
+  }
+
   const latestJson = {
     version: version,
     notes: `v${version} Release`,
     pub_date: new Date().toISOString(),
     platforms: {
-      'windows-x86_64': {
+      [platformKey]: {
         signature: signature,
         url: url
       }
@@ -91,6 +105,10 @@ function run() {
   const outputPath = path.join(bundleDir, 'latest.json');
   fs.writeFileSync(outputPath, JSON.stringify(latestJson, null, 2), 'utf-8');
   console.log(`Successfully generated latest.json at ${outputPath}`);
+
+  const platformOutputPath = path.join(bundleDir, `updater-${platformKey}.json`);
+  fs.writeFileSync(platformOutputPath, JSON.stringify(latestJson, null, 2), 'utf-8');
+  console.log(`Successfully generated updater-${platformKey}.json at ${platformOutputPath}`);
 }
 
 function findFiles(dir, filter) {

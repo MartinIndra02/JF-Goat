@@ -89,6 +89,12 @@ jobs:
           path: |
             src-tauri/target/release/bundle/**/*
 
+      - name: Upload updater JSON artifact (workflow)
+        uses: actions/upload-artifact@v4
+        with:
+          name: updater-json-${{ matrix.os }}
+          path: src-tauri/target/release/bundle/updater-*.json
+
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
@@ -100,5 +106,71 @@ jobs:
             src-tauri/target/release/bundle/**/*.app.tar.gz
             src-tauri/target/release/bundle/**/*.zip
             src-tauri/target/release/bundle/**/*.sig
-            src-tauri/target/release/bundle/**/latest*.json
           generate_release_notes: true
+
+  publish-updater:
+    name: Merge and Publish Updater JSON
+    runs-on: ubuntu-latest
+    needs: build-release
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all updater JSON artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: updater-json-*
+          path: updater-jsons
+          merge-multiple: true
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Merge updater JSON files
+        run: |
+          node -e '
+            const fs = require("fs");
+            const path = require("path");
+            
+            const dir = "updater-jsons";
+            if (!fs.existsSync(dir)) {
+              console.error("Directory not found: " + dir);
+              process.exit(1);
+            }
+            
+            const files = fs.readdirSync(dir).filter(f => f.startsWith("updater-") && f.endsWith(".json"));
+            if (files.length === 0) {
+              console.error("No updater JSON files found in " + dir);
+              process.exit(1);
+            }
+            
+            let merged = null;
+            for (const file of files) {
+              const content = JSON.parse(fs.readFileSync(path.join(dir, file), "utf-8"));
+              console.log("Reading " + file + " for version " + content.version);
+              
+              if (!merged) {
+                merged = {
+                  version: content.version,
+                  notes: content.notes,
+                  pub_date: content.pub_date,
+                  platforms: {}
+                };
+              }
+              
+              Object.assign(merged.platforms, content.platforms);
+            }
+            
+            fs.writeFileSync("latest.json", JSON.stringify(merged, null, 2), "utf-8");
+            console.log("Successfully merged into latest.json:", JSON.stringify(merged, null, 2));
+          '
+
+      - name: Publish merged latest.json to GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: latest.json
