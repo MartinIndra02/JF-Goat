@@ -177,166 +177,225 @@ async fn download_media_item(
 
     let temp_path = download_dir.join(format!("{}.part", item.id));
 
-    let mut existing_bytes: i64 = 0;
-    if temp_path.exists() {
-        if let Ok(meta) = std::fs::metadata(&temp_path) {
-            existing_bytes = meta.len() as i64;
-        }
-    }
+    let mut retries: u32 = 0;
+    let max_retries = 5;
+    let mut final_path = None;
 
-    let mut req = ctx.http_client.get(&url);
-    if existing_bytes > 0 {
-        req = req.header("Range", format!("bytes={}-", existing_bytes));
-    }
-
-    let response = match req.send().await {
-        Ok(resp) => resp,
-        Err(e) => {
-            let err_msg = format!("Request failed: {}", e);
-            update_download_status(ctx, &item.id, "Failed", Some(&err_msg))?;
+    loop {
+        // Check if we need to pause or cancel before starting the attempt
+        let current_status = get_download_status_from_db(ctx, &item.id).unwrap_or_else(|_| "Downloading".to_string());
+        if current_status == "Paused" {
+            println!("[download] Download for {} was paused before attempt", item.id);
+            return Ok(());
+        } else if current_status == "Cancelled" {
+            println!("[download] Download for {} was cancelled before attempt", item.id);
+            let _ = tokio::fs::remove_file(&temp_path).await;
+            let _ = delete_download_from_db(ctx, &item.id);
             emit_download_progress(&app_handle, ctx, &item.id)?;
             return Ok(());
         }
-    };
 
-    let is_partial = response.status() == reqwest::StatusCode::PARTIAL_CONTENT;
+        // Make sure status is 'Downloading' in DB
+        if current_status != "Downloading" {
+            if let Err(e) = update_download_status(ctx, &item.id, "Downloading", None) {
+                eprintln!("[download] Failed to update status to Downloading: {:?}", e);
+            }
+            let _ = emit_download_progress(&app_handle, ctx, &item.id);
+        }
 
-    if !response.status().is_success() {
-        let err_msg = format!("HTTP error: {}", response.status());
-        update_download_status(ctx, &item.id, "Failed", Some(&err_msg))?;
-        emit_download_progress(&app_handle, ctx, &item.id)?;
-        return Ok(());
-    }
-
-    let downloaded_bytes = if is_partial { existing_bytes } else { 0 };
-    let total_bytes = if is_partial {
-        downloaded_bytes + response.content_length().unwrap_or(0) as i64
-    } else {
-        response.content_length().unwrap_or(0) as i64
-    };
-    update_download_total_bytes(ctx, &item.id, total_bytes)?;
-
-    let ext = match response.headers().get(reqwest::header::CONTENT_TYPE) {
-        Some(val) => {
-            let content_type = val.to_str().unwrap_or("");
-            if content_type.contains("x-matroska") || content_type.contains("mkv") {
-                "mkv"
-            } else if content_type.contains("webm") {
-                "webm"
-            } else if content_type.contains("quicktime") {
-                "mov"
-            } else {
-                "mp4"
+        let mut existing_bytes: i64 = 0;
+        if temp_path.exists() {
+            if let Ok(meta) = std::fs::metadata(&temp_path) {
+                existing_bytes = meta.len() as i64;
             }
         }
-        None => "mp4",
-    };
 
-    let filename = format!("{}.{}", item.id, ext);
-    let final_path = download_dir.join(&filename);
-
-    let mut file = if is_partial {
-        match tokio::fs::OpenOptions::new()
-            .write(true)
-            .append(true)
-            .open(&temp_path)
-            .await
-        {
-            Ok(f) => f,
-            Err(e) => {
-                let err_msg = format!("Failed to open part file for append: {}", e);
-                update_download_status(ctx, &item.id, "Failed", Some(&err_msg))?;
-                emit_download_progress(&app_handle, ctx, &item.id)?;
-                return Ok(());
-            }
+        let mut req = ctx.http_client.get(&url);
+        if existing_bytes > 0 {
+            req = req.header("Range", format!("bytes={}-", existing_bytes));
         }
-    } else {
-        match tokio::fs::File::create(&temp_path).await {
-            Ok(f) => f,
-            Err(e) => {
-                let err_msg = format!("File create failed: {}", e);
-                update_download_status(ctx, &item.id, "Failed", Some(&err_msg))?;
-                emit_download_progress(&app_handle, ctx, &item.id)?;
-                return Ok(());
-            }
-        }
-    };
 
-    let mut stream = response.bytes_stream();
-    let mut downloaded_bytes = downloaded_bytes;
-    let mut last_db_update = std::time::Instant::now();
-    let start_time = std::time::Instant::now();
-    let initial_downloaded = downloaded_bytes;
+        println!("[download] Attempting request (retry {}/{}), existing_bytes: {}", retries, max_retries, existing_bytes);
 
-    while let Some(chunk_result) = stream.next().await {
-        let chunk = match chunk_result {
-            Ok(c) => c,
+        let response = match req.send().await {
+            Ok(resp) => resp,
             Err(e) => {
-                let err_msg = format!("Stream error: {}", e);
-                update_download_status(ctx, &item.id, "Failed", Some(&err_msg))?;
-                emit_download_progress(&app_handle, ctx, &item.id)?;
-                return Ok(());
+                let err_msg = format!("Request failed: {}", e);
+                eprintln!("[download] {}", err_msg);
+                if retries < max_retries {
+                    retries += 1;
+                    let delay = std::time::Duration::from_secs(2u64.pow(retries));
+                    println!("[download] Retrying in {:?}", delay);
+                    tokio::time::sleep(delay).await;
+                    continue;
+                } else {
+                    update_download_status(ctx, &item.id, "Failed", Some(&err_msg))?;
+                    emit_download_progress(&app_handle, ctx, &item.id)?;
+                    return Ok(());
+                }
             }
         };
 
-        if let Err(e) = file.write_all(&chunk).await {
-            let err_msg = format!("Write failed: {}", e);
+        let is_partial = response.status() == reqwest::StatusCode::PARTIAL_CONTENT;
+
+        if !response.status().is_success() {
+            let err_msg = format!("HTTP error: {}", response.status());
             update_download_status(ctx, &item.id, "Failed", Some(&err_msg))?;
             emit_download_progress(&app_handle, ctx, &item.id)?;
             return Ok(());
         }
 
-        downloaded_bytes += chunk.len() as i64;
+        let downloaded_bytes = if is_partial { existing_bytes } else { 0 };
+        let total_bytes = if is_partial {
+            downloaded_bytes + response.content_length().unwrap_or(0) as i64
+        } else {
+            response.content_length().unwrap_or(0) as i64
+        };
+        update_download_total_bytes(ctx, &item.id, total_bytes)?;
 
-        let current_status = get_download_status_from_db(ctx, &item.id).unwrap_or_else(|_| "Downloading".to_string());
+        let ext = match response.headers().get(reqwest::header::CONTENT_TYPE) {
+            Some(val) => {
+                let content_type = val.to_str().unwrap_or("");
+                if content_type.contains("x-matroska") || content_type.contains("mkv") {
+                    "mkv"
+                } else if content_type.contains("webm") {
+                    "webm"
+                } else if content_type.contains("quicktime") {
+                    "mov"
+                } else {
+                    "mp4"
+                }
+            }
+            None => "mp4",
+        };
 
-        if current_status == "Paused" {
-            let _ = file.flush().await;
-            println!("[download] Paused download for {}", item.id);
-            return Ok(());
-        } else if current_status == "Cancelled" {
-            let _ = file.flush().await;
-            drop(file);
-            let _ = tokio::fs::remove_file(&temp_path).await;
-            let _ = delete_download_from_db(ctx, &item.id);
-            println!("[download] Cancelled download for {}", item.id);
+        let filename = format!("{}.{}", item.id, ext);
+        let path = download_dir.join(&filename);
+        final_path = Some(path);
+
+        let mut file = if is_partial {
+            match tokio::fs::OpenOptions::new()
+                .write(true)
+                .append(true)
+                .open(&temp_path)
+                .await
+            {
+                Ok(f) => f,
+                Err(e) => {
+                    let err_msg = format!("Failed to open part file for append: {}", e);
+                    update_download_status(ctx, &item.id, "Failed", Some(&err_msg))?;
+                    emit_download_progress(&app_handle, ctx, &item.id)?;
+                    return Ok(());
+                }
+            }
+        } else {
+            match tokio::fs::File::create(&temp_path).await {
+                Ok(f) => f,
+                Err(e) => {
+                    let err_msg = format!("File create failed: {}", e);
+                    update_download_status(ctx, &item.id, "Failed", Some(&err_msg))?;
+                    emit_download_progress(&app_handle, ctx, &item.id)?;
+                    return Ok(());
+                }
+            }
+        };
+
+        let mut stream = response.bytes_stream();
+        let mut downloaded_bytes = downloaded_bytes;
+        let mut last_db_update = std::time::Instant::now();
+        let start_time = std::time::Instant::now();
+        let initial_downloaded = downloaded_bytes;
+        let mut stream_error_occurred = false;
+        let mut stream_error_msg = String::new();
+
+        while let Some(chunk_result) = stream.next().await {
+            let chunk = match chunk_result {
+                Ok(c) => c,
+                Err(e) => {
+                    stream_error_msg = format!("Stream error: {}", e);
+                    eprintln!("[download] {}", stream_error_msg);
+                    stream_error_occurred = true;
+                    break;
+                }
+            };
+
+            if let Err(e) = file.write_all(&chunk).await {
+                let err_msg = format!("Write failed: {}", e);
+                update_download_status(ctx, &item.id, "Failed", Some(&err_msg))?;
+                emit_download_progress(&app_handle, ctx, &item.id)?;
+                return Ok(());
+            }
+
+            downloaded_bytes += chunk.len() as i64;
+
+            let current_status = get_download_status_from_db(ctx, &item.id).unwrap_or_else(|_| "Downloading".to_string());
+
+            if current_status == "Paused" {
+                let _ = file.flush().await;
+                println!("[download] Paused download for {}", item.id);
+                return Ok(());
+            } else if current_status == "Cancelled" {
+                let _ = file.flush().await;
+                drop(file);
+                let _ = tokio::fs::remove_file(&temp_path).await;
+                let _ = delete_download_from_db(ctx, &item.id);
+                println!("[download] Cancelled download for {}", item.id);
+                emit_download_progress(&app_handle, ctx, &item.id)?;
+                return Ok(());
+            }
+
+            if last_db_update.elapsed() >= std::time::Duration::from_millis(500) {
+                last_db_update = std::time::Instant::now();
+                let elapsed_secs = start_time.elapsed().as_secs_f64();
+                let speed = if elapsed_secs > 0.0 {
+                    (downloaded_bytes - initial_downloaded) as f64 / elapsed_secs
+                } else {
+                    0.0
+                };
+                
+                let progress = if total_bytes > 0 {
+                    (downloaded_bytes as f64 / total_bytes as f64) * 100.0
+                } else {
+                    0.0
+                };
+
+                let _ = update_download_progress_in_db(
+                    ctx,
+                    &item.id,
+                    progress,
+                    downloaded_bytes,
+                    speed,
+                );
+                emit_download_progress(&app_handle, ctx, &item.id)?;
+            }
+        }
+
+        if let Err(e) = file.flush().await {
+            let err_msg = format!("Flush error: {}", e);
+            update_download_status(ctx, &item.id, "Failed", Some(&err_msg))?;
             emit_download_progress(&app_handle, ctx, &item.id)?;
             return Ok(());
         }
+        drop(file);
 
-        if last_db_update.elapsed() >= std::time::Duration::from_millis(500) {
-            last_db_update = std::time::Instant::now();
-            let elapsed_secs = start_time.elapsed().as_secs_f64();
-            let speed = if elapsed_secs > 0.0 {
-                (downloaded_bytes - initial_downloaded) as f64 / elapsed_secs
+        if stream_error_occurred {
+            if retries < max_retries {
+                retries += 1;
+                let delay = std::time::Duration::from_secs(2u64.pow(retries));
+                println!("[download] Stream error occurred. Retrying in {:?}", delay);
+                tokio::time::sleep(delay).await;
+                continue;
             } else {
-                0.0
-            };
-            
-            let progress = if total_bytes > 0 {
-                (downloaded_bytes as f64 / total_bytes as f64) * 100.0
-            } else {
-                0.0
-            };
-
-            let _ = update_download_progress_in_db(
-                ctx,
-                &item.id,
-                progress,
-                downloaded_bytes,
-                speed,
-            );
-            emit_download_progress(&app_handle, ctx, &item.id)?;
+                update_download_status(ctx, &item.id, "Failed", Some(&stream_error_msg))?;
+                emit_download_progress(&app_handle, ctx, &item.id)?;
+                return Ok(());
+            }
         }
+
+        break;
     }
 
-    if let Err(e) = file.flush().await {
-        let err_msg = format!("Flush error: {}", e);
-        update_download_status(ctx, &item.id, "Failed", Some(&err_msg))?;
-        emit_download_progress(&app_handle, ctx, &item.id)?;
-        return Ok(());
-    }
-    drop(file);
+    let final_path = final_path.ok_or_else(|| JfgoatError::Internal("Download path not determined".to_string()))?;
 
     if let Err(e) = tokio::fs::rename(&temp_path, &final_path).await {
         let err_msg = format!("Rename failed: {}", e);

@@ -59,46 +59,48 @@ fn ensure_mpv_import_lib() -> Result<(), String> {
     let def_path = out_dir.join("mpv.def");
     let lib_path = out_dir.join("mpv.lib");
 
-    let (dumpbin, lib_exe) = find_msvc_tools()?;
+    if !lib_path.exists() {
+        let (dumpbin, lib_exe) = find_msvc_tools()?;
 
-    let dump_output = Command::new(&dumpbin)
-        .arg("/exports")
-        .arg(&mpv_dll)
-        .output()
-        .map_err(|e| format!("failed to run dumpbin: {}", e))?;
+        let dump_output = Command::new(&dumpbin)
+            .arg("/exports")
+            .arg(&mpv_dll)
+            .output()
+            .map_err(|e| format!("failed to run dumpbin: {}", e))?;
 
-    if !dump_output.status.success() {
-        return Err(format!(
-            "dumpbin failed with status {}",
-            dump_output.status
-        ));
-    }
+        if !dump_output.status.success() {
+            return Err(format!(
+                "dumpbin failed with status {}",
+                dump_output.status
+            ));
+        }
 
-    let stdout = String::from_utf8(dump_output.stdout)
-        .map_err(|e| format!("dumpbin output was not valid UTF-8: {}", e))?;
+        let stdout = String::from_utf8(dump_output.stdout)
+            .map_err(|e| format!("dumpbin output was not valid UTF-8: {}", e))?;
 
-    let exports = parse_dumpbin_exports(&stdout);
-    if exports.is_empty() {
-        return Err("no exports found in mpv-2.dll".to_string());
-    }
+        let exports = parse_dumpbin_exports(&stdout);
+        if exports.is_empty() {
+            return Err("no exports found in mpv-2.dll".to_string());
+        }
 
-    let mut def = String::from("LIBRARY mpv-2.dll\nEXPORTS\n");
-    for sym in exports {
-        def.push_str("    ");
-        def.push_str(&sym);
-        def.push('\n');
-    }
-    fs::write(&def_path, def).map_err(|e| format!("failed writing {}: {}", def_path.display(), e))?;
+        let mut def = String::from("LIBRARY mpv-2.dll\nEXPORTS\n");
+        for sym in exports {
+            def.push_str("    ");
+            def.push_str(&sym);
+            def.push('\n');
+        }
+        fs::write(&def_path, def).map_err(|e| format!("failed writing {}: {}", def_path.display(), e))?;
 
-    let lib_status = Command::new(&lib_exe)
-        .arg(format!("/def:{}", def_path.display()))
-        .arg("/machine:x64")
-        .arg(format!("/out:{}", lib_path.display()))
-        .status()
-        .map_err(|e| format!("failed to run lib.exe: {}", e))?;
+        let lib_status = Command::new(&lib_exe)
+            .arg(format!("/def:{}", def_path.display()))
+            .arg("/machine:x64")
+            .arg(format!("/out:{}", lib_path.display()))
+            .status()
+            .map_err(|e| format!("failed to run lib.exe: {}", e))?;
 
-    if !lib_status.success() {
-        return Err(format!("lib.exe failed with status {}", lib_status));
+        if !lib_status.success() {
+            return Err(format!("lib.exe failed with status {}", lib_status));
+        }
     }
 
     println!("cargo:rustc-link-search=native={}", out_dir.display());
@@ -111,8 +113,15 @@ fn ensure_mpv_import_lib() -> Result<(), String> {
         .ok_or("Failed to determine target directory")?;
     
     let dest_dll = target_dir.join("mpv-2.dll");
-    fs::copy(&mpv_dll, &dest_dll)
-        .map_err(|e| format!("failed to copy mpv-2.dll to {}: {}", dest_dll.display(), e))?;
+    if let Err(e) = fs::copy(&mpv_dll, &dest_dll) {
+        // On Windows, if the executable is running, the DLL is loaded and locked (OS error 32).
+        // If the file already exists, we can ignore this error since the correct DLL is already present.
+        if dest_dll.exists() && (e.kind() == std::io::ErrorKind::PermissionDenied || e.raw_os_error() == Some(32)) {
+            println!("cargo:warning=Failed to copy mpv-2.dll (locked by running process), but it already exists in target directory.");
+        } else {
+            return Err(format!("failed to copy mpv-2.dll to {}: {}", dest_dll.display(), e));
+        }
+    }
 
     Ok(())
 }
