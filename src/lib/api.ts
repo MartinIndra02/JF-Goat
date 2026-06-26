@@ -12,6 +12,7 @@ import type {
   UserLibrary,
   HomepageCache,
   DiagnosticsExportResult,
+  StorageUsage,
   UserPreferences,
   Person,
   MediaStreamInfo,
@@ -494,4 +495,16 @@ export async function selectDownloadDirectory(): Promise<string | null> {
 
 export async function restartApp(): Promise<void> {
   return invoke("restart_app");
+}
+
+export async function getStorageUsage(): Promise<StorageUsage> {
+  return invoke("get_storage_usage");
+}
+
+export async function clearAppCache(): Promise<void> {
+  return invoke("clear_app_cache");
+}
+
+export async function deleteAllOfflineDownloads(): Promise<void> {
+  return invoke("delete_all_offline_downloads");
 }

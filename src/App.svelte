@@ -150,14 +150,19 @@
     }
   }
 
+  function getDefaultRoute(): string {
+    return getPreferences()?.playback?.default_startup_screen || "/home";
+  }
+
   function getRequestedPathAndQuery(): string {
     const hash = window.location.hash || "";
+    const defaultRoute = getDefaultRoute();
     if (!hash.startsWith("#/")) {
-      return "/home";
+      return defaultRoute;
     }
 
     const parsed = hash.slice(1);
-    return parsed.length > 0 ? parsed : "/home";
+    return parsed.length > 0 ? parsed : defaultRoute;
   }
 
   function isGuestRoute(path: string): boolean {
@@ -200,7 +205,7 @@
       if (offlineSession) {
         setAuthenticated(offlineSession);
         if (isGuestRoute(requestedPath) || !isAuthedRoute(requestedPath)) {
-          replace("/home");
+          replace(getDefaultRoute());
         }
 
         // Phase 2: Verify token in the background; auto-login if expired
@@ -244,7 +249,7 @@
         setAuthenticated(session);
         markHealthy();
         if (isGuestRoute(requestedPath) || !isAuthedRoute(requestedPath)) {
-          replace("/home");
+          replace(getDefaultRoute());
         }
         return;
       }

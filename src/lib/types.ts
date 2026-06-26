@@ -107,9 +107,21 @@ export interface DiagnosticsExportResult {
   recent_log_lines: number;
 }
 
+export interface StorageUsage {
+  cache_bytes: number;
+  downloads_bytes: number;
+}
+
 export interface PlaybackPreferences {
   autoplay_next_episode: boolean;
   default_playback_rate: number;
+  hwdec: string;
+  skip_forward_seconds: number;
+  skip_backward_seconds: number;
+  subtitle_size_percent: number;
+  subtitle_color: string;
+  subtitle_background_opacity: number;
+  default_startup_screen: string;
 }
 
 export interface LanguagePreferences {
@@ -139,6 +151,13 @@ export const DEFAULT_USER_PREFERENCES: UserPreferences = {
   playback: {
     autoplay_next_episode: true,
     default_playback_rate: 1,
+    hwdec: "auto",
+    skip_forward_seconds: 30,
+    skip_backward_seconds: 10,
+    subtitle_size_percent: 100,
+    subtitle_color: "#ffffff",
+    subtitle_background_opacity: 0,
+    default_startup_screen: "/home",
   },
   language: {
     preferred_audio_language: "",
