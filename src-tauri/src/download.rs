@@ -26,6 +26,7 @@ pub struct OfflineDownload {
     pub server_id: String,
     pub user_id: String,
     pub name: String,
+    #[serde(rename = "type")]
     pub item_type: String,
     pub local_path: Option<String>,
     pub status: String, // 'Pending', 'Downloading', 'Completed', 'Paused', 'Failed', 'Cancelled'
@@ -39,6 +40,13 @@ pub struct OfflineDownload {
     pub subtitle_tracks: Option<String>,
     pub transcode_height: Option<i64>,
     pub transcode_bitrate: Option<i64>,
+    pub series_id: Option<String>,
+    pub series_name: Option<String>,
+    pub season_id: Option<String>,
+    pub season_name: Option<String>,
+    pub index_number: Option<i64>,
+    pub image_tag: Option<String>,
+    pub series_image_tag: Option<String>,
 }
 
 pub async fn start_download_manager_loop(
@@ -84,12 +92,23 @@ pub async fn start_download_manager_loop(
 fn get_next_pending_download(ctx: &DownloadContext) -> Result<Option<OfflineDownload>, JfgoatError> {
     let db = ctx.db.read_conn().map_err(|e| JfgoatError::Internal(e.to_string()))?;
     let mut stmt = db.prepare(
-        "SELECT id, server_id, user_id, name, type, local_path, status, progress,
-                downloaded_bytes, total_bytes, speed_bytes_per_sec, error_message, added_at,
-                audio_tracks, subtitle_tracks, transcode_height, transcode_bitrate
-         FROM offline_downloads
-         WHERE status = 'Pending'
-         ORDER BY added_at ASC
+        "SELECT od.id, od.server_id, od.user_id, od.name, od.type, od.local_path, od.status, od.progress,
+                od.downloaded_bytes, od.total_bytes, od.speed_bytes_per_sec, od.error_message, od.added_at,
+                od.audio_tracks, od.subtitle_tracks, od.transcode_height, od.transcode_bitrate,
+                mi.series_id, mi.series_name, mi.season_id, mi.season_name, mi.index_number, mi.image_tag,
+                (SELECT series_mi.image_tag
+                 FROM media_items series_mi
+                 WHERE series_mi.id = mi.series_id
+                   AND series_mi.server_id = mi.server_id
+                   AND series_mi.user_id = mi.user_id
+                 LIMIT 1) AS series_image_tag
+         FROM offline_downloads od
+         LEFT JOIN media_items mi
+             ON od.id = mi.id
+            AND od.server_id = mi.server_id
+            AND od.user_id = mi.user_id
+         WHERE od.status = 'Pending'
+         ORDER BY od.added_at ASC
          LIMIT 1"
     )?;
     
@@ -112,6 +131,13 @@ fn get_next_pending_download(ctx: &DownloadContext) -> Result<Option<OfflineDown
             subtitle_tracks: row.get(14)?,
             transcode_height: row.get(15)?,
             transcode_bitrate: row.get(16)?,
+            series_id: row.get(17)?,
+            series_name: row.get(18)?,
+            season_id: row.get(19)?,
+            season_name: row.get(20)?,
+            index_number: row.get(21)?,
+            image_tag: row.get(22)?,
+            series_image_tag: row.get(23)?,
         })
     })?;
 
@@ -640,11 +666,22 @@ pub(crate) fn delete_download_from_db(ctx: &DownloadContext, item_id: &str) -> R
 pub(crate) fn get_download_status_internal(ctx: &DownloadContext, item_id: &str) -> Result<Option<OfflineDownload>, JfgoatError> {
     let db = ctx.db.read_conn().map_err(|e| JfgoatError::Internal(e.to_string()))?;
     let result = db.query_row(
-        "SELECT id, server_id, user_id, name, type, local_path, status, progress,
-                downloaded_bytes, total_bytes, speed_bytes_per_sec, error_message, added_at,
-                audio_tracks, subtitle_tracks, transcode_height, transcode_bitrate
-         FROM offline_downloads
-         WHERE id = ?1",
+        "SELECT od.id, od.server_id, od.user_id, od.name, od.type, od.local_path, od.status, od.progress,
+                od.downloaded_bytes, od.total_bytes, od.speed_bytes_per_sec, od.error_message, od.added_at,
+                od.audio_tracks, od.subtitle_tracks, od.transcode_height, od.transcode_bitrate,
+                mi.series_id, mi.series_name, mi.season_id, mi.season_name, mi.index_number, mi.image_tag,
+                (SELECT series_mi.image_tag
+                 FROM media_items series_mi
+                 WHERE series_mi.id = mi.series_id
+                   AND series_mi.server_id = mi.server_id
+                   AND series_mi.user_id = mi.user_id
+                 LIMIT 1) AS series_image_tag
+         FROM offline_downloads od
+         LEFT JOIN media_items mi
+             ON od.id = mi.id
+            AND od.server_id = mi.server_id
+            AND od.user_id = mi.user_id
+         WHERE od.id = ?1",
         rusqlite::params![item_id],
         |row| {
             Ok(OfflineDownload {
@@ -665,6 +702,13 @@ pub(crate) fn get_download_status_internal(ctx: &DownloadContext, item_id: &str)
                 subtitle_tracks: row.get(14)?,
                 transcode_height: row.get(15)?,
                 transcode_bitrate: row.get(16)?,
+                series_id: row.get(17)?,
+                series_name: row.get(18)?,
+                season_id: row.get(19)?,
+                season_name: row.get(20)?,
+                index_number: row.get(21)?,
+                image_tag: row.get(22)?,
+                series_image_tag: row.get(23)?,
             })
         },
     );

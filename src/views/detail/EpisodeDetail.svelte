@@ -415,13 +415,13 @@
             <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" class="opacity-25" />
             <path d="M4 12a8 8 0 018-8" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
           </svg>
-          <span class="text-xs font-semibold text-cyan-200">{download.progress.toFixed(0)}%</span>
+          <span class="text-xs font-semibold text-cyan-200">{download.progress.toFixed(0)}%{#if download.total_bytes > 0} · {(download.downloaded_bytes / (1024 * 1024)).toFixed(0)}/{(download.total_bytes / (1024 * 1024)).toFixed(0)} MB{/if}</span>
         {:else if download.status === "Pending"}
           <svg class="w-5 h-5 text-amber-300 animate-pulse" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/></svg>
           <span class="text-xs font-semibold text-amber-200">Queued</span>
         {:else if download.status === "Paused"}
           <svg class="w-5 h-5 text-gray-300" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
-          <span class="text-xs font-semibold text-gray-300">Paused</span>
+          <span class="text-xs font-semibold text-gray-300">Paused ({download.progress.toFixed(0)}%{#if download.total_bytes > 0} · {(download.downloaded_bytes / (1024 * 1024)).toFixed(0)}/{(download.total_bytes / (1024 * 1024)).toFixed(0)} MB{/if})</span>
         {:else if download.status === "Completed"}
           <svg class="w-5 h-5 text-emerald-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
         {:else if download.status === "Failed"}
@@ -568,6 +568,8 @@
     <DownloadModal
       onClose={() => showDownloadModal = false}
       onConfirm={handleConfirmDownload}
+      originalSize={mediaStreams?.original_size}
+      durationTicks={item.run_time_ticks}
     />
   {/if}
 </main>

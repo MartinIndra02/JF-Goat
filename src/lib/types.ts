@@ -173,6 +173,13 @@ export interface OfflineDownload {
   subtitle_tracks?: string | null;
   transcode_height?: number | null;
   transcode_bitrate?: number | null;
+  series_id?: string | null;
+  series_name?: string | null;
+  season_id?: string | null;
+  season_name?: string | null;
+  index_number?: number | null;
+  image_tag?: string | null;
+  series_image_tag?: string | null;
 }
 
 // ── Player types ────────────────────────────────────────────────
@@ -282,6 +289,7 @@ export interface MediaStreamInfo {
   audio: StreamOption[];
   subtitle: StreamOption[];
   video_label: string | null;
+  original_size?: number | null;
 }
 
 export interface ChapterInfo {

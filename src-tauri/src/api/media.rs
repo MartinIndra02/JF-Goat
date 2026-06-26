@@ -221,6 +221,8 @@ pub struct JellyfinPlaybackMediaSource {
     pub supports_transcoding: Option<bool>,
     #[serde(alias = "MediaStreams", default)]
     pub media_streams: Vec<JellyfinMediaStream>,
+    #[serde(alias = "Size")]
+    pub size: Option<i64>,
 }
 
 fn build_query_string(query_params: &[(String, String)]) -> String {
@@ -1132,6 +1134,8 @@ pub struct JellyfinExternalUrl {
 pub struct JellyfinItemWithStreams {
     #[serde(alias = "MediaStreams", default)]
     pub media_streams: Vec<JellyfinMediaStream>,
+    #[serde(alias = "MediaSources", default)]
+    pub media_sources: Vec<JellyfinPlaybackMediaSource>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1159,9 +1163,9 @@ pub async fn fetch_item_media_streams(
     client: &JellyfinClient,
     user_id: &str,
     item_id: &str,
-) -> Result<Vec<JellyfinMediaStream>, JfgoatError> {
+) -> Result<JellyfinItemWithStreams, JfgoatError> {
     let path = format!(
-        "/Users/{}/Items/{}?Fields=MediaStreams",
+        "/Users/{}/Items/{}?Fields=MediaStreams,MediaSources",
         encode(user_id), encode(item_id)
     );
 
@@ -1179,7 +1183,7 @@ pub async fn fetch_item_media_streams(
         JfgoatError::Http(format!("Failed to parse media streams response: {}", e))
     })?;
 
-    Ok(data.media_streams)
+    Ok(data)
 }
 
 /// Fetch external URLs (IMDb, TMDB, etc.) for a specific item.

@@ -627,6 +627,11 @@ pub async fn get_media_streams(
                                     !track.is_external || downloaded_indices.contains(&track.index)
                                 });
                             }
+                            if streams.original_size.is_none() {
+                                if let Ok(Some(download)) = crate::download::get_download_status_internal(&crate::download::build_ctx(&state), &id) {
+                                    streams.original_size = Some(download.total_bytes);
+                                }
+                            }
                             return Ok(streams);
                         }
                     }
@@ -708,12 +713,17 @@ pub async fn get_media_streams(
 
                         subtitle.sort_by_key(|s| s.index);
 
-                        return Ok(MediaStreamInfo {
+                        let mut ms_info = MediaStreamInfo {
                             video: vec![],
                             audio,
                             subtitle,
                             video_label: Some("Offline".to_string()),
-                        });
+                            original_size: None,
+                        };
+                        if let Ok(meta) = std::fs::metadata(&path) {
+                            ms_info.original_size = Some(meta.len() as i64);
+                        }
+                        return Ok(ms_info);
                     }
                 }
             }
@@ -725,7 +735,9 @@ pub async fn get_media_streams(
     let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
         .with_token(&token);
 
-    let streams = media_api::fetch_item_media_streams(&jf_client, &user_id, &id).await?;
+    let res = media_api::fetch_item_media_streams(&jf_client, &user_id, &id).await?;
+    let streams = res.media_streams;
+    let original_size = res.media_sources.first().and_then(|src| src.size);
 
     let mut video = Vec::new();
     let mut audio = Vec::new();
@@ -778,6 +790,7 @@ pub async fn get_media_streams(
         audio,
         subtitle,
         video_label,
+        original_size,
     })
 }
 

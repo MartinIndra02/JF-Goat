@@ -14,10 +14,21 @@
   import { pushErrorToast } from "../../lib/stores/toast.svelte";
   import Button from "../../components/ui/Button.svelte";
   import type { OfflineDownload } from "../../lib/types";
+  import { seasonNumber } from "../detail/detailHelpers";
 
   let activeRouteHeading = $state<HTMLElement | null>(null);
   let offlineDownloads = $state<OfflineDownload[]>([]);
   let loadingOffline = $state(false);
+
+  function formatBytes(bytes: number | null | undefined): string {
+    if (bytes === null || bytes === undefined || bytes <= 0) return "";
+    const mb = bytes / (1024 * 1024);
+    if (mb < 1024) {
+      return `${mb.toFixed(1)} MB`;
+    }
+    const gb = mb / 1024;
+    return `${gb.toFixed(1)} GB`;
+  }
 
   async function loadOfflineDownloads() {
     loadingOffline = true;
@@ -155,7 +166,11 @@
           <div class="flex items-center gap-4 min-w-0">
             <div class="w-16 h-24 rounded-xl overflow-hidden bg-[rgba(8,13,24,0.84)] shrink-0 border border-white/10 relative">
               <img
-                src={`http://jfimage.localhost/poster/${download.id}?tag=${download.id}`}
+                src={download.type === "Episode" && download.series_id && download.series_image_tag
+                  ? `http://jfimage.localhost/poster/${download.series_id}?tag=${download.series_image_tag}`
+                  : download.image_tag
+                    ? `http://jfimage.localhost/poster/${download.id}?tag=${download.image_tag}`
+                    : `http://jfimage.localhost/poster/${download.id}?tag=${download.id}`}
                 alt={download.name}
                 loading="lazy"
                 class="w-full h-full object-cover"
@@ -174,9 +189,25 @@
             </div>
 
             <div class="min-w-0">
-              <h3 class="text-sm font-semibold text-white truncate">{download.name}</h3>
+              <h3 class="text-sm font-semibold text-white truncate">
+                {#if download.type === "Episode" && download.series_name}
+                  {download.series_name} - {download.name}
+                {:else}
+                  {download.name}
+                {/if}
+              </h3>
               <p class="text-xs app-muted mt-1">
-                {download.type}
+                {#if download.type === "Episode"}
+                  Episode
+                  {#if download.season_name || download.index_number !== null}
+                    · S{seasonNumber(download.season_name)}{download.index_number !== null ? `E${download.index_number}` : ''}
+                  {/if}
+                {:else}
+                  Movie
+                {/if}
+                {#if download.status === "Completed" && download.total_bytes > 0}
+                  · {formatBytes(download.total_bytes)}
+                {/if}
                 {#if download.status === "Completed"}
                   · Synced successfully
                 {/if}
@@ -185,7 +216,7 @@
               {#if download.status === "Downloading"}
                 <div class="mt-2 flex flex-col gap-1 w-64 max-w-full">
                   <div class="flex justify-between text-[11px] app-faint">
-                    <span>Downloading ({download.progress.toFixed(0)}%)</span>
+                    <span>Downloading ({download.progress.toFixed(0)}%{#if download.total_bytes > 0} · {formatBytes(download.downloaded_bytes)} of {formatBytes(download.total_bytes)}{/if})</span>
                     {#if download.speed_bytes_per_sec > 0}
                       <span>{(download.speed_bytes_per_sec / (1024 * 1024)).toFixed(1)} MB/s</span>
                     {/if}
@@ -201,7 +232,7 @@
                 </span>
               {:else if download.status === "Paused"}
                 <span class="mt-2 inline-flex items-center gap-1.5 text-xs text-gray-300 bg-white/8 px-2 py-0.5 rounded-md">
-                  Paused ({download.progress.toFixed(0)}%)
+                  Paused ({download.progress.toFixed(0)}%{#if download.total_bytes > 0} · {formatBytes(download.downloaded_bytes)} of {formatBytes(download.total_bytes)}{/if})
                 </span>
               {:else if download.status === "Failed"}
                 <div class="mt-2 text-xs text-red-400 flex flex-col gap-0.5">
