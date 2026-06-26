@@ -2,6 +2,11 @@
   export type BannerTone = "error" | "warning" | "info" | "success";
   export type BannerVariant = "inline" | "toast";
 
+  interface ToastAction {
+    label: string;
+    onClick: () => void | Promise<void>;
+  }
+
   interface ErrorBannerProps {
     message: string;
     title?: string;
@@ -9,6 +14,7 @@
     variant?: BannerVariant;
     dismissible?: boolean;
     onDismiss?: (() => void) | undefined;
+    action?: ToastAction;
   }
 
   let {
@@ -18,6 +24,7 @@
     variant = "inline",
     dismissible = false,
     onDismiss,
+    action,
   }: ErrorBannerProps = $props();
 
   const toneClasses: Record<BannerTone, { container: string; accent: string }> = {
@@ -67,6 +74,19 @@
           <p class="text-sm font-semibold {classes.accent}">{title}</p>
         {/if}
         <p class="text-sm break-words">{message}</p>
+        {#if action}
+          <div class="mt-2.5 flex gap-2">
+            <button
+              type="button"
+              class="text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 border border-white/10 text-white transition-colors"
+              onclick={() => {
+                void action.onClick();
+              }}
+            >
+              {action.label}
+            </button>
+          </div>
+        {/if}
       </div>
 
       {#if dismissible}
