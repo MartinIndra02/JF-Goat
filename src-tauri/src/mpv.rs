@@ -263,14 +263,49 @@ fn run_mpv_loop(
     app_handle: tauri::AppHandle,
 ) {
     use libmpv2::Mpv;
+    use tauri::Manager;
 
     let mut mpv = Mpv::new().expect("Failed to create mpv instance");
 
     // Render into the child HWND
     mpv.set_property("wid", child_hwnd as i64).unwrap();
 
-    // Hardware decoding
-    mpv.set_property("hwdec", "auto").unwrap();
+    // Hardware decoding & subtitle styling loaded from preferences
+    let app_state = app_handle.state::<crate::state::AppState>();
+    let mut hwdec = "auto".to_string();
+    let mut sub_scale = 1.0;
+    let mut sub_color = "#ffffff".to_string();
+    let mut sub_back_color = "#00000000".to_string();
+
+    if let Ok(db) = app_state.db.read_conn() {
+        let maybe_raw = db.query_row(
+            "SELECT value FROM metadata WHERE key = 'user_preferences_v1'",
+            [],
+            |row| row.get::<_, String>(0),
+        );
+        if let Ok(raw) = maybe_raw {
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&raw) {
+                if let Some(hwdec_str) = parsed.pointer("/playback/hwdec").and_then(|v| v.as_str()) {
+                    hwdec = hwdec_str.to_string();
+                }
+                if let Some(sub_scale_val) = parsed.pointer("/playback/subtitle_size_percent").and_then(|v| v.as_i64()) {
+                    sub_scale = (sub_scale_val as f64) / 100.0;
+                }
+                if let Some(sub_color_str) = parsed.pointer("/playback/subtitle_color").and_then(|v| v.as_str()) {
+                    sub_color = sub_color_str.to_string();
+                }
+                if let Some(sub_bg_opacity_val) = parsed.pointer("/playback/subtitle_background_opacity").and_then(|v| v.as_i64()) {
+                    let alpha_val = ((sub_bg_opacity_val as f64 / 100.0) * 255.0) as u8;
+                    sub_back_color = format!("#{:02X}000000", alpha_val);
+                }
+            }
+        }
+    }
+
+    mpv.set_property("hwdec", hwdec.as_str()).unwrap();
+    mpv.set_property("sub-scale", sub_scale).ok();
+    mpv.set_property("sub-color", sub_color.as_str()).ok();
+    mpv.set_property("sub-back-color", sub_back_color.as_str()).ok();
 
     // Keep the window open after playback ends (for "ended" state)
     mpv.set_property("keep-open", "yes").unwrap();
@@ -340,6 +375,35 @@ fn run_mpv_loop(
                     audio_track: initial_audio_track,
                     subtitle_track: initial_subtitle_track,
                 } => {
+                    // Load hardware decoding & subtitle styling dynamically from preferences on each file load
+                    let app_state = app_handle.state::<crate::state::AppState>();
+                    if let Ok(db) = app_state.db.read_conn() {
+                        let maybe_raw = db.query_row(
+                            "SELECT value FROM metadata WHERE key = 'user_preferences_v1'",
+                            [],
+                            |row| row.get::<_, String>(0),
+                        );
+                        if let Ok(raw) = maybe_raw {
+                            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&raw) {
+                                if let Some(hwdec_str) = parsed.pointer("/playback/hwdec").and_then(|v| v.as_str()) {
+                                    let _ = mpv.set_property("hwdec", hwdec_str);
+                                }
+                                if let Some(sub_scale_val) = parsed.pointer("/playback/subtitle_size_percent").and_then(|v| v.as_i64()) {
+                                    let scale = (sub_scale_val as f64) / 100.0;
+                                    let _ = mpv.set_property("sub-scale", scale);
+                                }
+                                if let Some(sub_color_str) = parsed.pointer("/playback/subtitle_color").and_then(|v| v.as_str()) {
+                                    let _ = mpv.set_property("sub-color", sub_color_str);
+                                }
+                                if let Some(sub_bg_opacity_val) = parsed.pointer("/playback/subtitle_background_opacity").and_then(|v| v.as_i64()) {
+                                    let alpha_val = ((sub_bg_opacity_val as f64 / 100.0) * 255.0) as u8;
+                                    let sub_back_color = format!("#{:02X}000000", alpha_val);
+                                    let _ = mpv.set_property("sub-back-color", sub_back_color.as_str());
+                                }
+                            }
+                        }
+                    }
+
                     if start_seconds > 0.0 {
                         mpv.set_property("start", format!("+{}", start_seconds))
                             .ok();

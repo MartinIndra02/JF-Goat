@@ -4,10 +4,28 @@
   interface Props {
     onClose: () => void;
     onConfirm: (quality: Quality) => void;
+    originalSize?: number | null;
+    durationTicks?: number | null;
   }
 
-  let { onClose, onConfirm }: Props = $props();
+  let { onClose, onConfirm, originalSize = null, durationTicks = null }: Props = $props();
   let downloadQualitySelection = $state<Quality>("original");
+
+  function formatBytes(bytes: number | null | undefined): string {
+    if (bytes === null || bytes === undefined || bytes <= 0) return "";
+    const mb = bytes / (1024 * 1024);
+    if (mb < 1024) {
+      return `${mb.toFixed(1)} MB`;
+    }
+    const gb = mb / 1024;
+    return `${gb.toFixed(1)} GB`;
+  }
+
+  function estimateSize(bitrate: number): number | null {
+    if (!durationTicks) return null;
+    const durationSeconds = durationTicks / 10000000;
+    return (bitrate * durationSeconds) / 8;
+  }
 </script>
 
 <!-- Modal Backdrop -->
@@ -50,8 +68,13 @@
               bind:group={downloadQualitySelection}
               class="accent-cyan-400"
             />
-            <div class="min-w-0">
-              <p class="text-sm font-semibold text-white">Original Quality</p>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center justify-between gap-2">
+                <p class="text-sm font-semibold text-white">Original Quality</p>
+                {#if originalSize}
+                  <span class="text-xs font-semibold text-cyan-400">{formatBytes(originalSize)}</span>
+                {/if}
+              </div>
               <p class="text-xs text-gray-400">Download the source file directly without quality loss</p>
             </div>
           </label>
@@ -64,8 +87,13 @@
               bind:group={downloadQualitySelection}
               class="accent-cyan-400"
             />
-            <div class="min-w-0">
-              <p class="text-sm font-semibold text-white">720p (Transcoded)</p>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center justify-between gap-2">
+                <p class="text-sm font-semibold text-white">720p (Transcoded)</p>
+                {#if estimateSize(4500000)}
+                  <span class="text-xs font-semibold text-cyan-400">~{formatBytes(estimateSize(4500000))}</span>
+                {/if}
+              </div>
               <p class="text-xs text-gray-400">Smaller file size (~4.5 Mbps, optimized for mobile devices)</p>
             </div>
           </label>
@@ -78,8 +106,13 @@
               bind:group={downloadQualitySelection}
               class="accent-cyan-400"
             />
-            <div class="min-w-0">
-              <p class="text-sm font-semibold text-white">480p (Transcoded)</p>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center justify-between gap-2">
+                <p class="text-sm font-semibold text-white">480p (Transcoded)</p>
+                {#if estimateSize(2000000)}
+                  <span class="text-xs font-semibold text-cyan-400">~{formatBytes(estimateSize(2000000))}</span>
+                {/if}
+              </div>
               <p class="text-xs text-gray-400">Very small file size (~2.0 Mbps, standard definition)</p>
             </div>
           </label>
@@ -92,8 +125,13 @@
               bind:group={downloadQualitySelection}
               class="accent-cyan-400"
             />
-            <div class="min-w-0">
-              <p class="text-sm font-semibold text-white">360p (Transcoded)</p>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center justify-between gap-2">
+                <p class="text-sm font-semibold text-white">360p (Transcoded)</p>
+                {#if estimateSize(1000000)}
+                  <span class="text-xs font-semibold text-cyan-400">~{formatBytes(estimateSize(1000000))}</span>
+                {/if}
+              </div>
               <p class="text-xs text-gray-400">Tiny file size (~1.0 Mbps, ideal for low storage)</p>
             </div>
           </label>

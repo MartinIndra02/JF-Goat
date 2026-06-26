@@ -205,11 +205,22 @@ pub async fn get_offline_downloads(
 ) -> Result<Vec<OfflineDownload>, JfgoatError> {
     let db = state.db.read_conn().map_err(|e| JfgoatError::Internal(e.to_string()))?;
     let mut stmt = db.prepare(
-        "SELECT id, server_id, user_id, name, type, local_path, status, progress,
-                downloaded_bytes, total_bytes, speed_bytes_per_sec, error_message, added_at,
-                audio_tracks, subtitle_tracks, transcode_height, transcode_bitrate
-         FROM offline_downloads
-         ORDER BY added_at DESC"
+        "SELECT od.id, od.server_id, od.user_id, od.name, od.type, od.local_path, od.status, od.progress,
+                od.downloaded_bytes, od.total_bytes, od.speed_bytes_per_sec, od.error_message, od.added_at,
+                od.audio_tracks, od.subtitle_tracks, od.transcode_height, od.transcode_bitrate,
+                mi.series_id, mi.series_name, mi.season_id, mi.season_name, mi.index_number, mi.image_tag,
+                (SELECT series_mi.image_tag
+                 FROM media_items series_mi
+                 WHERE series_mi.id = mi.series_id
+                   AND series_mi.server_id = mi.server_id
+                   AND series_mi.user_id = mi.user_id
+                 LIMIT 1) AS series_image_tag
+         FROM offline_downloads od
+         LEFT JOIN media_items mi
+             ON od.id = mi.id
+            AND od.server_id = mi.server_id
+            AND od.user_id = mi.user_id
+         ORDER BY od.added_at DESC"
     )?;
     
     let rows = stmt.query_map([], |row| {
@@ -231,6 +242,13 @@ pub async fn get_offline_downloads(
             subtitle_tracks: row.get(14)?,
             transcode_height: row.get(15)?,
             transcode_bitrate: row.get(16)?,
+            series_id: row.get(17)?,
+            series_name: row.get(18)?,
+            season_id: row.get(19)?,
+            season_name: row.get(20)?,
+            index_number: row.get(21)?,
+            image_tag: row.get(22)?,
+            series_image_tag: row.get(23)?,
         })
     })?;
 

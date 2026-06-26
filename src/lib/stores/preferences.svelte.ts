@@ -34,6 +34,22 @@ function sanitizePreferences(input: UserPreferences): UserPreferences {
     ? input.playback.default_playback_rate
     : DEFAULT_USER_PREFERENCES.playback.default_playback_rate;
 
+  const skipForward = Number.isFinite(input.playback.skip_forward_seconds)
+    ? input.playback.skip_forward_seconds
+    : DEFAULT_USER_PREFERENCES.playback.skip_forward_seconds;
+
+  const skipBackward = Number.isFinite(input.playback.skip_backward_seconds)
+    ? input.playback.skip_backward_seconds
+    : DEFAULT_USER_PREFERENCES.playback.skip_backward_seconds;
+
+  const subSize = Number.isFinite(input.playback.subtitle_size_percent)
+    ? input.playback.subtitle_size_percent
+    : DEFAULT_USER_PREFERENCES.playback.subtitle_size_percent;
+
+  const subBgOpacity = Number.isFinite(input.playback.subtitle_background_opacity)
+    ? input.playback.subtitle_background_opacity
+    : DEFAULT_USER_PREFERENCES.playback.subtitle_background_opacity;
+
   const refreshInterval = Number.isFinite(input.refresh_interval_seconds)
     ? input.refresh_interval_seconds
     : DEFAULT_USER_PREFERENCES.refresh_interval_seconds;
@@ -46,6 +62,13 @@ function sanitizePreferences(input: UserPreferences): UserPreferences {
     playback: {
       autoplay_next_episode: !!input.playback.autoplay_next_episode,
       default_playback_rate: Math.max(0.5, Math.min(2, playbackRate)),
+      hwdec: (input.playback.hwdec ?? "auto").trim() || "auto",
+      skip_forward_seconds: Math.max(5, Math.min(300, skipForward)),
+      skip_backward_seconds: Math.max(5, Math.min(300, skipBackward)),
+      subtitle_size_percent: Math.max(50, Math.min(300, Math.round(subSize))),
+      subtitle_color: (input.playback.subtitle_color ?? "#ffffff").trim() || "#ffffff",
+      subtitle_background_opacity: Math.max(0, Math.min(100, Math.round(subBgOpacity))),
+      default_startup_screen: (input.playback.default_startup_screen ?? "/home").trim() || "/home",
     },
     language: {
       preferred_audio_language: (input.language.preferred_audio_language ?? "")

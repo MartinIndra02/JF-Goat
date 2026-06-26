@@ -58,6 +58,7 @@ pub struct MediaStreamInfo {
     pub subtitle: Vec<StreamOption>,
     /// Short label for the primary video stream, e.g. "HD SDR"
     pub video_label: Option<String>,
+    pub original_size: Option<i64>,
 }
 
 /// An external URL (e.g. IMDb, TMDB, TheTVDB).

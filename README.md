@@ -78,7 +78,23 @@ npm run release:tauri
 
 ## 📝 Changelog
 
-### v1.3.0 (Current)
+### v1.4.1 (Current)
+This release includes settings UI, update checks, and download system enhancements:
+
+* **Automatic Update Checks**: Added automated update checking on application startup and interactive update notification/popup flows in the notification stack.
+* **Modernized Settings UI**: Fully reworked the settings screen interface for improved configuration layout and visual appeal.
+* **Download & Offline View Enhancements**: Added file size estimates before initiating downloads, displayed active download progress in MBs alongside percentages, displayed series names on the offline page, and resolved cover art loading issues for offline episodes.
+* **Download Stream Resiliency**: Integrated automatic retry logic to recover and resume downloads affected by connection-reset and decoding stream errors.
+
+### v1.4.0
+This release introduces cross-platform support and authentication persistence:
+
+* **Initial macOS Support**: Brought initial compatibility to macOS, including native MPV video player rendering, window/event management, and macOS build pipelines.
+* **Secure Auth Persistence**: Implemented a SQLite session token fallback to prevent post-update relogin requirements.
+* **Multiplatform Updater Automation**: Integrated automated multiplatform updater generator and build-merging pipeline utilities.
+* **Build Configuration Fixes**: Patched Raw Window Handle pointer access, linker library paths on macOS, and beforeBundleCommand scripts.
+
+### v1.3.0
 This release includes backend updates and fixes:
 
 * **Backend Refactoring**: Refactored the backend structure and optimized updater generator logic.

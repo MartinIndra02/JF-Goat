@@ -58,7 +58,7 @@
     MediaItem,
     MediaStreamInfo,
   } from "../../lib/types";
-
+  import { getPreferences } from "../../lib/stores/preferences.svelte";
   // ── Auto-hide logic ──────────────────────────────────────────
   let controlsVisible = $state(true);
   let hideTimer: ReturnType<typeof setTimeout> | null = null;
@@ -866,11 +866,13 @@
   }
 
   async function seekBack10() {
-    await mpvSeek(-10);
+    const b = getPreferences()?.playback?.skip_backward_seconds ?? 10;
+    await mpvSeek(-b);
   }
 
   async function seekForward30() {
-    await mpvSeek(30);
+    const f = getPreferences()?.playback?.skip_forward_seconds ?? 30;
+    await mpvSeek(f);
   }
 
   async function seekToChapter(seconds: number) {
@@ -955,13 +957,15 @@
 
     if (e.key === "ArrowLeft") {
       e.preventDefault();
-      void mpvSeek(-10);
+      const b = getPreferences()?.playback?.skip_backward_seconds ?? 10;
+      void mpvSeek(-b);
       return;
     }
 
     if (e.key === "ArrowRight") {
       e.preventDefault();
-      void mpvSeek(10);
+      const f = getPreferences()?.playback?.skip_forward_seconds ?? 30;
+      void mpvSeek(f);
       return;
     }
 
@@ -1079,12 +1083,16 @@
         e.preventDefault();
         void togglePause();
         break;
-      case "ArrowLeft":
-        void mpvSeek(-10);
+      case "ArrowLeft": {
+        const b = getPreferences()?.playback?.skip_backward_seconds ?? 10;
+        void mpvSeek(-b);
         break;
-      case "ArrowRight":
-        void mpvSeek(30);
+      }
+      case "ArrowRight": {
+        const f = getPreferences()?.playback?.skip_forward_seconds ?? 30;
+        void mpvSeek(f);
         break;
+      }
       case "ArrowUp": {
         e.preventDefault();
         const newVolUp = Math.min(vol + 5, 100);

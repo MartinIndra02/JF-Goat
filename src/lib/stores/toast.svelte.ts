@@ -1,6 +1,11 @@
 export type ToastLevel = "error" | "warning" | "info" | "success";
 export type ToastSource = "api" | "sync" | "player" | "system";
 
+export interface ToastAction {
+  label: string;
+  onClick: () => void | Promise<void>;
+}
+
 export interface ToastItem {
   id: string;
   level: ToastLevel;
@@ -9,15 +14,17 @@ export interface ToastItem {
   message: string;
   dismissAfterMs: number;
   createdAt: number;
+  action?: ToastAction;
 }
 
-interface PushToastInput {
+export interface PushToastInput {
   level: ToastLevel;
   source: ToastSource;
   title?: string;
   message: string;
   dismissAfterMs?: number;
   dedupeKey?: string;
+  action?: ToastAction;
 }
 
 const MAX_TOASTS = 5;
@@ -87,8 +94,9 @@ export function pushToast(input: PushToastInput): string | null {
     source: input.source,
     title: input.title?.trim() || defaultTitle(input.level, input.source),
     message,
-    dismissAfterMs: Math.max(1200, input.dismissAfterMs ?? DEFAULT_DISMISS_MS),
+    dismissAfterMs: input.dismissAfterMs === 0 ? 0 : Math.max(1200, input.dismissAfterMs ?? DEFAULT_DISMISS_MS),
     createdAt: timestamp,
+    action: input.action,
   };
 
   queue = [toast, ...queue].slice(0, MAX_TOASTS);
@@ -143,5 +151,17 @@ export function pushErrorToast(
     title,
     message: normalizeErrorMessage(error),
     dedupeKey,
+  });
+}
+
+export function updateToast(
+  id: string,
+  updates: Partial<Pick<ToastItem, "message" | "title" | "action" | "level" | "dismissAfterMs">>
+): void {
+  queue = queue.map((toast) => {
+    if (toast.id === id) {
+      return { ...toast, ...updates };
+    }
+    return toast;
   });
 }

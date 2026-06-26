@@ -19,6 +19,7 @@
     loadPreferences,
   } from "./lib/stores/preferences.svelte";
   import {
+    isOnline,
     setOnlineStatus,
     markDegraded,
     markHealthy,
@@ -29,8 +30,19 @@
     pushToast,
     pushErrorToast,
     normalizeErrorMessage,
+    updateToast,
     type ToastSource,
   } from "./lib/stores/toast.svelte";
+  import {
+    getUpdateStatus,
+    getUpdateInfo,
+    getDownloadProgress,
+    getUpdateError,
+    checkForUpdates,
+    installUpdate,
+    performRestart,
+    dismissUpdate,
+  } from "./lib/stores/updater.svelte";
   import LoadingScreen from "./components/layout/LoadingScreen.svelte";
   import ErrorBanner from "./components/ui/ErrorBanner.svelte";
   import Player from "./components/player/Player.svelte";
@@ -59,6 +71,95 @@
     playerActive && (playerStatus === "playing" || playerStatus === "paused" || playerStatus === "ended")
   );
   const toasts = $derived(getToasts());
+
+  let updateToastId = $state<string | null>(null);
+
+  async function startUpdateFromToast() {
+    if (!updateToastId) return;
+
+    updateToast(updateToastId, {
+      message: "Downloading update...",
+      action: undefined,
+    });
+
+    try {
+      await installUpdate();
+    } catch (e) {
+      console.error("Failed to install update from toast:", e);
+    }
+  }
+
+  $effect(() => {
+    const status = getUpdateStatus();
+    const progress = getDownloadProgress();
+    const error = getUpdateError();
+
+    if (updateToastId) {
+      if (status === "downloading") {
+        updateToast(updateToastId, {
+          message: progress !== null ? `Downloading update: ${progress}%` : "Downloading update...",
+          action: undefined,
+        });
+      } else if (status === "installing") {
+        updateToast(updateToastId, {
+          message: "Installing update...",
+          action: undefined,
+        });
+      } else if (status === "readyToRestart") {
+        updateToast(updateToastId, {
+          level: "success",
+          message: "Update ready. Restart the app to apply.",
+          action: {
+            label: "Restart Now",
+            onClick: () => {
+              void performRestart();
+            },
+          },
+        });
+      } else if (status === "error" && error) {
+        updateToast(updateToastId, {
+          level: "error",
+          message: `Update failed: ${error}`,
+          action: {
+            label: "Retry",
+            onClick: () => {
+              void startUpdateFromToast();
+            },
+          },
+        });
+      } else if (status === "idle" || status === "upToDate") {
+        dismissToast(updateToastId);
+        updateToastId = null;
+      }
+    }
+  });
+
+  async function checkForUpdatesBackground() {
+    try {
+      await checkForUpdates();
+      const status = getUpdateStatus();
+      if (status === "available") {
+        const info = getUpdateInfo();
+        if (info) {
+          updateToastId = pushToast({
+            level: "info",
+            source: "system",
+            title: "App Update Available",
+            message: `Version ${info.version} is available.`,
+            dismissAfterMs: 0,
+            action: {
+              label: "Download",
+              onClick: () => {
+                void startUpdateFromToast();
+              },
+            },
+          });
+        }
+      }
+    } catch (e) {
+      console.warn("Background update check failed:", e);
+    }
+  }
 
   let globalMenuOpen = $state(false);
   let globalMenuX = $state(0);
@@ -150,14 +251,19 @@
     }
   }
 
+  function getDefaultRoute(): string {
+    return getPreferences()?.playback?.default_startup_screen || "/home";
+  }
+
   function getRequestedPathAndQuery(): string {
     const hash = window.location.hash || "";
+    const defaultRoute = getDefaultRoute();
     if (!hash.startsWith("#/")) {
-      return "/home";
+      return defaultRoute;
     }
 
     const parsed = hash.slice(1);
-    return parsed.length > 0 ? parsed : "/home";
+    return parsed.length > 0 ? parsed : defaultRoute;
   }
 
   function isGuestRoute(path: string): boolean {
@@ -200,7 +306,7 @@
       if (offlineSession) {
         setAuthenticated(offlineSession);
         if (isGuestRoute(requestedPath) || !isAuthedRoute(requestedPath)) {
-          replace("/home");
+          replace(getDefaultRoute());
         }
 
         // Phase 2: Verify token in the background; auto-login if expired
@@ -244,7 +350,7 @@
         setAuthenticated(session);
         markHealthy();
         if (isGuestRoute(requestedPath) || !isAuthedRoute(requestedPath)) {
-          replace("/home");
+          replace(getDefaultRoute());
         }
         return;
       }
@@ -354,6 +460,10 @@
 
     void init();
 
+    if (isOnline()) {
+      void checkForUpdatesBackground();
+    }
+
     return () => {
       window.removeEventListener("contextmenu", handleGlobalContextMenu);
       window.removeEventListener("pointerdown", onPointerDown);
@@ -395,7 +505,14 @@
           tone={toast.level}
           variant="toast"
           dismissible={true}
-          onDismiss={() => dismissToast(toast.id)}
+          onDismiss={() => {
+            dismissToast(toast.id);
+            if (toast.id === updateToastId) {
+              updateToastId = null;
+              dismissUpdate();
+            }
+          }}
+          action={toast.action}
         />
       </div>
     {/each}

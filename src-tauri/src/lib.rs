@@ -276,6 +276,9 @@ pub fn run() {
             commands::get_offline_downloads,
             commands::select_download_directory,
             commands::restart_app,
+            commands::get_storage_usage,
+            commands::clear_app_cache,
+            commands::delete_all_offline_downloads,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
