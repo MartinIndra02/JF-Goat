@@ -34,7 +34,7 @@ pub async fn get_media_streams(
 ) -> Result<MediaStreamInfo, JfgoatError> {
     if let Ok(db) = state.db.read_conn() {
         let cached = get_offline_media_stream_cache(&db, &id).ok();
-        if let Some((streams_json_opt, subtitle_tracks_json, status_opt, local_path_opt)) = cached {
+        if let Some((streams_json_opt, subtitle_tracks_json, status_opt, _)) = cached {
             if let Some(status) = status_opt {
                 if let Some(streams_json) = streams_json_opt {
                     if !streams_json.is_empty() {
@@ -327,6 +327,7 @@ pub async fn report_playback_stopped(
     .await
 }
 
+#[allow(dead_code)]
 fn get_friendly_language_name(code: &str) -> String {
     match code.to_lowercase().as_str() {
         "eng" | "en" => "English".to_string(),

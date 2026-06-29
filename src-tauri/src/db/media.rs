@@ -258,6 +258,7 @@ pub fn search_local(
 }
 
 /// Get the total count of media items in the local database.
+#[allow(dead_code)]
 pub fn get_local_item_count(conn: &Connection) -> Result<u32, JfgoatError> {
     get_local_item_count_scoped(conn, None, None)
 }

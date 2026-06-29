@@ -80,6 +80,7 @@ fn from_hex(hex: &str) -> Option<Vec<u8>> {
 #[cfg(target_os = "windows")]
 #[repr(C)]
 #[derive(Copy, Clone)]
+#[allow(non_snake_case)]
 struct DATA_BLOB {
     cbData: u32,
     pbData: *mut u8,

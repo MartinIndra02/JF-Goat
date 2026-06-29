@@ -15,8 +15,10 @@ pub struct DownloadContext {
     pub db: DbPool,
     pub http_client: reqwest::Client,
     pub server_url: Arc<RwLock<Option<String>>>,
+    #[allow(dead_code)]
     pub user_id: Arc<RwLock<Option<String>>>,
     pub token: Arc<RwLock<Option<String>>>,
+    #[allow(dead_code)]
     pub download_trigger: tokio::sync::mpsc::UnboundedSender<()>,
 }
 
@@ -203,7 +205,7 @@ async fn download_media_item(
 
     let mut retries: u32 = 0;
     let max_retries = 5;
-    let mut final_path = None;
+    let mut final_path;
 
     loop {
         // Check if we need to pause or cancel before starting the attempt

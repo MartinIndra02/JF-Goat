@@ -7,6 +7,7 @@ pub enum JfgoatError {
     Database(String),
     Http(String),
     Auth(String),
+    #[allow(dead_code)]
     NotFound(String),
     Internal(String),
 }

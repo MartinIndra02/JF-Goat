@@ -219,6 +219,7 @@ pub struct JellyfinPlaybackMediaSource {
     pub supports_direct_stream: Option<bool>,
     #[serde(alias = "SupportsTranscoding", default)]
     pub supports_transcoding: Option<bool>,
+    #[allow(dead_code)]
     #[serde(alias = "MediaStreams", default)]
     pub media_streams: Vec<JellyfinMediaStream>,
     #[serde(alias = "Size")]
