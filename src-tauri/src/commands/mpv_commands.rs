@@ -2,7 +2,7 @@ use tauri::State;
 
 use crate::api::client::JellyfinClient;
 use crate::api::media as media_api;
-use crate::commands::media_commands::{
+use crate::commands::playback_commands::{
     report_playback_lifecycle_internal, PlaybackLifecycleEvent,
 };
 use crate::error::JfgoatError;

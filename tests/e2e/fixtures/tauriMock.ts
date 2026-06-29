@@ -177,6 +177,15 @@ export async function installTauriMock(page: Page): Promise<void> {
             url: String(args.url ?? "http://demo.local"),
           };
         case "login": {
+          const checkRateLimit = (globalThis as any).__TAURI_MOCK_LOGIN_RATE_LIMIT__;
+          if (checkRateLimit) {
+            throw "Too many login attempts. Please wait 1 seconds.";
+          }
+          const failAttempts = (globalThis as any).__TAURI_MOCK_LOGIN_FAIL_ATTEMPTS__ ?? 0;
+          if (failAttempts > 0) {
+            (globalThis as any).__TAURI_MOCK_LOGIN_FAIL_ATTEMPTS__--;
+            throw "Invalid username or password";
+          }
           state.session = {
             user_id: "user-1",
             username: String(args.username ?? "demo"),

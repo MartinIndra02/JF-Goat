@@ -314,6 +314,32 @@ pub async fn login(
     password: String,
     state: State<'_, AppState>,
 ) -> Result<LoginResult, JfgoatError> {
+    let check_result = {
+        let attempts = state.login_attempts.lock();
+        if let Some(&(count, last_failure_time)) = attempts.get(&username) {
+            if count > 0 {
+                let delay_secs = 2u64.pow(count - 1).min(60);
+                let elapsed = std::time::Instant::now().duration_since(last_failure_time).as_secs();
+                if elapsed < delay_secs {
+                    Some(delay_secs - elapsed)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    };
+
+    if let Some(wait_remaining) = check_result {
+        return Err(JfgoatError::Auth(format!(
+            "Too many login attempts. Please wait {} seconds.",
+            wait_remaining
+        )));
+    }
+
     let device_id = get_device_id(&state)?;
 
     let server_url = state
@@ -323,7 +349,19 @@ pub async fn login(
         .ok_or_else(|| JfgoatError::Auth("No server connected".to_string()))?;
 
     let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id);
-    let (token, mut result) = auth::authenticate_by_name(&jf_client, &username, &password).await?;
+    let (token, mut result) = match auth::authenticate_by_name(&jf_client, &username, &password).await {
+        Ok(res) => {
+            state.login_attempts.lock().remove(&username);
+            res
+        }
+        Err(err) => {
+            let mut attempts = state.login_attempts.lock();
+            let entry = attempts.entry(username.clone()).or_insert((0, std::time::Instant::now()));
+            entry.0 += 1;
+            entry.1 = std::time::Instant::now();
+            return Err(err);
+        }
+    };
 
     // Store token in OS credential store & DB fallback
     keyring_store_token(&token)?;
@@ -496,4 +534,90 @@ pub async fn logout(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use parking_lot::Mutex;
+    use std::collections::HashMap;
+    use std::time::Instant;
+
+    #[test]
+    fn test_login_rate_limiting_delay_calculation() {
+        let attempts_map = Mutex::new(HashMap::new());
+        let username = "testuser".to_string();
+
+        let check_initial = {
+            let attempts = attempts_map.lock();
+            if let Some(&(count, last_failure_time)) = attempts.get(&username) {
+                if count > 0 {
+                    let delay_secs = 2u64.pow(count - 1).min(60);
+                    let elapsed = Instant::now().duration_since(last_failure_time).as_secs();
+                    if elapsed < delay_secs {
+                        Some(delay_secs - elapsed)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        };
+        assert_eq!(check_initial, None);
+
+        {
+            let mut attempts = attempts_map.lock();
+            attempts.insert(username.clone(), (1, Instant::now()));
+        }
+
+        let check_after_1_failure = {
+            let attempts = attempts_map.lock();
+            if let Some(&(count, last_failure_time)) = attempts.get(&username) {
+                if count > 0 {
+                    let delay_secs = 2u64.pow(count - 1).min(60);
+                    let elapsed = Instant::now().duration_since(last_failure_time).as_secs();
+                    if elapsed < delay_secs {
+                        Some(delay_secs - elapsed)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        };
+        assert!(check_after_1_failure.is_some());
+        assert!(check_after_1_failure.unwrap() <= 1);
+
+        {
+            let mut attempts = attempts_map.lock();
+            attempts.insert(username.clone(), (5, Instant::now()));
+        }
+
+        let check_after_5_failures = {
+            let attempts = attempts_map.lock();
+            if let Some(&(count, last_failure_time)) = attempts.get(&username) {
+                if count > 0 {
+                    let delay_secs = 2u64.pow(count - 1).min(60);
+                    let elapsed = Instant::now().duration_since(last_failure_time).as_secs();
+                    if elapsed < delay_secs {
+                        Some(delay_secs - elapsed)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        };
+        assert!(check_after_5_failures.is_some());
+        assert!(check_after_5_failures.unwrap() <= 16);
+    }
 }

@@ -61,6 +61,37 @@ describe("mediaStreamHelpers", () => {
     const presetHeights = opts.slice(1).map(o => o.targetHeight);
     expect(presetHeights).toEqual([1080, 720, 480, 360, 240]);
   });
+
+  it("handles edge cases in generateQualityOptions", () => {
+    const streamsMissingHeight: MediaStreamInfo = {
+      video: [{ index: 0, codec: "h264", display_title: "Video", language: null, is_default: true, height: undefined }],
+      audio: [],
+      subtitle: [],
+      video_label: null,
+    };
+    const optsMissing = generateQualityOptions(streamsMissingHeight);
+    expect(optsMissing).toHaveLength(8);
+    expect(optsMissing[0].key).toBe("direct-play");
+
+    const streams8K: MediaStreamInfo = {
+      video: [{ index: 0, codec: "hevc", display_title: "Video", language: null, is_default: true, height: 4320 }],
+      audio: [],
+      subtitle: [],
+      video_label: "4320p HDR",
+    };
+    const opts8K = generateQualityOptions(streams8K);
+    expect(opts8K).toHaveLength(8);
+    expect(opts8K.slice(1).map(o => o.targetHeight)).toEqual([2160, 1440, 1080, 720, 480, 360, 240]);
+
+    const streamsNegativeHeight: MediaStreamInfo = {
+      video: [{ index: 0, codec: "h264", display_title: "Video", language: null, is_default: true, height: -10 }],
+      audio: [],
+      subtitle: [],
+      video_label: null,
+    };
+    const optsNegative = generateQualityOptions(streamsNegativeHeight);
+    expect(optsNegative).toHaveLength(8);
+  });
 });
 
 describe("player store reset", () => {

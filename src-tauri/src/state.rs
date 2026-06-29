@@ -4,8 +4,10 @@ use rusqlite::{Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
-use parking_lot::RwLock;
-use std::time::Duration;
+use std::sync::Arc;
+use parking_lot::{RwLock, Mutex};
+use std::time::{Duration, Instant};
+use std::collections::HashMap;
 
 use crate::db::{
     default_sqlite_read_pool_size,
@@ -13,6 +15,7 @@ use crate::db::{
     SQLITE_WRITE_POOL_SIZE,
 };
 use crate::error::JfgoatError;
+use crate::api::client::JellyfinClient;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SyncStatus {
@@ -94,8 +97,6 @@ fn configure_connection(conn: &mut Connection) -> rusqlite::Result<()> {
     Ok(())
 }
 
-use std::sync::Arc;
-
 pub struct AppState {
     pub db: DbPool,
     pub http_client: reqwest::Client,
@@ -106,9 +107,17 @@ pub struct AppState {
     pub user_data_refresh_running: AtomicBool,
     pub sync_running: AtomicBool,
     pub download_trigger: tokio::sync::mpsc::UnboundedSender<()>,
+    pub login_attempts: Mutex<HashMap<String, (u32, Instant)>>,
 }
 
 impl AppState {
+    pub fn get_jf_client(&self) -> Result<(JellyfinClient, String, String), JfgoatError> {
+        let (server_url, token, user_id, device_id) = self.get_connection_params()?;
+        let server_id = self.get_server_id()?;
+        let client = JellyfinClient::new(&self.http_client, &server_url, &device_id).with_token(&token);
+        Ok((client, user_id, server_id))
+    }
+
     pub fn get_connection_params(&self) -> Result<(String, String, String, String), JfgoatError> {
         let server_url = self
             .server_url
