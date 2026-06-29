@@ -22,3 +22,5 @@ tmpclaude-*
 # (empty or removed)
 ~/.tauri/myapp.key
 ~/.tauri/myapp.key.pub
+
+review/

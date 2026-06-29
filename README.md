@@ -78,7 +78,17 @@ npm run release:tauri
 
 ## 📝 Changelog
 
-### v1.4.1 (Current)
+### v1.4.2 (Current)
+This release includes router implementation, Rust refactoring, security improvements, player code cleanup, and UI enhancements:
+
+* **Svelte Router Implementation**: Replaced monolithic home component with a modular routing structure and a centralized home data store.
+* **Rust Command Refactoring**: Split large command structures into separate playback, library, and media modules, enhancing code maintainability.
+* **Security & Hardening**: Configured Content Security Policy (CSP) headers, added brute force and rate limit protection for authentication, and introduced corresponding E2E test coverage.
+* **Player Refactoring**: Modularized the media player into focused sub-components (header, timeline, controls, custom playback contexts, autohide hooks).
+* **Context Menu Unification**: Unified right-click context menu states across views to prevent overlapping menu overlays.
+* **Stale Cache Refresh**: Added a manual data refresh action and loading spinner to allow user-initiated updates of stale cached data.
+
+### v1.4.1
 This release includes settings UI, update checks, and download system enhancements:
 
 * **Automatic Update Checks**: Added automated update checking on application startup and interactive update notification/popup flows in the notification stack.

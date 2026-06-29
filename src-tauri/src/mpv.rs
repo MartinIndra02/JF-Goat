@@ -12,6 +12,7 @@ pub enum MpvCommand {
         start_seconds: f64,
         audio_track: Option<i64>,
         subtitle_track: Option<i64>,
+        headers: Vec<String>,
     },
     TogglePause,
     SeekRelative(f64),
@@ -374,7 +375,15 @@ fn run_mpv_loop(
                     start_seconds,
                     audio_track: initial_audio_track,
                     subtitle_track: initial_subtitle_track,
+                    headers,
                 } => {
+                    // Set custom HTTP headers (such as X-Emby-Token) for stream and subtitle requests
+                    if !headers.is_empty() {
+                        let headers_str = headers.join(",");
+                        let _ = mpv.set_property("http-header-fields", headers_str.as_str());
+                    } else {
+                        let _ = mpv.set_property("http-header-fields", "");
+                    }
                     // Load hardware decoding & subtitle styling dynamically from preferences on each file load
                     let app_state = app_handle.state::<crate::state::AppState>();
                     if let Ok(db) = app_state.db.read_conn() {

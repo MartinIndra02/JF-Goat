@@ -205,18 +205,24 @@ export function showPlayer(id: string, displayTitle: string) {
   requestedSubtitleIndex = null;
 }
 
-export function hidePlayer() {
+export function resetPlayerState() {
   if (loadingTimeout) {
     clearTimeout(loadingTimeout);
     loadingTimeout = null;
   }
   firstTimeUpdatePos = null;
-  visible = false;
   status = "idle";
-  itemId = null;
+  visible = false;
   title = "";
+  itemId = null;
   timePos = 0;
   duration = 0;
+  requestedAudioIndex = null;
+  requestedSubtitleIndex = null;
+}
+
+export function hidePlayer() {
+  resetPlayerState();
 }
 
 export function setVolume(v: number) {

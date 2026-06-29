@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import Router from "svelte-spa-router";
-  import { replace } from "svelte-spa-router";
+  import Router, { location, replace } from "svelte-spa-router";
   import { checkAuth, checkAuthOffline } from "./lib/api";
   import {
     getAuthStatus,
@@ -43,26 +42,31 @@
     performRestart,
     dismissUpdate,
   } from "./lib/stores/updater.svelte";
+  import { registerMenu, closeActiveMenu } from "./lib/stores/contextMenu.svelte";
   import LoadingScreen from "./components/layout/LoadingScreen.svelte";
   import ErrorBanner from "./components/ui/ErrorBanner.svelte";
   import Player from "./components/player/Player.svelte";
+  import MainLayout from "./components/layout/MainLayout.svelte";
   import ServerConnect from "./views/ServerConnect.svelte";
   import Login from "./views/Login.svelte";
-  import Home from "./views/Home.svelte";
   import ItemDetail from "./views/ItemDetail.svelte";
+  import HomeDashboard from "./views/home/HomeDashboard.svelte";
+  import LibraryView from "./views/home/LibraryView.svelte";
+  import OfflineView from "./views/home/OfflineView.svelte";
+  import SearchView from "./views/home/SearchView.svelte";
+  import SettingsView from "./views/home/SettingsView.svelte";
 
   const routes = {
-    "/": Home,
     "/connect": ServerConnect,
     "/login": Login,
-    "/home": Home,
-    "/library": Home,
-    "/offline": Home,
-    "/search": Home,
-    "/settings": Home,
-    "/item": ItemDetail,
+    "/home": HomeDashboard,
+    "/library": LibraryView,
+    "/offline": OfflineView,
+    "/search": SearchView,
+    "/settings": SettingsView,
     "/item/:id": ItemDetail,
-    "*": Home,
+    "/item": ItemDetail,
+    "*": HomeDashboard,
   };
 
   const playerActive = $derived(isPlayerVisible());
@@ -179,6 +183,7 @@
     globalMenuX = Math.min(event.clientX, viewportWidth - menuWidth - 12);
     globalMenuY = Math.min(event.clientY, viewportHeight - menuHeight - 12);
     globalMenuOpen = true;
+    registerMenu(closeGlobalMenu);
   }
 
   function closeGlobalMenu() {
@@ -255,32 +260,6 @@
     return getPreferences()?.playback?.default_startup_screen || "/home";
   }
 
-  function getRequestedPathAndQuery(): string {
-    const hash = window.location.hash || "";
-    const defaultRoute = getDefaultRoute();
-    if (!hash.startsWith("#/")) {
-      return defaultRoute;
-    }
-
-    const parsed = hash.slice(1);
-    return parsed.length > 0 ? parsed : defaultRoute;
-  }
-
-  function isGuestRoute(path: string): boolean {
-    return path.startsWith("/connect") || path.startsWith("/login");
-  }
-
-  function isAuthedRoute(path: string): boolean {
-    return (
-      path.startsWith("/home") ||
-      path.startsWith("/library") ||
-      path.startsWith("/offline") ||
-      path.startsWith("/search") ||
-      path.startsWith("/settings") ||
-      path.startsWith("/item")
-    );
-  }
-
   function sourceFromErrorMessage(message: string): ToastSource {
     const lower = message.toLowerCase();
     if (lower.includes("mpv") || lower.includes("playback")) {
@@ -295,8 +274,6 @@
   }
 
   async function init() {
-    const requestedPath = getRequestedPathAndQuery();
-
     try {
       await loadPreferences();
       applyPreferencesToLocalPlayerKeys();
@@ -305,15 +282,11 @@
       const offlineSession = await checkAuthOffline();
       if (offlineSession) {
         setAuthenticated(offlineSession);
-        if (isGuestRoute(requestedPath) || !isAuthedRoute(requestedPath)) {
-          replace(getDefaultRoute());
-        }
-
+        
         // Phase 2: Verify token in the background; auto-login if expired
         checkAuth()
           .then((session) => {
             if (!session) {
-              // Token expired and auto-login failed — redirect to login
               pushToast({
                 level: "warning",
                 source: "api",
@@ -322,15 +295,12 @@
                 dedupeKey: "session-expired",
               });
               setUnauthenticated();
-              replace("/login");
             } else {
-              // Update session (may have been refreshed via auto-login)
               setAuthenticated(session);
               markHealthy();
             }
           })
           .catch((error) => {
-            // Network error — stay on homepage with cached data
             markDegraded(normalizeErrorMessage(error));
             pushToast({
               level: "info",
@@ -349,16 +319,10 @@
       if (session) {
         setAuthenticated(session);
         markHealthy();
-        if (isGuestRoute(requestedPath) || !isAuthedRoute(requestedPath)) {
-          replace(getDefaultRoute());
-        }
         return;
       }
 
       setUnauthenticated();
-      if (!isGuestRoute(requestedPath)) {
-        replace("/connect");
-      }
     } catch (error) {
       markDegraded(normalizeErrorMessage(error));
       pushErrorToast(
@@ -368,12 +332,26 @@
         "startup-init-failed",
       );
       setUnauthenticated();
-      replace("/connect");
     }
   }
 
+  // Reactive redirect based on authentication state
+  $effect(() => {
+    const authStatus = getAuthStatus();
+    const currentLoc = $location || "/";
+
+    if (authStatus === "authenticated") {
+      if (currentLoc === "/connect" || currentLoc === "/login") {
+        replace(getDefaultRoute());
+      }
+    } else if (authStatus === "unauthenticated") {
+      if (currentLoc !== "/connect" && currentLoc !== "/login") {
+        replace("/connect");
+      }
+    }
+  });
+
   onMount(() => {
-    // Ensure stale dev/HMR player state never hides the whole app shell on boot.
     hidePlayer();
 
     try {
@@ -437,16 +415,15 @@
     };
 
     const onPointerDown = (e: PointerEvent) => {
-      if (!globalMenuOpen) return;
       const target = e.target as HTMLElement;
-      if (!target.closest(".global-context-menu")) {
-        closeGlobalMenu();
+      if (!target.closest(".global-context-menu") && !target.closest("[role='menu']")) {
+        closeActiveMenu();
       }
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        closeGlobalMenu();
+        closeActiveMenu();
       }
     };
 
@@ -491,7 +468,13 @@
   </div>
 {:else}
   <div class:hidden={playerActive} class="relative z-10 app-animate-fade-up">
-    <Router {routes} />
+    {#if getAuthStatus() === "authenticated"}
+      <MainLayout>
+        <Router {routes} />
+      </MainLayout>
+    {:else}
+      <Router {routes} />
+    {/if}
   </div>
 {/if}
 
@@ -521,23 +504,23 @@
 
 {#if globalMenuOpen}
   <div 
-    class="global-context-menu fixed z-[9999] w-40 bg-[rgba(13,20,35,0.85)] border border-white/20 rounded-xl py-1 shadow-2xl backdrop-blur-xl flex flex-col overflow-hidden"
+    class="global-context-menu fixed z-[9999] w-52 bg-[rgba(15,22,40,0.92)] border border-white/15 rounded-xl py-1.5 shadow-2xl backdrop-blur-xl flex flex-col overflow-hidden"
     style="left: {globalMenuX}px; top: {globalMenuY}px;"
   >
     <button
       onclick={triggerGlobalBack}
-      class="w-full text-left px-3.5 py-2.5 text-xs font-semibold text-gray-200 hover:text-white hover:bg-white/10 transition-all flex items-center gap-2 group border-b border-white/10"
+      class="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/8 transition-colors flex items-center gap-2.5 group"
     >
-      <svg class="w-3.5 h-3.5 text-cyan-300 group-hover:-translate-x-0.5 transition-transform duration-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <svg class="w-4 h-4 text-gray-400 group-hover:text-cyan-400 group-hover:-translate-x-0.5 transition-all duration-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
         <path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
       </svg>
       Back
     </button>
     <button
       onclick={triggerGlobalRefresh}
-      class="w-full text-left px-3.5 py-2.5 text-xs font-semibold text-gray-200 hover:text-white hover:bg-white/10 transition-all flex items-center gap-2 group"
+      class="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/8 transition-colors flex items-center gap-2.5 group"
     >
-      <svg class="w-3.5 h-3.5 text-cyan-300 group-hover:rotate-180 transition-transform duration-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <svg class="w-4 h-4 text-gray-400 group-hover:text-cyan-400 group-hover:rotate-180 transition-all duration-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
         <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
       </svg>
       Refresh

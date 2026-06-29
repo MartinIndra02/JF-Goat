@@ -8,6 +8,7 @@ pub struct ServerRow {
     pub url: String,
     pub user_id: Option<String>,
     pub username: Option<String>,
+    #[allow(dead_code)]
     pub is_active: bool,
 }
 

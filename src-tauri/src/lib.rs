@@ -90,6 +90,7 @@ pub fn run() {
                 user_data_refresh_running: AtomicBool::new(false),
                 sync_running: AtomicBool::new(false),
                 download_trigger: download_tx,
+                login_attempts: parking_lot::Mutex::new(std::collections::HashMap::new()),
             };
 
             let app_handle_for_downloads = app.handle().clone();

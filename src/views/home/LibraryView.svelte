@@ -7,11 +7,9 @@
   import PosterCard from "../../components/media/PosterCard.svelte";
   import type { MediaItem, UserLibrary } from "../../lib/types";
 
-  interface Props {
-    userLibraries: UserLibrary[];
-  }
+  import { homeDataStore } from "../../lib/stores/homeData.svelte";
 
-  let { userLibraries }: Props = $props();
+  const userLibraries = $derived(homeDataStore.userLibraries);
 
   let activeRouteHeading = $state<HTMLElement | null>(null);
 

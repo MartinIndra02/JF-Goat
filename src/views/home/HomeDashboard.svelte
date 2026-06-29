@@ -4,29 +4,18 @@
   import MediaRow from "../../components/media/MediaRow.svelte";
   import HeroCarousel from "../../components/media/HeroCarousel.svelte";
   import PosterCard from "../../components/media/PosterCard.svelte";
-  import type { MediaItem, UserLibrary } from "../../lib/types";
-
-  interface Props {
-    loading: boolean;
-    hasCachedData: boolean;
-    resumeItems: MediaItem[];
-    nextUpItems: MediaItem[];
-    featuredItems: MediaItem[];
-    userLibraries: UserLibrary[];
-    libraryLatest: Record<string, MediaItem[]>;
-  }
-
-  let {
-    loading,
-    hasCachedData,
-    resumeItems,
-    nextUpItems,
-    featuredItems,
-    userLibraries,
-    libraryLatest,
-  }: Props = $props();
+  import type { UserLibrary } from "../../lib/types";
+  import { homeDataStore } from "../../lib/stores/homeData.svelte";
 
   let activeRouteHeading = $state<HTMLElement | null>(null);
+
+  const resumeItems = $derived(homeDataStore.resumeItems);
+  const nextUpItems = $derived(homeDataStore.nextUpItems);
+  const featuredItems = $derived(homeDataStore.featuredItems);
+  const userLibraries = $derived(homeDataStore.userLibraries);
+  const libraryLatest = $derived(homeDataStore.libraryLatest);
+  const loading = $derived(homeDataStore.loading);
+  const hasCachedData = $derived(homeDataStore.hasCachedData);
 
   const carouselItems = $derived(
     nextUpItems.length > 0 
@@ -35,17 +24,11 @@
   );
   const activeCarouselIds = $derived(new Set(carouselItems.map(item => item.id)));
 
-  const hasAnyContent = $derived(
-    featuredItems.length > 0 ||
-    resumeItems.length > 0 ||
-    nextUpItems.length > 0 ||
-    userLibraries.some(library => (libraryLatest[library.id]?.length ?? 0) > 0)
-  );
-
   onMount(() => {
     void tick().then(() => {
       activeRouteHeading?.focus();
     });
+    void homeDataStore.initializeHome();
   });
 
   function openLibraryView(library: UserLibrary) {
@@ -100,35 +83,13 @@
               View All
             </button>
           </div>
-
-          <div class="flex gap-3 overflow-x-auto px-6 pb-4 scrollbar-hide">
+          <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-4 px-6">
             {#each libraryLatest[library.id] as item (item.id)}
-              <PosterCard {item} />
+              <PosterCard {item} aspect="poster" />
             {/each}
           </div>
         </section>
       {/if}
     {/each}
-
-    {#if !hasAnyContent}
-      <div class="flex flex-col items-center justify-center h-64 text-center px-6">
-        <svg
-          class="w-16 h-16 text-gray-700 mb-4"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-          aria-hidden="true"
-        >
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"
-          />
-        </svg>
-        <p class="app-muted text-lg font-medium mb-1">Your library is empty</p>
-        <p class="app-faint text-sm">Sync may still be in progress. Content will appear here once indexed.</p>
-      </div>
-    {/if}
   </div>
 {/if}

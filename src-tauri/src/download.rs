@@ -15,8 +15,10 @@ pub struct DownloadContext {
     pub db: DbPool,
     pub http_client: reqwest::Client,
     pub server_url: Arc<RwLock<Option<String>>>,
+    #[allow(dead_code)]
     pub user_id: Arc<RwLock<Option<String>>>,
     pub token: Arc<RwLock<Option<String>>>,
+    #[allow(dead_code)]
     pub download_trigger: tokio::sync::mpsc::UnboundedSender<()>,
 }
 
@@ -174,10 +176,9 @@ async fn download_media_item(
 
     let url = if item.transcode_height.is_some() || item.transcode_bitrate.is_some() {
         let mut base_url = format!(
-            "{}/Videos/{}/stream?api_key={}&static=false&mediaSourceId={}",
+            "{}/Videos/{}/stream?static=false&mediaSourceId={}",
             server_url.trim_end_matches('/'),
             item.id,
-            token,
             item.id
         );
         if let Some(height) = item.transcode_height {
@@ -193,10 +194,9 @@ async fn download_media_item(
         base_url
     } else {
         format!(
-            "{}/Videos/{}/stream?api_key={}&static=true&mediaSourceId={}",
+            "{}/Videos/{}/stream?static=true&mediaSourceId={}",
             server_url.trim_end_matches('/'),
             item.id,
-            token,
             item.id
         )
     };
@@ -205,7 +205,7 @@ async fn download_media_item(
 
     let mut retries: u32 = 0;
     let max_retries = 5;
-    let mut final_path = None;
+    let mut final_path;
 
     loop {
         // Check if we need to pause or cancel before starting the attempt
@@ -236,7 +236,7 @@ async fn download_media_item(
             }
         }
 
-        let mut req = ctx.http_client.get(&url);
+        let mut req = ctx.http_client.get(&url).header("X-Emby-Token", token.clone());
         if existing_bytes > 0 {
             req = req.header("Range", format!("bytes={}-", existing_bytes));
         }
@@ -459,17 +459,16 @@ async fn download_media_item(
         }
 
         let sub_url = format!(
-            "{}/Videos/{}/{}/Subtitles/{}/Stream.srt?api_key={}",
+            "{}/Videos/{}/{}/Subtitles/{}/Stream.srt",
             server_url.trim_end_matches('/'),
             item.id,
             item.id,
             sub_idx,
-            token
         );
         let sub_path = download_dir.join(format!("{}.{}.{}.srt", item.id, sub_idx, lang));
         
         println!("[download] Downloading subtitle track {} to {:?}", sub_idx, sub_path);
-        let sub_req = ctx.http_client.get(&sub_url);
+        let sub_req = ctx.http_client.get(&sub_url).header("X-Emby-Token", token.clone());
         if let Ok(resp) = sub_req.send().await {
             if resp.status().is_success() {
                 if let Ok(bytes) = resp.bytes().await {

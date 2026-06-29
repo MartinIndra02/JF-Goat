@@ -1,49 +1,33 @@
 <script lang="ts">
   import { onMount, tick, untrack } from "svelte";
-
   import { location, push, querystring, replace } from "svelte-spa-router";
-  import {
-    getLatestItems,
-    getLatestMedia,
-    getNextUp,
-    getResumeItems,
-    getUserViews,
-    loadHomepageCache,
-    saveHomepageCache,
-    startSync,
-  } from "../lib/api";
-  import {
-    filterSuppressedNextUp,
-    HOMEPAGE_CACHE_UPDATED_EVENT,
-  } from "../lib/homepageFreshness";
-  import { getSession } from "../lib/stores/auth.svelte";
+  import { startSync } from "../../lib/api";
+  import { HOMEPAGE_CACHE_UPDATED_EVENT } from "../../lib/homepageFreshness";
+  import { getSession } from "../../lib/stores/auth.svelte";
   import {
     isPreferencesLoaded,
     loadPreferences,
-  } from "../lib/stores/preferences.svelte";
-
+  } from "../../lib/stores/preferences.svelte";
   import {
     getLastNetworkError,
     isDegraded,
     isOnline,
     markDegraded,
     markHealthy,
-  } from "../lib/stores/connectivity.svelte";
-  import { pushErrorToast, pushToast } from "../lib/stores/toast.svelte";
+  } from "../../lib/stores/connectivity.svelte";
+  import { pushErrorToast, pushToast } from "../../lib/stores/toast.svelte";
   import {
     initSyncListeners,
     isSyncTriggered,
     markSyncTriggered,
-  } from "../lib/stores/sync.svelte";
-  import SettingsView from "./home/SettingsView.svelte";
-  import OfflineView from "./home/OfflineView.svelte";
-  import SearchView from "./home/SearchView.svelte";
-  import LibraryView from "./home/LibraryView.svelte";
-  import HomeDashboard from "./home/HomeDashboard.svelte";
-  import SyncIndicator from "../components/layout/SyncIndicator.svelte";
+  } from "../../lib/stores/sync.svelte";
+  import { homeDataStore } from "../../lib/stores/homeData.svelte";
+  import SyncIndicator from "./SyncIndicator.svelte";
 
-  import TextInput from "../components/ui/TextInput.svelte";
-  import type { HomepageCache, MediaItem, UserLibrary } from "../lib/types";
+  import TextInput from "../ui/TextInput.svelte";
+  import type { HomepageCache } from "../../lib/types";
+
+  let { children } = $props();
 
   const session = getSession();
 
@@ -51,42 +35,25 @@
   let searchTimer: ReturnType<typeof setTimeout> | null = null;
   let searchInput = $state<HTMLInputElement | null>(null);
 
-  let resumeItems = $state<MediaItem[]>([]);
-  let nextUpItems = $state<MediaItem[]>([]);
-  let userLibraries = $state<UserLibrary[]>([]);
-  let libraryLatest = $state<Record<string, MediaItem[]>>({});
-  let featuredItems = $state<MediaItem[]>([]);
-  let loading = $state(true);
-  let hasCachedData = $state(false);
-
-
-
   let refreshTimer: ReturnType<typeof setInterval> | null = null;
   let staleClockTimer: ReturnType<typeof setInterval> | null = null;
   let cacheFreshnessNow = $state(Date.now());
-  let lastDataRefreshAt = $state<number | null>(null);
   let activeRouteHeading = $state<HTMLElement | null>(null);
   let lastFocusedRoute = "";
 
   const currentPath = $derived($location || "/home");
   const routeQuery = $derived(new URLSearchParams($querystring));
 
-  const isHomeRoute = $derived(currentPath === "/home");
   const isLibraryRoute = $derived(currentPath === "/library");
   const isOfflineRoute = $derived(currentPath === "/offline");
   const isSearchRoute = $derived(currentPath === "/search");
   const isSettingsRoute = $derived(currentPath === "/settings");
 
-
-
-
-
   const preferencesLoaded = $derived(isPreferencesLoaded());
-
   const online = $derived(isOnline());
   const degraded = $derived(isDegraded());
   const lastNetworkError = $derived(getLastNetworkError());
-  const staleAgeMs = $derived(lastDataRefreshAt ? cacheFreshnessNow - lastDataRefreshAt : null);
+  const staleAgeMs = $derived(homeDataStore.lastDataRefreshAt ? cacheFreshnessNow - homeDataStore.lastDataRefreshAt : null);
   const staleData = $derived(staleAgeMs !== null && staleAgeMs > 180000);
 
   const statusMessage = $derived.by(() => {
@@ -118,9 +85,9 @@
       const updated = (event as CustomEvent<HomepageCache>).detail;
       if (!updated) return;
 
-      applyHomepageData(updated);
-      hasCachedData = true;
-      loading = false;
+      homeDataStore.applyHomepageData(updated);
+      homeDataStore.hasCachedData = true;
+      homeDataStore.loading = false;
     };
 
     window.addEventListener(
@@ -129,7 +96,6 @@
     );
 
     const handleRefreshHomepage = async () => {
-      if (!isHomeRoute) return;
       pushToast({
         level: "info",
         source: "api",
@@ -137,7 +103,7 @@
         message: "Fetching updated media from server...",
         dismissAfterMs: 3000,
       });
-      await refreshFromServer();
+      await homeDataStore.refreshFromServer();
       pushToast({
         level: "success",
         source: "api",
@@ -153,7 +119,7 @@
       cacheFreshnessNow = Date.now();
     }, 30_000);
 
-    void initializeHome();
+    void initializeLayout();
 
     return () => {
       window.removeEventListener(
@@ -169,12 +135,10 @@
     };
   });
 
-  async function initializeHome() {
+  async function initializeLayout() {
     if (!preferencesLoaded) {
       await loadPreferences();
     }
-
-    await loadCachedThenRefresh();
   }
 
   $effect(() => {
@@ -199,101 +163,6 @@
       searchQuery = routeSearch;
     }
   });
-
-
-
-  function applyHomepageData(data: HomepageCache) {
-    resumeItems = data.resume_items;
-    nextUpItems = filterSuppressedNextUp(data.next_up_items);
-    userLibraries = data.user_libraries;
-    libraryLatest = data.library_latest;
-    featuredItems = data.featured_items;
-
-    if (typeof data.cache_refreshed_at_epoch_ms === "number") {
-      lastDataRefreshAt = data.cache_refreshed_at_epoch_ms;
-    }
-  }
-
-  async function loadCachedThenRefresh() {
-    try {
-      const cached = await loadHomepageCache();
-      if (cached) {
-        applyHomepageData(cached);
-        hasCachedData = true;
-        loading = false;
-      }
-    } catch (error) {
-      pushErrorToast("api", error, "Cache load failed", "homepage-cache-load-failed");
-    }
-
-    await refreshFromServer();
-  }
-
-  async function refreshFromServer() {
-    if (!online) {
-      loading = false;
-      return;
-    }
-
-    try {
-      const [resume, nextUp, views, featured] = await Promise.all([
-        getResumeItems(20),
-        getNextUp(20),
-        getUserViews(),
-        getLatestMedia(10),
-      ]);
-
-      const filteredNextUp = filterSuppressedNextUp(nextUp);
-
-      resumeItems = resume;
-      nextUpItems = filteredNextUp;
-      userLibraries = views;
-      featuredItems = featured;
-
-      const latestMap: Record<string, MediaItem[]> = {};
-      if (views.length > 0) {
-        const latestPromises = views.map(async (library) => {
-          const items = await getLatestItems(library.id, 16).catch(() => []);
-          return { id: library.id, items };
-        });
-
-        const results = await Promise.all(latestPromises);
-        for (const result of results) {
-          latestMap[result.id] = result.items;
-        }
-        libraryLatest = latestMap;
-      }
-
-      const refreshedAt = Date.now();
-      lastDataRefreshAt = refreshedAt;
-      markHealthy();
-
-      await saveHomepageCache({
-        resume_items: resume,
-        next_up_items: filteredNextUp,
-        user_libraries: views,
-        library_latest: latestMap,
-        featured_items: featured,
-        cache_refreshed_at_epoch_ms: refreshedAt,
-      });
-
-      prefetchDetailImages([...resume, ...filteredNextUp]);
-    } catch (error) {
-      markDegraded(String(error));
-      pushErrorToast(
-        "api",
-        error,
-        "Live refresh failed",
-        "dashboard-refresh-failed",
-      );
-    } finally {
-      loading = false;
-    }
-  }
-
-
-
-
 
   function triggerSearchImmediately() {
     if (searchTimer) {
@@ -333,19 +202,6 @@
     push(path);
   }
 
-
-
-
-
-
-  async function handleSettingsResync() {
-    await refreshFromServer();
-  }
-
-
-
-
-
   function formatRelativeAge(ageMs: number | null): string {
     if (!ageMs || ageMs <= 0) return "just now";
 
@@ -362,34 +218,6 @@
     const days = Math.floor(hours / 24);
     return `${days}d`;
   }
-
-
-
-  function prefetchDetailImages(items: MediaItem[]) {
-    const seen = new Set<string>();
-
-    for (const item of items) {
-      if (item.image_tag && !seen.has(`poster-${item.id}`)) {
-        seen.add(`poster-${item.id}`);
-        const img = new Image();
-        img.src = `http://jfimage.localhost/poster/${item.id}?tag=${item.image_tag}`;
-      }
-
-      if (item.backdrop_tag && !seen.has(`backdrop-${item.id}`)) {
-        seen.add(`backdrop-${item.id}`);
-        const img = new Image();
-        img.src = `http://jfimage.localhost/backdrop/${item.id}?tag=${item.backdrop_tag}`;
-      }
-
-      if (item.series_id && !seen.has(`poster-${item.series_id}`)) {
-        seen.add(`poster-${item.series_id}`);
-        const img = new Image();
-        img.src = `http://jfimage.localhost/poster/${item.series_id}?tag=${item.series_id}`;
-      }
-    }
-  }
-
-
 </script>
 
 <main class="min-h-screen text-[var(--text-primary)] pb-16">
@@ -479,36 +307,42 @@
   {#if statusMessage}
     <div class="px-6 pt-3">
       <div
-        class={`rounded-xl border px-3.5 py-2.5 text-sm backdrop-blur-md ${
+        class={`rounded-xl border px-3.5 py-2.5 text-sm backdrop-blur-md flex items-center justify-between gap-3 ${
           (!online || staleData)
             ? "border-amber-300/30 bg-amber-500/12 text-amber-100"
             : "border-orange-300/30 bg-orange-500/12 text-orange-100"
         }`}
       >
-        {statusMessage}
+        <span>{statusMessage}</span>
+        {#if staleData && online}
+          <button
+            type="button"
+            onclick={async () => {
+              if (homeDataStore.refreshing) return;
+              await homeDataStore.refreshFromServer();
+            }}
+            disabled={homeDataStore.refreshing}
+            class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 active:bg-amber-500/40 border border-amber-400/20 text-xs font-semibold text-amber-200 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shrink-0 cursor-pointer"
+          >
+            {#if homeDataStore.refreshing}
+              <svg class="animate-spin h-3.5 w-3.5 text-amber-200" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <span>Refreshing...</span>
+            {:else}
+              <svg class="h-3.5 w-3.5 text-amber-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+              </svg>
+              <span>Refresh</span>
+            {/if}
+          </button>
+        {/if}
       </div>
     </div>
   {/if}
 
-  {#if isSearchRoute}
-    <SearchView />
-  {:else if isLibraryRoute}
-    <LibraryView {userLibraries} />
-  {:else if isOfflineRoute}
-    <OfflineView />
-  {:else if isSettingsRoute}
-    <SettingsView onResync={handleSettingsResync} />
-  {:else}
-    <HomeDashboard
-      {loading}
-      {hasCachedData}
-      {resumeItems}
-      {nextUpItems}
-      {featuredItems}
-      {userLibraries}
-      {libraryLatest}
-    />
-  {/if}
+  {@render children()}
 </main>
 
 <SyncIndicator />

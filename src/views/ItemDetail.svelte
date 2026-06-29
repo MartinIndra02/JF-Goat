@@ -27,6 +27,7 @@
     refreshItemDetails,
   } from "../lib/api";
   import { pushToast, pushErrorToast } from "../lib/stores/toast.svelte";
+  import { abortableLoad } from "../lib/abortableLoad";
   import type {
     MediaItem,
     Person,
@@ -179,79 +180,39 @@
   }
 
   async function loadPeople(id: string, signal: AbortSignal) {
-    try {
-      const result = await getItemPeople(id, { signal });
-      if (signal.aborted) return;
-      people = result;
-    }
-    catch (e) {
-      if (signal.aborted || isAbortError(e)) return;
-      people = [];
-    }
+    people = await abortableLoad(signal, () => getItemPeople(id, { signal }), []);
   }
 
   async function loadSimilarItems(id: string, signal: AbortSignal) {
-    try {
-      const result = await getSimilarItems(id, 12, { signal });
-      if (signal.aborted) return;
-      similarItems = result;
-    }
-    catch (e) {
-      if (signal.aborted || isAbortError(e)) return;
-      similarItems = [];
-    }
+    similarItems = await abortableLoad(signal, () => getSimilarItems(id, 12, { signal }), []);
   }
 
   async function loadMediaStreams(id: string, signal: AbortSignal) {
-    try {
-      const result = await getMediaStreams(id, { signal });
-      if (signal.aborted) return;
-      mediaStreams = result;
-    }
-    catch (e) {
-      if (signal.aborted || isAbortError(e)) return;
-      mediaStreams = null;
-    }
+    mediaStreams = await abortableLoad(signal, () => getMediaStreams(id, { signal }), null);
   }
 
   async function loadExternalUrls(id: string, signal: AbortSignal) {
-    try {
-      const result = await getExternalUrls(id, { signal });
-      if (signal.aborted) return;
-      externalUrls = result;
-    }
-    catch (e) {
-      if (signal.aborted || isAbortError(e)) return;
-      externalUrls = [];
-    }
+    externalUrls = await abortableLoad(signal, () => getExternalUrls(id, { signal }), []);
+  }
+
+  function updatePlayedInCollection(collection: MediaItem[], id: string, newPlayed: boolean): MediaItem[] {
+    return collection.map(ep =>
+      (ep.id === id || ep.season_id === id || ep.series_id === id)
+        ? { ...ep, played: newPlayed, playback_ticks: 0 }
+        : ep
+    );
   }
 
   async function handleTogglePlayed(id: string, currentPlayed: boolean) {
     try {
       const newPlayed = await togglePlayed(id, currentPlayed);
-      // Update main item if it matches (either by ID directly, or if it is a parent Series/Season of this item)
       if (item && (item.id === id || item.season_id === id || item.series_id === id)) {
         item = { ...item, played: newPlayed, playback_ticks: 0 };
       }
-      // Update episodes list (either directly, or if they belong to the toggled Series/Season)
-      episodes = episodes.map(ep =>
-        (ep.id === id || ep.season_id === id || ep.series_id === id)
-          ? { ...ep, played: newPlayed, playback_ticks: 0 }
-          : ep
-      );
-      // Update sibling episodes
-      siblingEpisodes = siblingEpisodes.map(ep =>
-        (ep.id === id || ep.season_id === id || ep.series_id === id)
-          ? { ...ep, played: newPlayed, playback_ticks: 0 }
-          : ep
-      );
-      // Update allSeasonEpisodes cache
+      episodes = updatePlayedInCollection(episodes, id, newPlayed);
+      siblingEpisodes = updatePlayedInCollection(siblingEpisodes, id, newPlayed);
       for (const seasonId of Object.keys(allSeasonEpisodes)) {
-        allSeasonEpisodes[seasonId] = allSeasonEpisodes[seasonId].map(ep =>
-          (ep.id === id || ep.season_id === id || ep.series_id === id)
-            ? { ...ep, played: newPlayed, playback_ticks: 0 }
-            : ep
-        );
+        allSeasonEpisodes[seasonId] = updatePlayedInCollection(allSeasonEpisodes[seasonId], id, newPlayed);
       }
     } catch (e) {
       console.error("Failed to toggle played:", e);
@@ -264,8 +225,12 @@
       if (item && item.id === id) {
         item = { ...item, is_favorite: newFavorite };
       }
-      episodes = episodes.map(ep => ep.id === id ? { ...ep, is_favorite: newFavorite } : ep);
-      siblingEpisodes = siblingEpisodes.map(ep => ep.id === id ? { ...ep, is_favorite: newFavorite } : ep);
+      const updateFav = (list: MediaItem[]) => list.map(ep => ep.id === id ? { ...ep, is_favorite: newFavorite } : ep);
+      episodes = updateFav(episodes);
+      siblingEpisodes = updateFav(siblingEpisodes);
+      for (const seasonId of Object.keys(allSeasonEpisodes)) {
+        allSeasonEpisodes[seasonId] = updateFav(allSeasonEpisodes[seasonId]);
+      }
     } catch (e) {
       console.error("Failed to toggle favorite:", e);
     }
@@ -334,19 +299,7 @@
     };
   });
 
-  // Reactively load item data whenever itemId changes
-  $effect(() => {
-    if (!$location.startsWith("/item")) return;
-    const id = itemId;
-    if (!id) { push("/home"); return; }
-
-    const detailController = new AbortController();
-    activeDetailController?.abort();
-    activeSeasonController?.abort();
-    activeDetailController = detailController;
-    activeSeasonController = null;
-
-    // Reset state for new item
+  function resetState() {
     loading = true;
     loadError = false;
     episodesLoading = false;
@@ -360,6 +313,22 @@
     similarItems = [];
     mediaStreams = null;
     externalUrls = [];
+  }
+
+  // Reactively load item data whenever itemId changes
+  $effect(() => {
+    if (!$location.startsWith("/item")) return;
+    const id = itemId;
+    if (!id) { push("/home"); return; }
+
+    const detailController = new AbortController();
+    activeDetailController?.abort();
+    activeSeasonController?.abort();
+    activeDetailController = detailController;
+    activeSeasonController = null;
+
+    // Reset state for new item
+    resetState();
 
     loadItem(id, detailController.signal);
 
@@ -391,19 +360,7 @@
     activeDetailController = detailController;
     activeSeasonController = null;
 
-    loading = true;
-    loadError = false;
-    episodesLoading = false;
-    item = null;
-    seasons = [];
-    episodes = [];
-    selectedSeasonId = null;
-    allSeasonEpisodes = {};
-    siblingEpisodes = [];
-    people = [];
-    similarItems = [];
-    mediaStreams = null;
-    externalUrls = [];
+    resetState();
 
     loadItem(id, detailController.signal);
   }

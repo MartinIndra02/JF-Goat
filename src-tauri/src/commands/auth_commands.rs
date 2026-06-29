@@ -61,7 +61,166 @@ fn keyring_clear_password() -> Result<(), JfgoatError> {
     }
 }
 
+fn to_hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{:02x}", b)).collect()
+}
+
+fn from_hex(hex: &str) -> Option<Vec<u8>> {
+    if hex.len() % 2 != 0 {
+        return None;
+    }
+    let mut bytes = Vec::new();
+    for i in (0..hex.len()).step_by(2) {
+        let res = u8::from_str_radix(&hex[i..i + 2], 16).ok()?;
+        bytes.push(res);
+    }
+    Some(bytes)
+}
+
+#[cfg(target_os = "windows")]
+#[repr(C)]
+#[derive(Copy, Clone)]
+#[allow(non_snake_case)]
+struct DATA_BLOB {
+    cbData: u32,
+    pbData: *mut u8,
+}
+
+#[cfg(target_os = "windows")]
+#[link(name = "crypt32")]
+#[link(name = "kernel32")]
+extern "system" {
+    fn CryptProtectData(
+        pDataIn: *mut DATA_BLOB,
+        pszDataDescr: *const u16,
+        pOptionalEntropy: *mut DATA_BLOB,
+        pvReserved: *mut std::ffi::c_void,
+        pPromptStruct: *mut std::ffi::c_void,
+        dwFlags: u32,
+        pDataOut: *mut DATA_BLOB,
+    ) -> i32;
+
+    fn CryptUnprotectData(
+        pDataIn: *mut DATA_BLOB,
+        ppszDataDescr: *mut *mut u16,
+        pOptionalEntropy: *mut DATA_BLOB,
+        pvReserved: *mut std::ffi::c_void,
+        pPromptStruct: *mut std::ffi::c_void,
+        dwFlags: u32,
+        pDataOut: *mut DATA_BLOB,
+    ) -> i32;
+
+    fn LocalFree(hmem: *mut std::ffi::c_void) -> *mut std::ffi::c_void;
+}
+
+#[cfg(target_os = "windows")]
+fn encrypt_token(token: &str) -> Result<String, JfgoatError> {
+    use std::ptr;
+
+    let input_bytes = token.as_bytes();
+    let mut data_in = DATA_BLOB {
+        cbData: input_bytes.len() as u32,
+        pbData: input_bytes.as_ptr() as *mut u8,
+    };
+    let mut data_out = DATA_BLOB {
+        cbData: 0,
+        pbData: ptr::null_mut(),
+    };
+
+    unsafe {
+        let success = CryptProtectData(
+            &mut data_in,
+            ptr::null(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            0,
+            &mut data_out,
+        );
+
+        if success == 0 {
+            return Err(JfgoatError::Internal("DPAPI encryption failed".to_string()));
+        }
+
+        let bytes = std::slice::from_raw_parts(data_out.pbData, data_out.cbData as usize);
+        let hex_str = to_hex(bytes);
+        LocalFree(data_out.pbData as _);
+        Ok(hex_str)
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn decrypt_token(hex_str: &str) -> Result<String, JfgoatError> {
+    use std::ptr;
+
+    let encrypted_bytes = from_hex(hex_str).ok_or_else(|| JfgoatError::Internal("Invalid hex in database token".to_string()))?;
+    let mut data_in = DATA_BLOB {
+        cbData: encrypted_bytes.len() as u32,
+        pbData: encrypted_bytes.as_ptr() as *mut u8,
+    };
+    let mut data_out = DATA_BLOB {
+        cbData: 0,
+        pbData: ptr::null_mut(),
+    };
+
+    unsafe {
+        let success = CryptUnprotectData(
+            &mut data_in,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            0,
+            &mut data_out,
+        );
+
+        if success == 0 {
+            return Err(JfgoatError::Internal("DPAPI decryption failed".to_string()));
+        }
+
+        let bytes = std::slice::from_raw_parts(data_out.pbData, data_out.cbData as usize);
+        let decrypted = String::from_utf8(bytes.to_vec())
+            .map_err(|e| JfgoatError::Internal(format!("Invalid UTF-8 in decrypted token: {}", e)))?;
+        LocalFree(data_out.pbData as _);
+        Ok(decrypted)
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn encrypt_token(token: &str) -> Result<String, JfgoatError> {
+    let user = std::env::var("USER").unwrap_or_else(|_| "default_user".to_string());
+    let host = std::env::var("HOSTNAME").unwrap_or_else(|_| "default_host".to_string());
+    let key = format!("jfgoat-{}-{}", user, host);
+    let key_bytes = key.as_bytes();
+
+    let encrypted: Vec<u8> = token
+        .as_bytes()
+        .iter()
+        .enumerate()
+        .map(|(i, &b)| b ^ key_bytes[i % key_bytes.len()])
+        .collect();
+    Ok(to_hex(&encrypted))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn decrypt_token(hex_str: &str) -> Result<String, JfgoatError> {
+    let user = std::env::var("USER").unwrap_or_else(|_| "default_user".to_string());
+    let host = std::env::var("HOSTNAME").unwrap_or_else(|_| "default_host".to_string());
+    let key = format!("jfgoat-{}-{}", user, host);
+    let key_bytes = key.as_bytes();
+
+    let encrypted_bytes = from_hex(hex_str).ok_or_else(|| JfgoatError::Internal("Invalid hex in database token".to_string()))?;
+    let decrypted: Vec<u8> = encrypted_bytes
+        .iter()
+        .enumerate()
+        .map(|(i, &b)| b ^ key_bytes[i % key_bytes.len()])
+        .collect();
+    String::from_utf8(decrypted)
+        .map_err(|e| JfgoatError::Internal(format!("Invalid UTF-8 in decrypted token: {}", e)))
+}
+
 fn db_store_token(state: &AppState, token: &str) -> Result<(), JfgoatError> {
+    let encrypted = encrypt_token(token)?;
     let db = state
         .db
         .write_conn()
@@ -70,7 +229,7 @@ fn db_store_token(state: &AppState, token: &str) -> Result<(), JfgoatError> {
         "INSERT INTO metadata (key, value)
          VALUES ('session_token', ?1)
          ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        rusqlite::params![token],
+        rusqlite::params![encrypted],
     )?;
     Ok(())
 }
@@ -86,7 +245,10 @@ fn db_load_token(state: &AppState) -> Result<Option<String>, JfgoatError> {
         |row| row.get(0),
     );
     match maybe_token {
-        Ok(token) => Ok(Some(token)),
+        Ok(token_hex) => {
+            let decrypted = decrypt_token(&token_hex)?;
+            Ok(Some(decrypted))
+        }
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(JfgoatError::Database(e.to_string())),
     }
@@ -153,6 +315,32 @@ pub async fn login(
     password: String,
     state: State<'_, AppState>,
 ) -> Result<LoginResult, JfgoatError> {
+    let check_result = {
+        let attempts = state.login_attempts.lock();
+        if let Some(&(count, last_failure_time)) = attempts.get(&username) {
+            if count > 0 {
+                let delay_secs = 2u64.pow(count - 1).min(60);
+                let elapsed = std::time::Instant::now().duration_since(last_failure_time).as_secs();
+                if elapsed < delay_secs {
+                    Some(delay_secs - elapsed)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    };
+
+    if let Some(wait_remaining) = check_result {
+        return Err(JfgoatError::Auth(format!(
+            "Too many login attempts. Please wait {} seconds.",
+            wait_remaining
+        )));
+    }
+
     let device_id = get_device_id(&state)?;
 
     let server_url = state
@@ -162,7 +350,19 @@ pub async fn login(
         .ok_or_else(|| JfgoatError::Auth("No server connected".to_string()))?;
 
     let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id);
-    let (token, mut result) = auth::authenticate_by_name(&jf_client, &username, &password).await?;
+    let (token, mut result) = match auth::authenticate_by_name(&jf_client, &username, &password).await {
+        Ok(res) => {
+            state.login_attempts.lock().remove(&username);
+            res
+        }
+        Err(err) => {
+            let mut attempts = state.login_attempts.lock();
+            let entry = attempts.entry(username.clone()).or_insert((0, std::time::Instant::now()));
+            entry.0 += 1;
+            entry.1 = std::time::Instant::now();
+            return Err(err);
+        }
+    };
 
     // Store token in OS credential store & DB fallback
     keyring_store_token(&token)?;
@@ -335,4 +535,90 @@ pub async fn logout(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use parking_lot::Mutex;
+    use std::collections::HashMap;
+    use std::time::Instant;
+
+    #[test]
+    fn test_login_rate_limiting_delay_calculation() {
+        let attempts_map = Mutex::new(HashMap::new());
+        let username = "testuser".to_string();
+
+        let check_initial = {
+            let attempts = attempts_map.lock();
+            if let Some(&(count, last_failure_time)) = attempts.get(&username) {
+                if count > 0 {
+                    let delay_secs = 2u64.pow(count - 1).min(60);
+                    let elapsed = Instant::now().duration_since(last_failure_time).as_secs();
+                    if elapsed < delay_secs {
+                        Some(delay_secs - elapsed)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        };
+        assert_eq!(check_initial, None);
+
+        {
+            let mut attempts = attempts_map.lock();
+            attempts.insert(username.clone(), (1, Instant::now()));
+        }
+
+        let check_after_1_failure = {
+            let attempts = attempts_map.lock();
+            if let Some(&(count, last_failure_time)) = attempts.get(&username) {
+                if count > 0 {
+                    let delay_secs = 2u64.pow(count - 1).min(60);
+                    let elapsed = Instant::now().duration_since(last_failure_time).as_secs();
+                    if elapsed < delay_secs {
+                        Some(delay_secs - elapsed)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        };
+        assert!(check_after_1_failure.is_some());
+        assert!(check_after_1_failure.unwrap() <= 1);
+
+        {
+            let mut attempts = attempts_map.lock();
+            attempts.insert(username.clone(), (5, Instant::now()));
+        }
+
+        let check_after_5_failures = {
+            let attempts = attempts_map.lock();
+            if let Some(&(count, last_failure_time)) = attempts.get(&username) {
+                if count > 0 {
+                    let delay_secs = 2u64.pow(count - 1).min(60);
+                    let elapsed = Instant::now().duration_since(last_failure_time).as_secs();
+                    if elapsed < delay_secs {
+                        Some(delay_secs - elapsed)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        };
+        assert!(check_after_5_failures.is_some());
+        assert!(check_after_5_failures.unwrap() <= 16);
+    }
 }
