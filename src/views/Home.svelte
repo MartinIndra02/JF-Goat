@@ -58,6 +58,7 @@
   let featuredItems = $state<MediaItem[]>([]);
   let loading = $state(true);
   let hasCachedData = $state(false);
+  let refreshing = $state(false);
 
 
 
@@ -235,6 +236,7 @@
       return;
     }
 
+    refreshing = true;
     try {
       const [resume, nextUp, views, featured] = await Promise.all([
         getResumeItems(20),
@@ -288,6 +290,7 @@
       );
     } finally {
       loading = false;
+      refreshing = false;
     }
   }
 
@@ -479,13 +482,37 @@
   {#if statusMessage}
     <div class="px-6 pt-3">
       <div
-        class={`rounded-xl border px-3.5 py-2.5 text-sm backdrop-blur-md ${
+        class={`rounded-xl border px-3.5 py-2.5 text-sm backdrop-blur-md flex items-center justify-between gap-3 ${
           (!online || staleData)
             ? "border-amber-300/30 bg-amber-500/12 text-amber-100"
             : "border-orange-300/30 bg-orange-500/12 text-orange-100"
         }`}
       >
-        {statusMessage}
+        <span>{statusMessage}</span>
+        {#if staleData && online}
+          <button
+            type="button"
+            onclick={async () => {
+              if (refreshing) return;
+              await refreshFromServer();
+            }}
+            disabled={refreshing}
+            class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 active:bg-amber-500/40 border border-amber-400/20 text-xs font-semibold text-amber-200 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shrink-0 cursor-pointer"
+          >
+            {#if refreshing}
+              <svg class="animate-spin h-3.5 w-3.5 text-amber-200" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <span>Refreshing...</span>
+            {:else}
+              <svg class="h-3.5 w-3.5 text-amber-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+              </svg>
+              <span>Refresh</span>
+            {/if}
+          </button>
+        {/if}
       </div>
     </div>
   {/if}
