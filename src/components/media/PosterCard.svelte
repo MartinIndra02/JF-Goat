@@ -26,6 +26,7 @@
   import { pushErrorToast, pushToast } from "../../lib/stores/toast.svelte";
   import { push } from "svelte-spa-router";
   import type { MediaItem } from "../../lib/types";
+  import { registerMenu, closeActiveMenu } from "../../lib/stores/contextMenu.svelte";
 
   let {
     item,
@@ -103,6 +104,7 @@
 
   function closeContextMenu() {
     contextMenuOpen = false;
+    closeActiveMenu();
   }
 
   function handleContextMenu(event: MouseEvent) {
@@ -116,6 +118,7 @@
     contextMenuX = Math.min(event.clientX, viewportWidth - menuWidth - 12);
     contextMenuY = Math.min(event.clientY, viewportHeight - menuHeight - 12);
     contextMenuOpen = true;
+    registerMenu(closeContextMenu);
   }
 
   function handleMenuKeyboard(event: KeyboardEvent) {
@@ -409,15 +412,8 @@
   </button>
 
   {#if contextMenuOpen}
-    <button
-      type="button"
-      class="fixed inset-0 z-50"
-      aria-label="Close item menu"
-      onclick={closeContextMenu}
-    ></button>
-
     <div
-      class="fixed z-[60] w-52 overflow-hidden rounded-xl border border-white/10 bg-gray-900/96 shadow-2xl backdrop-blur-md"
+      class="fixed z-[9999] w-52 bg-[rgba(15,22,40,0.92)] border border-white/15 rounded-xl py-1.5 shadow-2xl backdrop-blur-xl flex flex-col overflow-hidden"
       style="left: {contextMenuX}px; top: {contextMenuY}px;"
       role="menu"
       aria-label="Item actions"
@@ -426,8 +422,11 @@
         type="button"
         role="menuitem"
         onclick={openDetail}
-        class="w-full px-3 py-2.5 text-left text-sm text-gray-100 hover:bg-white/10 transition-colors"
+        class="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/8 transition-colors flex items-center gap-2.5 group"
       >
+        <svg class="w-4 h-4 text-gray-400 group-hover:text-cyan-400 transition-colors" viewBox="0 0 20 20" fill="currentColor">
+          <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+        </svg>
         Open details
       </button>
 
@@ -436,8 +435,11 @@
           type="button"
           role="menuitem"
           onclick={handleContextTogglePlayed}
-          class="w-full px-3 py-2.5 text-left text-sm text-gray-100 hover:bg-white/10 transition-colors"
+          class="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/8 transition-colors flex items-center gap-2.5 group"
         >
+          <svg class="w-4 h-4 text-gray-400 group-hover:text-cyan-400 transition-colors" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+          </svg>
           {item.played ? "Mark as unwatched" : "Mark as watched"}
         </button>
       {/if}
@@ -447,8 +449,11 @@
           type="button"
           role="menuitem"
           onclick={handleContextGoToShow}
-          class="w-full px-3 py-2.5 text-left text-sm text-gray-100 hover:bg-white/10 transition-colors"
+          class="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/8 transition-colors flex items-center gap-2.5 group"
         >
+          <svg class="w-4 h-4 text-gray-400 group-hover:text-cyan-400 transition-colors" viewBox="0 0 20 20" fill="currentColor">
+            <path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM2 11a2 2 0 012-2h12a2 2 0 012 2v4a2 2 0 01-2 2H4a2 2 0 01-2-2v-4z"/>
+          </svg>
           Go to show
         </button>
       {/if}
@@ -458,8 +463,11 @@
           type="button"
           role="menuitem"
           onclick={handleContextGoToSeason}
-          class="w-full px-3 py-2.5 text-left text-sm text-gray-100 hover:bg-white/10 transition-colors"
+          class="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/8 transition-colors flex items-center gap-2.5 group"
         >
+          <svg class="w-4 h-4 text-gray-400 group-hover:text-cyan-400 transition-colors" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 0v12h8V4H6z" clip-rule="evenodd"/>
+          </svg>
           Go to season
         </button>
       {/if}
@@ -469,8 +477,11 @@
           type="button"
           role="menuitem"
           onclick={handleContextGoToEpisode}
-          class="w-full px-3 py-2.5 text-left text-sm text-gray-100 hover:bg-white/10 transition-colors"
+          class="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/8 transition-colors flex items-center gap-2.5 group"
         >
+          <svg class="w-4 h-4 text-gray-400 group-hover:text-cyan-400 transition-colors" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"/>
+          </svg>
           Go to episode
         </button>
       {/if}

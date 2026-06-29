@@ -43,6 +43,7 @@
     performRestart,
     dismissUpdate,
   } from "./lib/stores/updater.svelte";
+  import { registerMenu, closeActiveMenu } from "./lib/stores/contextMenu.svelte";
   import LoadingScreen from "./components/layout/LoadingScreen.svelte";
   import ErrorBanner from "./components/ui/ErrorBanner.svelte";
   import Player from "./components/player/Player.svelte";
@@ -179,6 +180,7 @@
     globalMenuX = Math.min(event.clientX, viewportWidth - menuWidth - 12);
     globalMenuY = Math.min(event.clientY, viewportHeight - menuHeight - 12);
     globalMenuOpen = true;
+    registerMenu(closeGlobalMenu);
   }
 
   function closeGlobalMenu() {
@@ -437,16 +439,15 @@
     };
 
     const onPointerDown = (e: PointerEvent) => {
-      if (!globalMenuOpen) return;
       const target = e.target as HTMLElement;
-      if (!target.closest(".global-context-menu")) {
-        closeGlobalMenu();
+      if (!target.closest(".global-context-menu") && !target.closest("[role='menu']")) {
+        closeActiveMenu();
       }
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        closeGlobalMenu();
+        closeActiveMenu();
       }
     };
 
@@ -521,23 +522,23 @@
 
 {#if globalMenuOpen}
   <div 
-    class="global-context-menu fixed z-[9999] w-40 bg-[rgba(13,20,35,0.85)] border border-white/20 rounded-xl py-1 shadow-2xl backdrop-blur-xl flex flex-col overflow-hidden"
+    class="global-context-menu fixed z-[9999] w-52 bg-[rgba(15,22,40,0.92)] border border-white/15 rounded-xl py-1.5 shadow-2xl backdrop-blur-xl flex flex-col overflow-hidden"
     style="left: {globalMenuX}px; top: {globalMenuY}px;"
   >
     <button
       onclick={triggerGlobalBack}
-      class="w-full text-left px-3.5 py-2.5 text-xs font-semibold text-gray-200 hover:text-white hover:bg-white/10 transition-all flex items-center gap-2 group border-b border-white/10"
+      class="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/8 transition-colors flex items-center gap-2.5 group"
     >
-      <svg class="w-3.5 h-3.5 text-cyan-300 group-hover:-translate-x-0.5 transition-transform duration-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <svg class="w-4 h-4 text-gray-400 group-hover:text-cyan-400 group-hover:-translate-x-0.5 transition-all duration-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
         <path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
       </svg>
       Back
     </button>
     <button
       onclick={triggerGlobalRefresh}
-      class="w-full text-left px-3.5 py-2.5 text-xs font-semibold text-gray-200 hover:text-white hover:bg-white/10 transition-all flex items-center gap-2 group"
+      class="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/8 transition-colors flex items-center gap-2.5 group"
     >
-      <svg class="w-3.5 h-3.5 text-cyan-300 group-hover:rotate-180 transition-transform duration-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <svg class="w-4 h-4 text-gray-400 group-hover:text-cyan-400 group-hover:rotate-180 transition-all duration-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
         <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
       </svg>
       Refresh

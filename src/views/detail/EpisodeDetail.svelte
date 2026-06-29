@@ -31,6 +31,7 @@
   import DetailMetadata from "./components/DetailMetadata.svelte";
   import DownloadModal from "./components/DownloadModal.svelte";
   import HorizontalCarousel from "./components/HorizontalCarousel.svelte";
+  import { registerMenu, closeActiveMenu } from "../../lib/stores/contextMenu.svelte";
 
   let {
     item,
@@ -250,7 +251,18 @@
 
   function navigateToItem(id: string) { push(`/item?id=${id}`); }
   function goBack() { window.history.length > 1 ? window.history.back() : push("/home"); }
-  function closeContextMenu() { contextMenuOpen = false; }
+  function closeContextMenu() {
+    contextMenuOpen = false;
+    closeActiveMenu();
+  }
+  function toggleContextMenu() {
+    contextMenuOpen = !contextMenuOpen;
+    if (contextMenuOpen) {
+      registerMenu(closeContextMenu);
+    } else {
+      closeActiveMenu();
+    }
+  }
 </script>
 
 <main class="app-stage min-h-screen text-[var(--text-primary)]">
@@ -432,34 +444,34 @@
 
       <!-- Context menu -->
       <div class="relative">
-        <button aria-label="More options" onclick={() => contextMenuOpen = !contextMenuOpen} class="p-2.5 rounded-xl bg-white/5 hover:bg-white/12 border border-white/10 text-gray-400 hover:text-white transition-colors">
+        <button aria-label="More options" onclick={toggleContextMenu} class="p-2.5 rounded-xl bg-white/5 hover:bg-white/12 border border-white/10 text-gray-400 hover:text-white transition-colors">
           <svg class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor"><path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM16 12a2 2 0 100-4 2 2 0 000 4z"/></svg>
         </button>
         {#if contextMenuOpen}
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <!-- svelte-ignore a11y_click_events_have_key_events -->
           <div onclick={closeContextMenu} class="fixed inset-0 z-40"></div>
-          <div class="absolute right-0 top-full mt-1.5 w-52 bg-[rgba(7,14,24,0.92)] border border-white/22 rounded-xl shadow-xl z-50 py-1.5 backdrop-blur-2xl overflow-hidden">
+          <div class="absolute right-0 top-full mt-1.5 w-52 bg-[rgba(15,22,40,0.92)] border border-white/15 rounded-xl py-1.5 shadow-2xl backdrop-blur-xl flex flex-col overflow-hidden z-50">
             {#if item.type === "Episode" && item.series_id}
-              <button onclick={() => { closeContextMenu(); item?.series_id && navigateToItem(item.series_id); }} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
-                <svg class="w-4 h-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM2 11a2 2 0 012-2h12a2 2 0 012 2v4a2 2 0 01-2 2H4a2 2 0 01-2-2v-4z"/></svg>
+              <button onclick={() => { closeContextMenu(); item?.series_id && navigateToItem(item.series_id); }} class="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/8 transition-colors flex items-center gap-2.5 group">
+                <svg class="w-4 h-4 text-gray-400 group-hover:text-cyan-400 transition-colors" viewBox="0 0 20 20" fill="currentColor"><path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM2 11a2 2 0 012-2h12a2 2 0 012 2v4a2 2 0 01-2 2H4a2 2 0 01-2-2v-4z"/></svg>
                 Open show
               </button>
             {/if}
-            <button onclick={() => { onPlay(item, true, buildPlaybackSelection()); closeContextMenu(); }} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
-              <svg class="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+            <button onclick={() => { onPlay(item, true, buildPlaybackSelection()); closeContextMenu(); }} class="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/8 transition-colors flex items-center gap-2.5 group">
+              <svg class="w-4 h-4 text-gray-400 group-hover:text-cyan-400 transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
               Play from start
             </button>
-            <button onclick={closeContextMenu} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
-              <svg class="w-4 h-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clip-rule="evenodd"/></svg>
+            <button onclick={closeContextMenu} class="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/8 transition-colors flex items-center gap-2.5 group">
+              <svg class="w-4 h-4 text-gray-400 group-hover:text-cyan-400 transition-colors" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clip-rule="evenodd"/></svg>
               Add to playlist
             </button>
-            <button onclick={() => { onTogglePlayed(item.id, item.played); closeContextMenu(); }} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
-              <svg class="w-4 h-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+            <button onclick={() => { onTogglePlayed(item.id, item.played); closeContextMenu(); }} class="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/8 transition-colors flex items-center gap-2.5 group">
+              <svg class="w-4 h-4 text-gray-400 group-hover:text-cyan-400 transition-colors" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
               {item.played ? "Mark as unwatched" : "Mark as watched"}
             </button>
-            <button onclick={() => { onToggleFavorite(item.id, item.is_favorite); closeContextMenu(); }} class="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-white/10 transition-colors flex items-center gap-2.5">
-              <svg class="w-4 h-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd"/></svg>
+            <button onclick={() => { onToggleFavorite(item.id, item.is_favorite); closeContextMenu(); }} class="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/8 transition-colors flex items-center gap-2.5 group">
+              <svg class="w-4 h-4 text-gray-400 group-hover:text-cyan-400 transition-colors" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd"/></svg>
               {item.is_favorite ? "Remove from favorites" : "Add to favorites"}
             </button>
           </div>
