@@ -61,7 +61,165 @@ fn keyring_clear_password() -> Result<(), JfgoatError> {
     }
 }
 
+fn to_hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{:02x}", b)).collect()
+}
+
+fn from_hex(hex: &str) -> Option<Vec<u8>> {
+    if hex.len() % 2 != 0 {
+        return None;
+    }
+    let mut bytes = Vec::new();
+    for i in (0..hex.len()).step_by(2) {
+        let res = u8::from_str_radix(&hex[i..i + 2], 16).ok()?;
+        bytes.push(res);
+    }
+    Some(bytes)
+}
+
+#[cfg(target_os = "windows")]
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct DATA_BLOB {
+    cbData: u32,
+    pbData: *mut u8,
+}
+
+#[cfg(target_os = "windows")]
+#[link(name = "crypt32")]
+#[link(name = "kernel32")]
+extern "system" {
+    fn CryptProtectData(
+        pDataIn: *mut DATA_BLOB,
+        pszDataDescr: *const u16,
+        pOptionalEntropy: *mut DATA_BLOB,
+        pvReserved: *mut std::ffi::c_void,
+        pPromptStruct: *mut std::ffi::c_void,
+        dwFlags: u32,
+        pDataOut: *mut DATA_BLOB,
+    ) -> i32;
+
+    fn CryptUnprotectData(
+        pDataIn: *mut DATA_BLOB,
+        ppszDataDescr: *mut *mut u16,
+        pOptionalEntropy: *mut DATA_BLOB,
+        pvReserved: *mut std::ffi::c_void,
+        pPromptStruct: *mut std::ffi::c_void,
+        dwFlags: u32,
+        pDataOut: *mut DATA_BLOB,
+    ) -> i32;
+
+    fn LocalFree(hmem: *mut std::ffi::c_void) -> *mut std::ffi::c_void;
+}
+
+#[cfg(target_os = "windows")]
+fn encrypt_token(token: &str) -> Result<String, JfgoatError> {
+    use std::ptr;
+
+    let input_bytes = token.as_bytes();
+    let mut data_in = DATA_BLOB {
+        cbData: input_bytes.len() as u32,
+        pbData: input_bytes.as_ptr() as *mut u8,
+    };
+    let mut data_out = DATA_BLOB {
+        cbData: 0,
+        pbData: ptr::null_mut(),
+    };
+
+    unsafe {
+        let success = CryptProtectData(
+            &mut data_in,
+            ptr::null(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            0,
+            &mut data_out,
+        );
+
+        if success == 0 {
+            return Err(JfgoatError::Internal("DPAPI encryption failed".to_string()));
+        }
+
+        let bytes = std::slice::from_raw_parts(data_out.pbData, data_out.cbData as usize);
+        let hex_str = to_hex(bytes);
+        LocalFree(data_out.pbData as _);
+        Ok(hex_str)
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn decrypt_token(hex_str: &str) -> Result<String, JfgoatError> {
+    use std::ptr;
+
+    let encrypted_bytes = from_hex(hex_str).ok_or_else(|| JfgoatError::Internal("Invalid hex in database token".to_string()))?;
+    let mut data_in = DATA_BLOB {
+        cbData: encrypted_bytes.len() as u32,
+        pbData: encrypted_bytes.as_ptr() as *mut u8,
+    };
+    let mut data_out = DATA_BLOB {
+        cbData: 0,
+        pbData: ptr::null_mut(),
+    };
+
+    unsafe {
+        let success = CryptUnprotectData(
+            &mut data_in,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            0,
+            &mut data_out,
+        );
+
+        if success == 0 {
+            return Err(JfgoatError::Internal("DPAPI decryption failed".to_string()));
+        }
+
+        let bytes = std::slice::from_raw_parts(data_out.pbData, data_out.cbData as usize);
+        let decrypted = String::from_utf8(bytes.to_vec())
+            .map_err(|e| JfgoatError::Internal(format!("Invalid UTF-8 in decrypted token: {}", e)))?;
+        LocalFree(data_out.pbData as _);
+        Ok(decrypted)
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn encrypt_token(token: &str) -> Result<String, JfgoatError> {
+    let user = std::env::var("USER").unwrap_or_else(|_| "default_user".to_string());
+    let host = std::env::var("HOSTNAME").unwrap_or_else(|_| "default_host".to_string());
+    let key = format!("jfgoat-{}-{}", user, host);
+    let key_bytes = key.as_bytes();
+
+    let encrypted: Vec<u8> = token
+        .as_bytes()
+        .iter()
+        .enumerate()
+        .map(|(i, &b)| b ^ key_bytes[i % key_bytes.len()])
+        .collect();
+    Ok(to_hex(&encrypted))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn decrypt_token(hex_str: &str) -> Result<String, JfgoatError> {
+    let user = std::env::var("USER").unwrap_or_else(|_| "default_user".to_string());
+    let host = std::env::var("HOSTNAME").unwrap_or_else(|_| "default_host".to_string());
+    let key = format!("jfgoat-{}-{}", user, host);
+    let key_bytes = key.as_bytes();
+
+    let encrypted_bytes = from_hex(hex_str).ok_or_else(|| JfgoatError::Internal("Invalid hex in database token".to_string()))?;
+    let decrypted: Vec<u8> = encrypted_bytes
+        .iter()
+        .enumerate()
+        .map(|(i, &b)| b ^ key_bytes[i % key_bytes.len()])
+        .collect();
+    String::from_utf8(decrypted)
+        .map_err(|e| JfgoatError::Internal(format!("Invalid UTF-8 in decrypted token: {}", e)))
+}
+
 fn db_store_token(state: &AppState, token: &str) -> Result<(), JfgoatError> {
+    let encrypted = encrypt_token(token)?;
     let db = state
         .db
         .write_conn()
@@ -70,7 +228,7 @@ fn db_store_token(state: &AppState, token: &str) -> Result<(), JfgoatError> {
         "INSERT INTO metadata (key, value)
          VALUES ('session_token', ?1)
          ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        rusqlite::params![token],
+        rusqlite::params![encrypted],
     )?;
     Ok(())
 }
@@ -86,7 +244,10 @@ fn db_load_token(state: &AppState) -> Result<Option<String>, JfgoatError> {
         |row| row.get(0),
     );
     match maybe_token {
-        Ok(token) => Ok(Some(token)),
+        Ok(token_hex) => {
+            let decrypted = decrypt_token(&token_hex)?;
+            Ok(Some(decrypted))
+        }
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(JfgoatError::Database(e.to_string())),
     }

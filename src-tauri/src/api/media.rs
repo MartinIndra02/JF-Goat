@@ -280,7 +280,6 @@ pub fn build_playback_config_payload(
         }
 
         let mut query_params = vec![
-            ("api_key".to_string(), query.api_key.clone()),
             ("static".to_string(), query.static_mode.clone()),
         ];
         if let Some(v) = query.audio_stream_index {
@@ -312,7 +311,6 @@ pub fn build_playback_config_payload(
         media_source_id: item_id.to_string(),
     };
     let query_params = vec![
-        ("api_key".to_string(), query.api_key.clone()),
         ("static".to_string(), query.static_mode.clone()),
         ("mediaSourceId".to_string(), query.media_source_id.clone()),
     ];

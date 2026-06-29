@@ -26,20 +26,8 @@ fn to_absolute_url(server_url: &str, raw_url: &str) -> String {
     }
 }
 
-fn append_api_key_query(url: &str, api_key: &str) -> String {
-    if url.contains("api_key=") {
-        return url.to_string();
-    }
-
-    let separator = if url.contains('?') { '&' } else { '?' };
-    format!("{}{}api_key={}", url, separator, urlencoding::encode(api_key))
-}
-
-
-
 fn resolve_stream_url_from_playback_context(
     server_url: &str,
-    api_key: &str,
     fallback_payload: &media_api::PlaybackConfigPayload,
     playback_info: &media_api::JellyfinPlaybackInfoResponse,
     prefer_transcode: bool,
@@ -56,14 +44,14 @@ fn resolve_stream_url_from_playback_context(
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .map(|value| append_api_key_query(&to_absolute_url(server_url, value), api_key));
+        .map(|value| to_absolute_url(server_url, value));
 
     let transcode_stream_url = source
         .transcoding_url
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .map(|value| append_api_key_query(&to_absolute_url(server_url, value), api_key));
+        .map(|value| to_absolute_url(server_url, value));
 
     if prefer_transcode {
         if let Some(url) = transcode_stream_url.as_ref() {
@@ -148,7 +136,6 @@ async fn build_playback_url_with_options(
     {
         Ok(playback_info) => resolve_stream_url_from_playback_context(
             &server_url,
-            &token,
             &payload,
             &playback_info,
             prefer_transcode,
@@ -189,6 +176,7 @@ pub async fn mpv_play(
             |row| row.get::<_, String>(0),
         ).ok()
     };
+    let is_offline = local_path.is_some();
 
     let mut local_subs = Vec::new();
     let url = if let Some(path) = local_path {
@@ -246,6 +234,13 @@ pub async fn mpv_play(
         }
     }
 
+    let (_server_url, token, _user_id, _device_id) = app_state.get_connection_params()?;
+    let headers = if is_offline {
+        Vec::new()
+    } else {
+        vec![format!("X-Emby-Token: {}", token)]
+    };
+
     mpv.cmd_tx
         .send(MpvCommand::LoadFile {
             url,
@@ -254,6 +249,7 @@ pub async fn mpv_play(
             // Avoid setting mpv aid/sid directly because those are runtime-local IDs.
             audio_track: None,
             subtitle_track: None,
+            headers,
         })
         .map_err(|e| JfgoatError::Internal(format!("mpv send failed: {}", e)))?;
 
@@ -380,7 +376,7 @@ pub fn mpv_add_external_subtitle(
     index: i64,
     format: String,
 ) -> Result<(), JfgoatError> {
-    let (server_url, token, _user_id, _device_id) = app_state.get_connection_params()?;
+    let (server_url, _token, _user_id, _device_id) = app_state.get_connection_params()?;
     let server_base = server_url.trim_end_matches('/');
 
     let format_lower = format.to_ascii_lowercase();
@@ -392,8 +388,8 @@ pub fn mpv_add_external_subtitle(
     };
 
     let url = format!(
-        "{}/Videos/{}/{}/Subtitles/{}/Stream.{}?api_key={}",
-        server_base, item_id, item_id, index, format_ext, token
+        "{}/Videos/{}/{}/Subtitles/{}/Stream.{}",
+        server_base, item_id, item_id, index, format_ext
     );
 
     mpv.cmd_tx
