@@ -34,11 +34,7 @@
   import { setUnauthenticated } from "../../lib/stores/auth.svelte";
   import Button from "../../components/ui/Button.svelte";
 
-  interface Props {
-    onResync: () => Promise<void>;
-  }
-
-  let { onResync }: Props = $props();
+  import { homeDataStore } from "../../lib/stores/homeData.svelte";
 
   let activeRouteHeading = $state<HTMLElement | null>(null);
 
@@ -416,7 +412,7 @@
     runningResync = true;
     try {
       await forceResync();
-      await onResync();
+      await homeDataStore.refreshFromServer();
       pushToast({
         level: "success",
         source: "sync",

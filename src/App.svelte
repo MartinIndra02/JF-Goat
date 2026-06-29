@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import Router from "svelte-spa-router";
-  import { replace } from "svelte-spa-router";
+  import Router, { location, replace } from "svelte-spa-router";
   import { checkAuth, checkAuthOffline } from "./lib/api";
   import {
     getAuthStatus,
@@ -47,23 +46,27 @@
   import LoadingScreen from "./components/layout/LoadingScreen.svelte";
   import ErrorBanner from "./components/ui/ErrorBanner.svelte";
   import Player from "./components/player/Player.svelte";
+  import MainLayout from "./components/layout/MainLayout.svelte";
   import ServerConnect from "./views/ServerConnect.svelte";
   import Login from "./views/Login.svelte";
-  import Home from "./views/Home.svelte";
   import ItemDetail from "./views/ItemDetail.svelte";
+  import HomeDashboard from "./views/home/HomeDashboard.svelte";
+  import LibraryView from "./views/home/LibraryView.svelte";
+  import OfflineView from "./views/home/OfflineView.svelte";
+  import SearchView from "./views/home/SearchView.svelte";
+  import SettingsView from "./views/home/SettingsView.svelte";
 
   const routes = {
-    "/": Home,
     "/connect": ServerConnect,
     "/login": Login,
-    "/home": Home,
-    "/library": Home,
-    "/offline": Home,
-    "/search": Home,
-    "/settings": Home,
-    "/item": ItemDetail,
+    "/home": HomeDashboard,
+    "/library": LibraryView,
+    "/offline": OfflineView,
+    "/search": SearchView,
+    "/settings": SettingsView,
     "/item/:id": ItemDetail,
-    "*": Home,
+    "/item": ItemDetail,
+    "*": HomeDashboard,
   };
 
   const playerActive = $derived(isPlayerVisible());
@@ -257,32 +260,6 @@
     return getPreferences()?.playback?.default_startup_screen || "/home";
   }
 
-  function getRequestedPathAndQuery(): string {
-    const hash = window.location.hash || "";
-    const defaultRoute = getDefaultRoute();
-    if (!hash.startsWith("#/")) {
-      return defaultRoute;
-    }
-
-    const parsed = hash.slice(1);
-    return parsed.length > 0 ? parsed : defaultRoute;
-  }
-
-  function isGuestRoute(path: string): boolean {
-    return path.startsWith("/connect") || path.startsWith("/login");
-  }
-
-  function isAuthedRoute(path: string): boolean {
-    return (
-      path.startsWith("/home") ||
-      path.startsWith("/library") ||
-      path.startsWith("/offline") ||
-      path.startsWith("/search") ||
-      path.startsWith("/settings") ||
-      path.startsWith("/item")
-    );
-  }
-
   function sourceFromErrorMessage(message: string): ToastSource {
     const lower = message.toLowerCase();
     if (lower.includes("mpv") || lower.includes("playback")) {
@@ -297,8 +274,6 @@
   }
 
   async function init() {
-    const requestedPath = getRequestedPathAndQuery();
-
     try {
       await loadPreferences();
       applyPreferencesToLocalPlayerKeys();
@@ -307,15 +282,11 @@
       const offlineSession = await checkAuthOffline();
       if (offlineSession) {
         setAuthenticated(offlineSession);
-        if (isGuestRoute(requestedPath) || !isAuthedRoute(requestedPath)) {
-          replace(getDefaultRoute());
-        }
-
+        
         // Phase 2: Verify token in the background; auto-login if expired
         checkAuth()
           .then((session) => {
             if (!session) {
-              // Token expired and auto-login failed — redirect to login
               pushToast({
                 level: "warning",
                 source: "api",
@@ -324,15 +295,12 @@
                 dedupeKey: "session-expired",
               });
               setUnauthenticated();
-              replace("/login");
             } else {
-              // Update session (may have been refreshed via auto-login)
               setAuthenticated(session);
               markHealthy();
             }
           })
           .catch((error) => {
-            // Network error — stay on homepage with cached data
             markDegraded(normalizeErrorMessage(error));
             pushToast({
               level: "info",
@@ -351,16 +319,10 @@
       if (session) {
         setAuthenticated(session);
         markHealthy();
-        if (isGuestRoute(requestedPath) || !isAuthedRoute(requestedPath)) {
-          replace(getDefaultRoute());
-        }
         return;
       }
 
       setUnauthenticated();
-      if (!isGuestRoute(requestedPath)) {
-        replace("/connect");
-      }
     } catch (error) {
       markDegraded(normalizeErrorMessage(error));
       pushErrorToast(
@@ -370,12 +332,26 @@
         "startup-init-failed",
       );
       setUnauthenticated();
-      replace("/connect");
     }
   }
 
+  // Reactive redirect based on authentication state
+  $effect(() => {
+    const authStatus = getAuthStatus();
+    const currentLoc = $location || "/";
+
+    if (authStatus === "authenticated") {
+      if (currentLoc === "/connect" || currentLoc === "/login") {
+        replace(getDefaultRoute());
+      }
+    } else if (authStatus === "unauthenticated") {
+      if (currentLoc !== "/connect" && currentLoc !== "/login") {
+        replace("/connect");
+      }
+    }
+  });
+
   onMount(() => {
-    // Ensure stale dev/HMR player state never hides the whole app shell on boot.
     hidePlayer();
 
     try {
@@ -492,7 +468,13 @@
   </div>
 {:else}
   <div class:hidden={playerActive} class="relative z-10 app-animate-fade-up">
-    <Router {routes} />
+    {#if getAuthStatus() === "authenticated"}
+      <MainLayout>
+        <Router {routes} />
+      </MainLayout>
+    {:else}
+      <Router {routes} />
+    {/if}
   </div>
 {/if}
 
