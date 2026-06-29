@@ -46,6 +46,13 @@ fn get_connection_params(state: &AppState) -> Result<(String, String, String, St
     state.get_connection_params()
 }
 
+fn get_jf_client(state: &AppState) -> Result<(JellyfinClient, String, String), JfgoatError> {
+    let (server_url, token, user_id, device_id) = state.get_connection_params()?;
+    let server_id = state.get_server_id()?;
+    let client = JellyfinClient::new(&state.http_client, &server_url, &device_id).with_token(&token);
+    Ok((client, user_id, server_id))
+}
+
 fn get_server_id(state: &AppState) -> Result<String, JfgoatError> {
     state.get_server_id()
 }
@@ -214,10 +221,7 @@ pub async fn load_homepage_cache(
 pub async fn get_user_views(
     state: State<'_, AppState>,
 ) -> Result<Vec<UserLibrary>, JfgoatError> {
-    let (server_url, token, user_id, device_id) = get_connection_params(&state)?;
-
-    let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
-        .with_token(&token);
+    let (jf_client, user_id, _) = get_jf_client(&state)?;
 
     let response = media_api::fetch_user_views(&jf_client, &user_id).await?;
 
@@ -240,11 +244,7 @@ pub async fn get_resume_items(
     state: State<'_, AppState>,
     limit: u32,
 ) -> Result<Vec<MediaItem>, JfgoatError> {
-    let (server_url, token, user_id, device_id) = get_connection_params(&state)?;
-    let server_id = get_server_id(&state)?;
-
-    let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
-        .with_token(&token);
+    let (jf_client, user_id, server_id) = get_jf_client(&state)?;
 
     let response = media_api::fetch_resume_items(&jf_client, &user_id, limit).await?;
 
@@ -263,11 +263,7 @@ pub async fn get_next_up(
     state: State<'_, AppState>,
     limit: u32,
 ) -> Result<Vec<MediaItem>, JfgoatError> {
-    let (server_url, token, user_id, device_id) = get_connection_params(&state)?;
-    let server_id = get_server_id(&state)?;
-
-    let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
-        .with_token(&token);
+    let (jf_client, user_id, server_id) = get_jf_client(&state)?;
 
     let response = media_api::fetch_next_up(&jf_client, &user_id, limit).await?;
 
@@ -304,12 +300,7 @@ pub async fn get_item_by_id(
     }
 
     // 2. Fallback: fetch from Jellyfin API
-    let params = get_connection_params(&state);
-    let server_id = get_server_id(&state);
-    if let (Ok((server_url, token, user_id, device_id)), Ok(sid)) = (params, server_id) {
-        let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
-            .with_token(&token);
-
+    if let Ok((jf_client, user_id, sid)) = get_jf_client(&state) {
         match media_api::fetch_item_by_id(&jf_client, &user_id, &id).await {
             Ok(jf_item) => return Ok(Some(jf_item_to_media_item(jf_item, &sid, &user_id))),
             Err(e) => {
@@ -345,12 +336,7 @@ pub async fn get_series_seasons(
     }
 
     // 2. Fallback: fetch from Jellyfin API
-    let params = get_connection_params(&state);
-    let server_id = get_server_id(&state);
-    if let (Ok((server_url, token, user_id, device_id)), Ok(sid)) = (params, server_id) {
-        let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
-            .with_token(&token);
-
+    if let Ok((jf_client, user_id, sid)) = get_jf_client(&state) {
         match media_api::fetch_seasons(&jf_client, &user_id, &series_id).await {
             Ok(response) => {
                 let items: Vec<MediaItem> = response
@@ -420,24 +406,15 @@ pub async fn get_season_episodes(
     //    fetch the season item from the API first to discover its series_id.
     let mut series_id_resolved = series_id_for_fallback;
     if series_id_resolved.is_none() {
-        if let (Ok((ref server_url, ref token, ref user_id, ref device_id)), Ok(ref _sid)) =
-            (get_connection_params(&state), get_server_id(&state))
-        {
-            let jf_client = JellyfinClient::new(&state.http_client, server_url, device_id)
-                .with_token(token);
-            if let Ok(season_item) = media_api::fetch_item_by_id(&jf_client, user_id, &season_id).await {
+        if let Ok((jf_client, user_id, _)) = get_jf_client(&state) {
+            if let Ok(season_item) = media_api::fetch_item_by_id(&jf_client, &user_id, &season_id).await {
                 series_id_resolved = season_item.series_id;
             }
         }
     }
 
     if let Some(ref sid_for_api) = series_id_resolved {
-        let params = get_connection_params(&state);
-        let server_id = get_server_id(&state);
-        if let (Ok((server_url, token, user_id, device_id)), Ok(sid)) = (params, server_id) {
-            let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
-                .with_token(&token);
-
+        if let Ok((jf_client, user_id, sid)) = get_jf_client(&state) {
             match media_api::fetch_episodes(&jf_client, &user_id, sid_for_api, &season_id).await {
                 Ok(response) => {
                     let items: Vec<MediaItem> = response
@@ -464,11 +441,7 @@ pub async fn get_latest_items(
     parent_id: String,
     limit: u32,
 ) -> Result<Vec<MediaItem>, JfgoatError> {
-    let (server_url, token, user_id, device_id) = get_connection_params(&state)?;
-    let server_id = get_server_id(&state)?;
-
-    let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
-        .with_token(&token);
+    let (jf_client, user_id, server_id) = get_jf_client(&state)?;
 
     let items_raw =
         media_api::fetch_latest_items(&jf_client, &user_id, &parent_id, limit).await?;
@@ -499,11 +472,7 @@ pub async fn get_library_items(
         return get_library_items_from_local_fallback(&state, &parent_id, start_index, safe_limit);
     }
 
-    let (server_url, token, user_id, device_id) = get_connection_params(&state)?;
-    let server_id = get_server_id(&state)?;
-
-    let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
-        .with_token(&token);
+    let (jf_client, user_id, server_id) = get_jf_client(&state)?;
 
     let result = media_api::fetch_view_items_paginated(
         &jf_client,
@@ -558,10 +527,7 @@ pub async fn get_item_people(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<Vec<Person>, JfgoatError> {
-    let (server_url, token, user_id, device_id) = get_connection_params(&state)?;
-
-    let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
-        .with_token(&token);
+    let (jf_client, user_id, _) = get_jf_client(&state)?;
 
     let people = media_api::fetch_item_people(&jf_client, &user_id, &id).await?;
 
@@ -586,11 +552,7 @@ pub async fn get_similar_items(
     id: String,
     limit: u32,
 ) -> Result<Vec<MediaItem>, JfgoatError> {
-    let (server_url, token, user_id, device_id) = get_connection_params(&state)?;
-    let server_id = get_server_id(&state)?;
-
-    let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
-        .with_token(&token);
+    let (jf_client, user_id, server_id) = get_jf_client(&state)?;
 
     let response = media_api::fetch_similar_items(&jf_client, &user_id, &id, limit).await?;
 
@@ -730,10 +692,7 @@ pub async fn get_media_streams(
         }
     }
 
-    let (server_url, token, user_id, device_id) = get_connection_params(&state)?;
-
-    let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
-        .with_token(&token);
+    let (jf_client, user_id, _) = get_jf_client(&state)?;
 
     let res = media_api::fetch_item_media_streams(&jf_client, &user_id, &id).await?;
     let streams = res.media_streams;
@@ -800,10 +759,7 @@ pub async fn get_external_urls(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<Vec<ExternalUrl>, JfgoatError> {
-    let (server_url, token, user_id, device_id) = get_connection_params(&state)?;
-
-    let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
-        .with_token(&token);
+    let (jf_client, user_id, _) = get_jf_client(&state)?;
 
     let urls = media_api::fetch_item_external_urls(&jf_client, &user_id, &id).await?;
 
@@ -826,10 +782,7 @@ pub async fn get_item_chapters(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<Vec<ChapterInfo>, JfgoatError> {
-    let (server_url, token, _user_id, device_id) = get_connection_params(&state)?;
-
-    let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
-        .with_token(&token);
+    let (jf_client, _, _) = get_jf_client(&state)?;
 
     let chapters = media_api::fetch_item_chapters(&jf_client, &id).await?;
 
@@ -857,10 +810,7 @@ pub async fn toggle_played(
     id: String,
     played: bool,
 ) -> Result<bool, JfgoatError> {
-    let (server_url, token, user_id, device_id) = get_connection_params(&state)?;
-    let server_id = get_server_id(&state)?;
-    let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
-        .with_token(&token);
+    let (jf_client, user_id, server_id) = get_jf_client(&state)?;
 
     let new_played = !played;
     if new_played {
@@ -909,10 +859,7 @@ pub async fn toggle_favorite(
     id: String,
     is_favorite: bool,
 ) -> Result<bool, JfgoatError> {
-    let (server_url, token, user_id, device_id) = get_connection_params(&state)?;
-    let server_id = get_server_id(&state)?;
-    let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
-        .with_token(&token);
+    let (jf_client, user_id, server_id) = get_jf_client(&state)?;
 
     let new_favorite = !is_favorite;
     if new_favorite {
@@ -942,10 +889,7 @@ pub async fn report_playback_lifecycle_internal(
     duration_ticks: i64,
     event: PlaybackLifecycleEvent,
 ) -> Result<(), JfgoatError> {
-    let (server_url, token, user_id, device_id) = get_connection_params(state)?;
-    let server_id = get_server_id(state)?;
-    let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
-        .with_token(&token);
+    let (jf_client, user_id, server_id) = get_jf_client(state)?;
 
     let safe_position = position_ticks.max(0);
     let safe_duration = duration_ticks.max(0);
@@ -1022,11 +966,7 @@ pub async fn refresh_item_details(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<(), JfgoatError> {
-    let (server_url, token, user_id, device_id) = get_connection_params(&state)?;
-    let server_id = get_server_id(&state)?;
-
-    let jf_client = JellyfinClient::new(&state.http_client, &server_url, &device_id)
-        .with_token(&token);
+    let (jf_client, user_id, server_id) = get_jf_client(&state)?;
 
     // 1. Fetch item from remote Jellyfin API
     let jf_item = media_api::fetch_item_by_id(&jf_client, &user_id, &id).await?;

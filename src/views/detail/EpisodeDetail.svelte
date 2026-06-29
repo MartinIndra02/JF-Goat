@@ -32,6 +32,7 @@
   import DownloadModal from "./components/DownloadModal.svelte";
   import HorizontalCarousel from "./components/HorizontalCarousel.svelte";
   import { registerMenu, closeActiveMenu } from "../../lib/stores/contextMenu.svelte";
+  import { generateQualityOptions } from "../../lib/mediaStreamHelpers";
 
   let {
     item,
@@ -59,7 +60,7 @@
   let subtitleDropdownOpen = $state(false);
   let selectedAudioIndex = $state<number | null>(null);
   let selectedSubtitleIndex = $state<number | null>(null);
-  let selectedQualityKey = $state("original");
+  let selectedQualityKey = $state("direct-play");
 
   let download = $state<OfflineDownload | null>(null);
   let showDownloadModal = $state(false);
@@ -151,7 +152,7 @@
     subtitleDropdownOpen = false;
     selectedAudioIndex = null;
     selectedSubtitleIndex = null;
-    selectedQualityKey = "original";
+    selectedQualityKey = "direct-play";
   });
 
   // Set defaults from stream info
@@ -179,43 +180,7 @@
     return sel?.display_title ?? null;
   });
 
-  const qualityOptions = $derived.by(() => {
-    const base = [{
-      key: "original",
-      label: "Original",
-      maxStreamingBitrate: null,
-      targetHeight: null,
-    }];
-
-    if (!mediaStreams || mediaStreams.video.length === 0) {
-      return base;
-    }
-
-    const bitrateForHeight = (height: number): number => {
-      if (height >= 2160) return 20_000_000;
-      if (height >= 1080) return 8_000_000;
-      if (height >= 720) return 4_500_000;
-      if (height >= 480) return 2_000_000;
-      return 1_000_000;
-    };
-
-    const heights = Array.from(
-      new Set(
-        mediaStreams.video
-          .map((track) => track.height ?? null)
-          .filter((height): height is number => !!height && height > 0),
-      ),
-    ).sort((a, b) => b - a);
-
-    const transcodeProfiles = heights.map((height) => ({
-      key: `h-${height}`,
-      label: `${height}p`,
-      maxStreamingBitrate: bitrateForHeight(height),
-      targetHeight: height,
-    }));
-
-    return [...base, ...transcodeProfiles];
-  });
+  const qualityOptions = $derived.by(() => generateQualityOptions(mediaStreams));
 
   const selectedQuality = $derived(() => {
     const match = qualityOptions.find((option) => option.key === selectedQualityKey);
@@ -225,7 +190,7 @@
   $effect(() => {
     const options = qualityOptions;
     if (!options.some((option) => option.key === selectedQualityKey)) {
-      selectedQualityKey = options[0].key;
+      selectedQualityKey = options[0]?.key ?? "direct-play";
     }
   });
 
