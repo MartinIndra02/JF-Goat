@@ -85,7 +85,7 @@
           </div>
           <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-4 px-6">
             {#each libraryLatest[library.id] as item (item.id)}
-              <PosterCard {item} aspect="poster" />
+              <PosterCard {item} />
             {/each}
           </div>
         </section>

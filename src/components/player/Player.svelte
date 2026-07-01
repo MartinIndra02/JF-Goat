@@ -11,7 +11,6 @@
     isMuted,
     getPlaybackRate,
     hidePlayer,
-    showPlayer,
     setVolume,
     setMuted,
     setPlaybackRate,
@@ -523,7 +522,7 @@
 
         ctx.endAutoSkipHandledForItemId = playerItemId;
         if (ctx.nextEpisode && !ctx.autoplayDismissedForCurrentItem) {
-          void playNextEpisode();
+          void ctx.playNextEpisode();
         } else if (ctx.nextEpisode && ctx.autoplayDismissedForCurrentItem) {
           void stopPlayer(ctx.nextEpisode);
         } else {

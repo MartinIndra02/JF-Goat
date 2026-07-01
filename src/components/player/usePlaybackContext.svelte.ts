@@ -27,13 +27,15 @@ import {
   setPreferredSubtitleStreamIndex,
   setPreferredAudioMetadata,
   setPreferredSubtitleMetadata,
+  resolvePreferredAudioStreamIndex,
+  resolvePreferredSubtitleStreamIndex,
 } from "../../lib/stores/player.svelte";
 import {
   suppressNextUpItem,
   applyEpisodeCompletionToHomepageCache,
   emitHomepageCacheUpdated,
 } from "../../lib/homepageFreshness";
-import type { MediaItem, MediaStreamInfo, ChapterInfo, StreamOption } from "../../lib/types";
+import type { MediaItem, MediaStreamInfo, ChapterInfo } from "../../lib/types";
 import { generateQualityOptions } from "../../lib/mediaStreamHelpers";
 
 const PLAYBACK_CONTEXT_DELAY_MS = 2500;
