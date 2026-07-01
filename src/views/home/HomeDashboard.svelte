@@ -3,7 +3,6 @@
   import { push } from "svelte-spa-router";
   import MediaRow from "../../components/media/MediaRow.svelte";
   import HeroCarousel from "../../components/media/HeroCarousel.svelte";
-  import PosterCard from "../../components/media/PosterCard.svelte";
   import type { UserLibrary } from "../../lib/types";
   import { homeDataStore } from "../../lib/stores/homeData.svelte";
 
@@ -71,24 +70,11 @@
 
     {#each userLibraries as library (library.id)}
       {#if libraryLatest[library.id]?.length}
-        <section class="mb-6">
-          <div class="flex items-center justify-between px-6 mb-2">
-            <h2 class="text-lg font-semibold text-[var(--text-primary)]">Latest in {library.name}</h2>
-            <button
-              type="button"
-              onclick={() => openLibraryView(library)}
-              class="text-sm text-cyan-200 hover:text-cyan-100 transition-colors"
-              aria-label="View all in {library.name}"
-            >
-              View All
-            </button>
-          </div>
-          <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-4 px-6">
-            {#each libraryLatest[library.id] as item (item.id)}
-              <PosterCard {item} />
-            {/each}
-          </div>
-        </section>
+        <MediaRow
+          title={`Latest in ${library.name}`}
+          items={libraryLatest[library.id]}
+          onViewAll={() => openLibraryView(library)}
+        />
       {/if}
     {/each}
   </div>

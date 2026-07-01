@@ -7,10 +7,12 @@
     title,
     items,
     landscape = false,
+    onViewAll,
   }: {
     title: string;
     items: MediaItem[];
     landscape?: boolean;
+    onViewAll?: () => void;
   } = $props();
 
   let scrollerEl = $state<HTMLDivElement | null>(null);
@@ -130,7 +132,21 @@
 
 {#if items.length > 0}
   <section class="mb-6" aria-label={title}>
-    <h2 class="text-lg font-semibold text-white mb-3 px-6">{title}</h2>
+    {#if onViewAll}
+      <div class="flex items-center justify-between px-6 mb-3">
+        <h2 class="text-lg font-semibold text-white">{title}</h2>
+        <button
+          type="button"
+          onclick={onViewAll}
+          class="text-sm text-cyan-200 hover:text-cyan-100 transition-colors"
+          aria-label={`View all in ${title}`}
+        >
+          View All
+        </button>
+      </div>
+    {:else}
+      <h2 class="text-lg font-semibold text-white mb-3 px-6">{title}</h2>
+    {/if}
     <div class="relative">
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -141,6 +157,7 @@
         onmouseleave={handleMouseLeave}
         onkeydown={handleScrollerKeyDown}
         onclickcapture={handleClickCapture}
+        ondragstart={(e) => e.preventDefault()}
         tabindex="0"
         role="group"
         aria-label={`${title} carousel`}

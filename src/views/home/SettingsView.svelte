@@ -756,7 +756,7 @@
                   onchange={(e) => {
                     updatePreferences({
                       playback: {
-                        auto_crop_mode: (e.target as HTMLSelectElement).value,
+                        auto_crop_mode: (e.target as HTMLSelectElement).value as "static" | "dynamic",
                       },
                     });
                   }}
