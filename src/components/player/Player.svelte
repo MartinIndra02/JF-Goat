@@ -14,6 +14,7 @@
     setVolume,
     setMuted,
     setPlaybackRate,
+    getVideoScaleMode,
   } from "../../lib/stores/player.svelte";
   import {
     mpvTogglePause,
@@ -24,6 +25,7 @@
     mpvSetPlaybackRate,
     mpvSetSubtitlePosition,
     mpvStop,
+    mpvSetVideoScale,
   } from "../../lib/api";
   import { getPreferences } from "../../lib/stores/preferences.svelte";
   import type { MediaItem, ChapterInfo } from "../../lib/types";
@@ -45,6 +47,9 @@
   const muted = $derived(isMuted());
   const rate = $derived(getPlaybackRate());
   const isPaused = $derived(playerStatus === "paused");
+  const videoScaleMode = $derived(getVideoScaleMode());
+  const preferences = $derived(getPreferences());
+  const autoCropEnabled = $derived(preferences.playback.auto_crop_experimental);
 
   // ── Context and Auto-Hide Hooks ─────────────────────────────
   const ctx = usePlaybackContext();
@@ -620,6 +625,9 @@
       applyTrackSelection={ctx.applyTrackSelection}
       playbackRate={rate}
       {mpvSetPlaybackRate}
+      {videoScaleMode}
+      {mpvSetVideoScale}
+      {autoCropEnabled}
       qualityOptions={ctx.qualityOptions}
       selectedQualityKey={ctx.selectedQualityKey}
       changeQuality={ctx.changeQuality}

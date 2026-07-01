@@ -355,6 +355,22 @@ fn run_mpv_loop(
     let mut last_emit = std::time::Instant::now();
     let emit_interval = std::time::Duration::from_millis(250);
 
+    // Autocrop tracking state
+    let mut auto_crop_mode = String::from("static");
+    let mut autocrop_active = false;
+    let mut detection_start_time = std::time::Instant::now();
+    let mut detection_stopped = false;
+    let mut last_autocrop_check = std::time::Instant::now();
+    let mut current_crop_w = 0i64;
+    let mut current_crop_h = 0i64;
+    let mut current_crop_x = 0i64;
+    let mut current_crop_y = 0i64;
+    let mut pending_crop_w = 0i64;
+    let mut pending_crop_h = 0i64;
+    let mut pending_crop_x = 0i64;
+    let mut pending_crop_y = 0i64;
+    let mut pending_crop_count = 0;
+
     emit_playback_settings_if_changed(
         &app_handle,
         &mut last_emitted_settings,
@@ -445,6 +461,43 @@ fn run_mpv_loop(
                         audio_track,
                         subtitle_track,
                     );
+
+                    if autocrop_active {
+                        let app_state = app_handle.state::<crate::state::AppState>();
+                        if let Ok(db) = app_state.db.read_conn() {
+                            let maybe_raw = db.query_row(
+                                "SELECT value FROM metadata WHERE key = 'user_preferences_v1'",
+                                [],
+                                |row| row.get::<_, String>(0),
+                            );
+                            if let Ok(raw) = maybe_raw {
+                                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&raw) {
+                                    if let Some(m) = parsed.pointer("/playback/auto_crop_mode").and_then(|v| v.as_str()) {
+                                        auto_crop_mode = m.to_string();
+                                    }
+                                }
+                            }
+                        }
+
+                        let _ = mpv.set_property("hwdec", "auto-copy");
+                        let _ = mpv.set_property("stretch-image-subs-to-screen", "yes");
+                        
+                        detection_start_time = std::time::Instant::now();
+                        detection_stopped = false;
+                        current_crop_w = 0;
+                        current_crop_h = 0;
+                        current_crop_x = 0;
+                        current_crop_y = 0;
+                        pending_crop_w = 0;
+                        pending_crop_h = 0;
+                        pending_crop_x = 0;
+                        pending_crop_y = 0;
+                        pending_crop_count = 0;
+
+                        let _ = mpv.command("vf", &["add", "@autocrop_detect:cropdetect=limit=24/255:round=2:reset=0"]);
+                    } else {
+                        let _ = mpv.set_property("hwdec", hwdec.as_str());
+                    }
                 }
                 MpvCommand::TogglePause => {
                     let paused: bool = mpv.get_property("pause").unwrap_or(false);
@@ -509,17 +562,78 @@ fn run_mpv_loop(
                 }
                 MpvCommand::SetVideoScale(mode) => {
                     match mode.as_str() {
+                        "auto-crop" => {
+                            let app_state = app_handle.state::<crate::state::AppState>();
+                            if let Ok(db) = app_state.db.read_conn() {
+                                let maybe_raw = db.query_row(
+                                    "SELECT value FROM metadata WHERE key = 'user_preferences_v1'",
+                                    [],
+                                    |row| row.get::<_, String>(0),
+                                );
+                                if let Ok(raw) = maybe_raw {
+                                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&raw) {
+                                        if let Some(m) = parsed.pointer("/playback/auto_crop_mode").and_then(|v| v.as_str()) {
+                                            auto_crop_mode = m.to_string();
+                                        }
+                                    }
+                                }
+                            }
+
+                            if !autocrop_active {
+                                autocrop_active = true;
+                                detection_start_time = std::time::Instant::now();
+                                detection_stopped = false;
+                                current_crop_w = 0;
+                                current_crop_h = 0;
+                                current_crop_x = 0;
+                                current_crop_y = 0;
+                                pending_crop_w = 0;
+                                pending_crop_h = 0;
+                                pending_crop_x = 0;
+                                pending_crop_y = 0;
+                                pending_crop_count = 0;
+
+                                let _ = mpv.set_property("hwdec", "auto-copy");
+                                let _ = mpv.set_property("stretch-image-subs-to-screen", "yes");
+                                let _ = mpv.command("vf", &["add", "@autocrop_detect:cropdetect=limit=24/255:round=2:reset=0"]);
+                            }
+                            video_scale_mode = "auto-crop".to_string();
+                        }
                         "cover" => {
+                            if autocrop_active {
+                                autocrop_active = false;
+                                detection_stopped = true;
+                                let _ = mpv.command("vf", &["remove", "@autocrop_detect"]);
+                                let _ = mpv.command("vf", &["remove", "@autocrop_filter"]);
+                                let _ = mpv.set_property("hwdec", hwdec.as_str());
+                                let _ = mpv.set_property("stretch-image-subs-to-screen", "no");
+                            }
                             mpv.set_property("keepaspect", true).ok();
                             mpv.set_property("panscan", 1.0f64).ok();
                             video_scale_mode = "cover".to_string();
                         }
                         "stretch" => {
+                            if autocrop_active {
+                                autocrop_active = false;
+                                detection_stopped = true;
+                                let _ = mpv.command("vf", &["remove", "@autocrop_detect"]);
+                                let _ = mpv.command("vf", &["remove", "@autocrop_filter"]);
+                                let _ = mpv.set_property("hwdec", hwdec.as_str());
+                                let _ = mpv.set_property("stretch-image-subs-to-screen", "no");
+                            }
                             mpv.set_property("keepaspect", false).ok();
                             mpv.set_property("panscan", 0.0f64).ok();
                             video_scale_mode = "stretch".to_string();
                         }
                         _ => {
+                            if autocrop_active {
+                                autocrop_active = false;
+                                detection_stopped = true;
+                                let _ = mpv.command("vf", &["remove", "@autocrop_detect"]);
+                                let _ = mpv.command("vf", &["remove", "@autocrop_filter"]);
+                                let _ = mpv.set_property("hwdec", hwdec.as_str());
+                                let _ = mpv.set_property("stretch-image-subs-to-screen", "no");
+                            }
                             mpv.set_property("keepaspect", true).ok();
                             mpv.set_property("panscan", 0.0f64).ok();
                             video_scale_mode = "contain".to_string();
@@ -666,6 +780,74 @@ fn run_mpv_loop(
                     let _ = app_handle.emit("mpv-file-ended", ());
                 }
                 _ => {}
+            }
+        }
+
+        if autocrop_active && !detection_stopped && last_autocrop_check.elapsed() >= std::time::Duration::from_millis(500) {
+            last_autocrop_check = std::time::Instant::now();
+            let video_h = mpv.get_property::<i64>("video-params/h").unwrap_or(0);
+
+            let w = mpv.get_property::<String>("vf-metadata/autocrop_detect/lavfi.cropdetect.w").ok().and_then(|s| s.parse::<i64>().ok());
+            let h = mpv.get_property::<String>("vf-metadata/autocrop_detect/lavfi.cropdetect.h").ok().and_then(|s| s.parse::<i64>().ok());
+            let x = mpv.get_property::<String>("vf-metadata/autocrop_detect/lavfi.cropdetect.x").ok().and_then(|s| s.parse::<i64>().ok());
+            let y = mpv.get_property::<String>("vf-metadata/autocrop_detect/lavfi.cropdetect.y").ok().and_then(|s| s.parse::<i64>().ok());
+
+            if let (Some(w), Some(h), Some(x), Some(y)) = (w, h, x, y) {
+                if w > 0 && h > 0 {
+                    if w != current_crop_w || h != current_crop_h || x != current_crop_x || y != current_crop_y {
+                        let is_expanding = current_crop_h == 0 || h > current_crop_h;
+
+                        if is_expanding {
+                            current_crop_w = w;
+                            current_crop_h = h;
+                            current_crop_x = x;
+                            current_crop_y = y;
+                            pending_crop_count = 0;
+
+                            let _ = mpv.command("vf", &["add", &format!("@autocrop_filter:crop={}:{}:{}:{}", w, h, x, y)]);
+
+                            if auto_crop_mode == "static" && video_h > 0 && h < video_h {
+                                detection_stopped = true;
+                                let _ = mpv.command("vf", &["remove", "@autocrop_detect"]);
+                                let _ = mpv.set_property("hwdec", hwdec.as_str());
+                            }
+                        } else {
+                            if w == pending_crop_w && h == pending_crop_h && x == pending_crop_x && y == pending_crop_y {
+                                pending_crop_count += 1;
+                            } else {
+                                pending_crop_w = w;
+                                pending_crop_h = h;
+                                pending_crop_x = x;
+                                pending_crop_y = y;
+                                pending_crop_count = 1;
+                            }
+
+                            if pending_crop_count >= 4 {
+                                current_crop_w = w;
+                                current_crop_h = h;
+                                current_crop_x = x;
+                                current_crop_y = y;
+                                pending_crop_count = 0;
+
+                                let _ = mpv.command("vf", &["add", &format!("@autocrop_filter:crop={}:{}:{}:{}", w, h, x, y)]);
+
+                                if auto_crop_mode == "static" && video_h > 0 && h < video_h {
+                                    detection_stopped = true;
+                                    let _ = mpv.command("vf", &["remove", "@autocrop_detect"]);
+                                    let _ = mpv.set_property("hwdec", hwdec.as_str());
+                                }
+                            }
+                        }
+                    } else {
+                        pending_crop_count = 0;
+                    }
+                }
+            }
+
+            if auto_crop_mode == "static" && detection_start_time.elapsed() >= std::time::Duration::from_secs(15) {
+                detection_stopped = true;
+                let _ = mpv.command("vf", &["remove", "@autocrop_detect"]);
+                let _ = mpv.set_property("hwdec", hwdec.as_str());
             }
         }
 
