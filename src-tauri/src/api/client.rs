@@ -1,6 +1,8 @@
 use reqwest::Client;
+use tracing::{error, warn};
 
 use crate::error::JfgoatError;
+
 
 pub struct JellyfinClient {
     pub client: Client,
@@ -43,13 +45,34 @@ impl JellyfinClient {
 
     pub async fn get(&self, path: &str) -> Result<reqwest::Response, JfgoatError> {
         let url = format!("{}{}", self.base_url, path);
-        let resp = self
-            .client
-            .get(&url)
-            .header("Authorization", self.auth_header())
-            .send()
-            .await?;
-        Ok(resp)
+        let mut attempts = 0;
+        loop {
+            let res = self
+                .client
+                .get(&url)
+                .header("Authorization", self.auth_header())
+                .send()
+                .await;
+
+            match res {
+                Ok(resp) => return Ok(resp),
+                Err(err) => {
+                    attempts += 1;
+                    if attempts >= 3 {
+                        error!(
+                            "GET request to {} failed after {} attempts: {}",
+                            url, attempts, err
+                        );
+                        return Err(JfgoatError::from(err));
+                    }
+                    warn!(
+                        "GET request to {} failed (attempt {}): {}. Retrying in 100ms...",
+                        url, attempts, err
+                    );
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                }
+            }
+        }
     }
 
     pub async fn post_json(
