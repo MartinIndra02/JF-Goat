@@ -104,7 +104,7 @@ class HomeDataStore {
 
       this.prefetchDetailImages([...resume, ...filteredNextUp]);
     } catch (error) {
-      markDegraded(String(error));
+      markDegraded(error);
       pushErrorToast(
         "api",
         error,

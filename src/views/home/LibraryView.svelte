@@ -5,7 +5,7 @@
   import { markDegraded } from "../../lib/stores/connectivity.svelte";
   import { pushToast } from "../../lib/stores/toast.svelte";
   import PosterCard from "../../components/media/PosterCard.svelte";
-  import type { MediaItem, UserLibrary } from "../../lib/types";
+  import type { MediaItem } from "../../lib/types";
 
   import { homeDataStore } from "../../lib/stores/homeData.svelte";
 
@@ -164,7 +164,7 @@
       lastLoadedLibraryId = viewId;
     } catch (error) {
       if (requestId !== libraryRequestId) return;
-      markDegraded(String(error));
+      markDegraded(error);
       libraryError = "Could not load this library. Check your connection and try again.";
       libraryItems = [];
       lastLoadedLibraryId = "";
@@ -200,7 +200,7 @@
       }
     } catch (error) {
       if (requestId !== libraryRequestId) return;
-      markDegraded(String(error));
+      markDegraded(error);
       libraryLoadMoreError = "Could not load more items. Scroll to retry.";
     } finally {
       if (requestId === libraryRequestId) {

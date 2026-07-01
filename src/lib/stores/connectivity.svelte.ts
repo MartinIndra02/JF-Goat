@@ -1,3 +1,5 @@
+import { normalizeErrorMessage } from "./toast.svelte";
+
 let online = $state(typeof navigator === "undefined" ? true : navigator.onLine);
 let degraded = $state(false);
 let lastNetworkError = $state<string | null>(null);
@@ -26,9 +28,9 @@ export function setOnlineStatus(next: boolean): void {
   }
 }
 
-export function markDegraded(message: string): void {
+export function markDegraded(error: unknown): void {
   degraded = true;
-  lastNetworkError = message;
+  lastNetworkError = typeof error === "string" ? error : normalizeErrorMessage(error);
 }
 
 export function markHealthy(): void {
@@ -36,3 +38,4 @@ export function markHealthy(): void {
   lastNetworkError = null;
   lastSuccessfulSyncAt = Date.now();
 }
+

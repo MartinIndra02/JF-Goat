@@ -12,8 +12,6 @@
     getLastNetworkError,
     isDegraded,
     isOnline,
-    markDegraded,
-    markHealthy,
   } from "../../lib/stores/connectivity.svelte";
   import { pushErrorToast, pushToast } from "../../lib/stores/toast.svelte";
   import {
