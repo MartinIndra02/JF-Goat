@@ -11,10 +11,10 @@
     isMuted,
     getPlaybackRate,
     hidePlayer,
-    showPlayer,
     setVolume,
     setMuted,
     setPlaybackRate,
+    getVideoScaleMode,
   } from "../../lib/stores/player.svelte";
   import {
     mpvTogglePause,
@@ -25,6 +25,7 @@
     mpvSetPlaybackRate,
     mpvSetSubtitlePosition,
     mpvStop,
+    mpvSetVideoScale,
   } from "../../lib/api";
   import { getPreferences } from "../../lib/stores/preferences.svelte";
   import type { MediaItem, ChapterInfo } from "../../lib/types";
@@ -32,6 +33,7 @@
   import PlayerHeader from "./PlayerHeader.svelte";
   import PlayerTimeline from "./PlayerTimeline.svelte";
   import PlayerControls from "./PlayerControls.svelte";
+  import SkipSegmentButton from "./SkipSegmentButton.svelte";
   import { useAutoHide } from "./useAutoHide.svelte";
   import { usePlaybackContext } from "./usePlaybackContext.svelte";
 
@@ -46,6 +48,9 @@
   const muted = $derived(isMuted());
   const rate = $derived(getPlaybackRate());
   const isPaused = $derived(playerStatus === "paused");
+  const videoScaleMode = $derived(getVideoScaleMode());
+  const preferences = $derived(getPreferences());
+  const autoCropEnabled = $derived(preferences.playback.auto_crop_experimental);
 
   // ── Context and Auto-Hide Hooks ─────────────────────────────
   const ctx = usePlaybackContext();
@@ -152,6 +157,75 @@
     return pos >= outroStartSeconds && pos < dur;
   });
 
+  const PRE_ROLL_SECS = 5;
+
+  const activeSegment = $derived.by(() => {
+    if (dur <= 0 || !ctx.mediaSegments || ctx.mediaSegments.length === 0) return null;
+    const posSeconds = pos;
+    for (const seg of ctx.mediaSegments) {
+      const startSec = seg.start_ticks / 10_000_000;
+      const endSec = seg.end_ticks / 10_000_000;
+      if (posSeconds >= Math.max(0, startSec - PRE_ROLL_SECS) && posSeconds < endSec) {
+        return seg;
+      }
+    }
+    return null;
+  });
+
+  const showSkipButton = $derived.by(() => {
+    if (!activeSegment) return false;
+    const type = activeSegment.segment_type.toLowerCase();
+    return ["intro", "outro", "recap"].includes(type);
+  });
+
+  const skipButtonLabel = $derived.by(() => {
+    if (!activeSegment) return "";
+    switch (activeSegment.segment_type.toLowerCase()) {
+      case "intro": return "Skip Intro";
+      case "outro": return "Skip Credits";
+      case "recap": return "Skip Recap";
+      default: return "Skip";
+    }
+  });
+
+  function skipSegment() {
+    if (!activeSegment) return;
+    void mpvSeekAbsolute(activeSegment.end_ticks / 10_000_000);
+  }
+
+  const previousChapterTime = $derived.by(() => {
+    const currentSec = pos;
+    const threshold = 2.0;
+    const candidates = ctx.chapters
+      .map((ch) => ch.start_ticks / 10_000_000)
+      .filter((time) => time < currentSec - threshold)
+      .sort((a, b) => b - a);
+    return candidates[0] ?? null;
+  });
+
+  const nextChapterTime = $derived.by(() => {
+    const currentSec = pos;
+    const candidates = ctx.chapters
+      .map((ch) => ch.start_ticks / 10_000_000)
+      .filter((time) => time > currentSec)
+      .sort((a, b) => a - b);
+    return candidates[0] ?? null;
+  });
+
+  function skipToPreviousChapter() {
+    if (previousChapterTime !== null) {
+      void mpvSeekAbsolute(previousChapterTime);
+    } else if (pos > 2.0) {
+      void mpvSeekAbsolute(0);
+    }
+  }
+
+  function skipToNextChapter() {
+    if (nextChapterTime !== null) {
+      void mpvSeekAbsolute(nextChapterTime);
+    }
+  }
+
   // ── Functions ────────────────────────────────────────────────
   function formatTime(seconds: number): string {
     if (!seconds || seconds < 0) return "0:00";
@@ -220,10 +294,21 @@
 
   async function stopPlayer(nextEpisodeHint: MediaItem | null = null) {
     ctx.stopAutoplayCountdown();
-    await ctx.reportCurrentPlaybackStop(nextEpisodeHint);
-    await exitFullscreenIfActive();
-    await mpvStop();
+    
+    // Start reporting and cleanup tasks asynchronously
+    const stopReportPromise = ctx.reportCurrentPlaybackStop(nextEpisodeHint);
+    const exitFullscreenPromise = exitFullscreenIfActive();
+    const mpvStopPromise = mpvStop();
+
+    // Close/reset player UI immediately
     hidePlayer();
+
+    // Await execution of background tasks
+    try {
+      await Promise.all([stopReportPromise, exitFullscreenPromise, mpvStopPromise]);
+    } catch (e) {
+      console.warn("Background stop errors:", e);
+    }
   }
 
   async function toggleFullscreen() {
@@ -342,6 +427,13 @@
         void mpvSetPlaybackRate(nextRateUp);
         break;
       }
+      case "s":
+      case "S":
+        if (showSkipButton) {
+          e.preventDefault();
+          skipSegment();
+        }
+        break;
     }
 
     autoHide.resetHideTimer();
@@ -451,8 +543,14 @@
     const onFullscreenChange = () => syncFullscreenState();
     document.addEventListener("fullscreenchange", onFullscreenChange);
 
+    const handleStopPlayback = () => {
+      void stopPlayer();
+    };
+    window.addEventListener("stop-playback", handleStopPlayback);
+
     return () => {
       document.removeEventListener("fullscreenchange", onFullscreenChange);
+      window.removeEventListener("stop-playback", handleStopPlayback);
     };
   });
 
@@ -523,7 +621,7 @@
 
         ctx.endAutoSkipHandledForItemId = playerItemId;
         if (ctx.nextEpisode && !ctx.autoplayDismissedForCurrentItem) {
-          void playNextEpisode();
+          void ctx.playNextEpisode();
         } else if (ctx.nextEpisode && ctx.autoplayDismissedForCurrentItem) {
           void stopPlayer(ctx.nextEpisode);
         } else {
@@ -547,6 +645,25 @@
       ctx.startAutoplayCountdown();
     } else {
       ctx.stopAutoplayCountdown();
+    }
+  });
+
+  $effect(() => {
+    if (!activeSegment || !playerVisible || playerStatus !== "playing") return;
+    
+    // Auto-skip ONLY when we are actually inside the segment (not in pre-roll buffer)
+    const startSec = activeSegment.start_ticks / 10_000_000;
+    if (pos < startSec) return;
+
+    const prefs = getPreferences();
+    const type = activeSegment.segment_type.toLowerCase();
+    const shouldAutoSkip =
+      (type === "intro" && prefs.playback.auto_skip_intro) ||
+      (type === "outro" && prefs.playback.auto_skip_outro) ||
+      (type === "recap" && prefs.playback.auto_skip_recap);
+
+    if (shouldAutoSkip) {
+      void mpvSeekAbsolute(activeSegment.end_ticks / 10_000_000);
     }
   });
 
@@ -605,6 +722,17 @@
       aria-label={isPaused ? "Resume playback" : "Pause playback"}
     ></button>
 
+    {#if showSkipButton}
+      <div class="absolute bottom-[10.5rem] sm:bottom-[11.5rem] left-0 w-full px-3 sm:px-6 pointer-events-none z-[10000]">
+        <div class="mx-auto w-full max-w-6xl flex justify-end">
+          <SkipSegmentButton
+            label={skipButtonLabel}
+            onSkip={skipSegment}
+          />
+        </div>
+      </div>
+    {/if}
+
     <PlayerControls
       {playerTitle}
       selectedQualityLabel={ctx.selectedQualityLabel}
@@ -621,6 +749,9 @@
       applyTrackSelection={ctx.applyTrackSelection}
       playbackRate={rate}
       {mpvSetPlaybackRate}
+      {videoScaleMode}
+      {mpvSetVideoScale}
+      {autoCropEnabled}
       qualityOptions={ctx.qualityOptions}
       selectedQualityKey={ctx.selectedQualityKey}
       changeQuality={ctx.changeQuality}
@@ -643,12 +774,18 @@
       {toggleMute}
       muted={muted}
       controlsVisible={autoHide.controlsVisible}
+      hasChapters={ctx.chapters.length > 0}
+      onPrevChapter={skipToPreviousChapter}
+      onNextChapter={skipToNextChapter}
+      prevChapterDisabled={previousChapterTime === null && pos <= 2.0}
+      nextChapterDisabled={nextChapterTime === null}
     >
       <PlayerTimeline
         {effectivePos}
         {dur}
         {progressPercent}
         {chapterMarkers}
+        mediaSegments={ctx.mediaSegments}
         {isScrubbing}
         bind:progressScrubEl
         {beginTimelineScrub}

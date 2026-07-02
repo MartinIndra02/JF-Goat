@@ -116,7 +116,7 @@ fn ensure_mpv_import_lib() -> Result<(), String> {
     if let Err(e) = fs::copy(&mpv_dll, &dest_dll) {
         // On Windows, if the executable is running, the DLL is loaded and locked (OS error 32).
         // If the file already exists, we can ignore this error since the correct DLL is already present.
-        if dest_dll.exists() && (e.kind() == std::io::ErrorKind::PermissionDenied || e.raw_os_error() == Some(32)) {
+        if e.raw_os_error() == Some(32) || (dest_dll.exists() && e.kind() == std::io::ErrorKind::PermissionDenied) {
             println!("cargo:warning=Failed to copy mpv-2.dll (locked by running process), but it already exists in target directory.");
         } else {
             return Err(format!("failed to copy mpv-2.dll to {}: {}", dest_dll.display(), e));

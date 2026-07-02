@@ -214,6 +214,34 @@
     });
   }
 
+  function setAutoSkipIntroPreference(event: Event) {
+    const target = event.target as HTMLInputElement;
+    updatePreferences({
+      playback: {
+        auto_skip_intro: target.checked,
+      },
+    });
+  }
+
+  function setAutoSkipOutroPreference(event: Event) {
+    const target = event.target as HTMLInputElement;
+    updatePreferences({
+      playback: {
+        auto_skip_outro: target.checked,
+      },
+    });
+  }
+
+  function setAutoSkipRecapPreference(event: Event) {
+    const target = event.target as HTMLInputElement;
+    updatePreferences({
+      playback: {
+        auto_skip_recap: target.checked,
+      },
+    });
+  }
+
+
   function setPlaybackRatePreference(event: Event) {
     const target = event.target as HTMLInputElement;
     updatePreferences({
@@ -581,7 +609,7 @@
         <div class="glass-panel rounded-2xl p-4">
           <h3 class="text-sm font-semibold mb-3">Video Playback</h3>
           <div class="grid gap-4 md:grid-cols-2">
-            <label class="text-sm text-[var(--text-secondary)] flex items-center gap-2 md:col-span-2">
+            <label class="text-sm text-[var(--text-secondary)] flex items-center gap-2 md:col-span-2 select-none cursor-pointer">
               <input
                 type="checkbox"
                 checked={preferences.playback.autoplay_next_episode}
@@ -589,6 +617,34 @@
               />
               Autoplay next episode
             </label>
+
+            <label class="text-sm text-[var(--text-secondary)] flex items-center gap-2 md:col-span-2 select-none cursor-pointer">
+              <input
+                type="checkbox"
+                checked={preferences.playback.auto_skip_intro}
+                onchange={setAutoSkipIntroPreference}
+              />
+              Auto-skip intro segments
+            </label>
+
+            <label class="text-sm text-[var(--text-secondary)] flex items-center gap-2 md:col-span-2 select-none cursor-pointer">
+              <input
+                type="checkbox"
+                checked={preferences.playback.auto_skip_recap}
+                onchange={setAutoSkipRecapPreference}
+              />
+              Auto-skip recap segments
+            </label>
+
+            <label class="text-sm text-[var(--text-secondary)] flex items-center gap-2 md:col-span-2 select-none cursor-pointer">
+              <input
+                type="checkbox"
+                checked={preferences.playback.auto_skip_outro}
+                onchange={setAutoSkipOutroPreference}
+              />
+              Auto-skip credits/outro segments
+            </label>
+
 
             <label class="text-sm text-[var(--text-secondary)] flex flex-col gap-1">
               Default playback speed
@@ -727,6 +783,46 @@
                 <option value="#ff00ff" class="bg-gray-900">Magenta</option>
               </select>
             </label>
+          </div>
+        </div>
+
+        <div class="glass-panel rounded-2xl p-4">
+          <h3 class="text-sm font-semibold mb-3">Experimental Features</h3>
+          <div class="grid gap-4 md:grid-cols-2">
+            <label class="text-sm text-[var(--text-secondary)] flex items-center gap-2 md:col-span-2 select-none cursor-pointer">
+              <input
+                type="checkbox"
+                checked={preferences.playback.auto_crop_experimental}
+                onchange={(e) => {
+                  updatePreferences({
+                    playback: {
+                      auto_crop_experimental: (e.target as HTMLInputElement).checked,
+                    },
+                  });
+                }}
+              />
+              Enable Auto Crop for Widescreen Displays
+            </label>
+
+            {#if preferences.playback.auto_crop_experimental}
+              <label class="text-sm text-[var(--text-secondary)] flex flex-col gap-1 md:col-span-2">
+                Auto Crop Mode
+                <select
+                  value={preferences.playback.auto_crop_mode}
+                  onchange={(e) => {
+                    updatePreferences({
+                      playback: {
+                        auto_crop_mode: (e.target as HTMLSelectElement).value as "static" | "dynamic",
+                      },
+                    });
+                  }}
+                  class="h-10 rounded-xl border border-white/14 bg-[rgba(13,21,35,0.72)] px-3 text-sm text-[var(--text-primary)]"
+                >
+                  <option value="static" class="bg-gray-900">Static (Detects once & locks, low CPU)</option>
+                  <option value="dynamic" class="bg-gray-900">Dynamic (Adjusts continuously for aspect ratio changes)</option>
+                </select>
+              </label>
+            {/if}
           </div>
         </div>
 

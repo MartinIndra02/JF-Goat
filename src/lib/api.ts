@@ -24,7 +24,9 @@ import type {
   TranscodePlaybackQuery,
   VideoScaleMode,
   OfflineDownload,
+  MediaSegment,
 } from "./types";
+
 
 function encodeQueryValue(value: string | number): string {
   return encodeURIComponent(String(value));
@@ -386,6 +388,15 @@ export async function getMediaStreams(
 export async function getItemChapters(id: string): Promise<ChapterInfo[]> {
   return invoke("get_item_chapters", { id });
 }
+
+export async function getMediaSegments(id: string): Promise<MediaSegment[]> {
+  return invoke("get_media_segments", { id });
+}
+
+export async function logFromFrontend(message: string): Promise<void> {
+  return invoke("log_from_frontend", { message });
+}
+
 
 export async function getExternalUrls(
   id: string,

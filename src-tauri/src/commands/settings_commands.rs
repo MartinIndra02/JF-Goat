@@ -20,6 +20,11 @@ pub struct PlaybackPreferences {
     pub subtitle_color: String,
     pub subtitle_background_opacity: i64,
     pub default_startup_screen: String,
+    pub auto_crop_experimental: bool,
+    pub auto_crop_mode: String,
+    pub auto_skip_intro: bool,
+    pub auto_skip_outro: bool,
+    pub auto_skip_recap: bool,
 }
 
 impl Default for PlaybackPreferences {
@@ -34,6 +39,11 @@ impl Default for PlaybackPreferences {
             subtitle_color: "#ffffff".to_string(),
             subtitle_background_opacity: 0,
             default_startup_screen: "/home".to_string(),
+            auto_crop_experimental: false,
+            auto_crop_mode: "static".to_string(),
+            auto_skip_intro: false,
+            auto_skip_outro: false,
+            auto_skip_recap: false,
         }
     }
 }
@@ -125,6 +135,9 @@ impl UserPreferences {
         }
         if self.playback.default_startup_screen.is_empty() {
             self.playback.default_startup_screen = "/home".to_string();
+        }
+        if self.playback.auto_crop_mode != "static" && self.playback.auto_crop_mode != "dynamic" {
+            self.playback.auto_crop_mode = "static".to_string();
         }
 
         self.language.preferred_audio_language = self

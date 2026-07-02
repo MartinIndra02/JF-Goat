@@ -192,6 +192,9 @@
 
   function triggerGlobalBack() {
     closeGlobalMenu();
+    if (playerActive) {
+      window.dispatchEvent(new CustomEvent("stop-playback"));
+    }
     if (window.history.length > 1) {
       window.history.back();
     } else {
@@ -504,7 +507,7 @@
 
 {#if globalMenuOpen}
   <div 
-    class="global-context-menu fixed z-[9999] w-52 bg-[rgba(15,22,40,0.92)] border border-white/15 rounded-xl py-1.5 shadow-2xl backdrop-blur-xl flex flex-col overflow-hidden"
+    class="global-context-menu fixed z-[100001] w-52 bg-[rgba(15,22,40,0.92)] border border-white/15 rounded-xl py-1.5 shadow-2xl backdrop-blur-xl flex flex-col overflow-hidden"
     style="left: {globalMenuX}px; top: {globalMenuY}px;"
   >
     <button

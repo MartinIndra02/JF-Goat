@@ -134,10 +134,44 @@ export function normalizeErrorMessage(error: unknown): string {
     if (typeof maybeRecord.error === "string") {
       return maybeRecord.error;
     }
+
+    if (
+      maybeRecord.error !== undefined &&
+      maybeRecord.error !== null &&
+      typeof maybeRecord.error === "object"
+    ) {
+      return normalizeErrorMessage(maybeRecord.error);
+    }
+
+    if (typeof maybeRecord.reason === "string" && maybeRecord.reason.trim()) {
+      return maybeRecord.reason;
+    }
+
+    if (typeof maybeRecord.detail === "string" && maybeRecord.detail.trim()) {
+      return maybeRecord.detail;
+    }
+
+    if (typeof maybeRecord.err === "string" && maybeRecord.err.trim()) {
+      return maybeRecord.err;
+    }
+
+    if (
+      typeof (error as any).toString === "function" &&
+      (error as any).toString !== Object.prototype.toString
+    ) {
+      return (error as any).toString();
+    }
+
+    try {
+      return JSON.stringify(error);
+    } catch {
+      // Fall through
+    }
   }
 
   return String(error);
 }
+
 
 export function pushErrorToast(
   source: ToastSource,

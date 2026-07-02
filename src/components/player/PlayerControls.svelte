@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { MediaStreamInfo, MediaItem } from "../../lib/types";
+  import type { MediaStreamInfo, MediaItem, VideoScaleMode } from "../../lib/types";
   import type { QualityOption } from "../../lib/mediaStreamHelpers";
   import PlayerAutoplay from "./PlayerAutoplay.svelte";
 
@@ -23,6 +23,9 @@
     qualityOptions,
     selectedQualityKey,
     changeQuality,
+    videoScaleMode,
+    mpvSetVideoScale,
+    autoCropEnabled,
     autoplayCountdown,
     cancelAutoplayCountdown,
     formatTime,
@@ -42,6 +45,11 @@
     toggleMute,
     muted,
     controlsVisible,
+    hasChapters = false,
+    onPrevChapter,
+    onNextChapter,
+    prevChapterDisabled = false,
+    nextChapterDisabled = false,
   }: {
     children?: import('svelte').Snippet;
     playerTitle: string;
@@ -62,6 +70,9 @@
     qualityOptions: QualityOption[];
     selectedQualityKey: string;
     changeQuality: (key: string) => Promise<void>;
+    videoScaleMode: VideoScaleMode;
+    mpvSetVideoScale: (mode: VideoScaleMode) => Promise<void>;
+    autoCropEnabled: boolean;
     autoplayCountdown: number | null;
     cancelAutoplayCountdown: () => void;
     formatTime: (seconds: number) => string;
@@ -81,6 +92,11 @@
     toggleMute: () => Promise<void>;
     muted: boolean;
     controlsVisible: boolean;
+    hasChapters?: boolean;
+    onPrevChapter?: () => void;
+    onNextChapter?: () => void;
+    prevChapterDisabled?: boolean;
+    nextChapterDisabled?: boolean;
   } = $props();
 
   const playbackSpeeds = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3];
@@ -218,6 +234,28 @@
                     {/each}
                   </div>
                 </div>
+
+                <div>
+                  <p class="px-2 pb-1 text-[11px] uppercase tracking-wide text-gray-400">Aspect Ratio</p>
+                  <div class="grid grid-cols-2 gap-1">
+                    {#each [
+                      { key: "contain", label: "Fit" },
+                      { key: "cover", label: "Fill" },
+                      { key: "stretch", label: "Stretch" },
+                      ...(autoCropEnabled ? [{ key: "auto-crop", label: "Auto Crop" }] : [])
+                    ] as mode}
+                      <button
+                        onclick={() => {
+                          void mpvSetVideoScale(mode.key as any);
+                          toggleTopMenu("overflow");
+                        }}
+                        class="h-8 rounded-lg text-xs text-gray-100 border hover:bg-white/15 transition-colors {videoScaleMode === mode.key ? 'bg-cyan-500/35 border-cyan-400' : 'border-white/18'}"
+                      >
+                        {mode.label}
+                      </button>
+                    {/each}
+                  </div>
+                </div>
               </div>
             {/if}
           </div>
@@ -249,6 +287,19 @@
             <svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="currentColor">
               <path d="M20.5 6v12l-8.3-6z" />
               <path d="M12.5 6v12l-8.3-6z" />
+            </svg>
+          </button>
+        {/if}
+
+        {#if hasChapters}
+          <button
+            onclick={onPrevChapter}
+            disabled={prevChapterDisabled}
+            aria-label="Previous chapter"
+            class="h-9 w-9 grid place-items-center rounded-lg bg-white/10 border border-white/20 text-white hover:bg-white/18 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M6 6h2v12H6zm3 6l8 6V6z" />
             </svg>
           </button>
         {/if}
@@ -288,6 +339,19 @@
             <path d="M12.08 5.08L20 12l-7.92 6.92L13.5 20.5 23 12l-9.5-8.5z" />
           </svg>
         </button>
+
+        {#if hasChapters}
+          <button
+            onclick={onNextChapter}
+            disabled={nextChapterDisabled}
+            aria-label="Next chapter"
+            class="h-9 w-9 grid place-items-center rounded-lg bg-white/10 border border-white/20 text-white hover:bg-white/18 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M6 18l8-6-8-6zm9-12h2v12h-2z" />
+            </svg>
+          </button>
+        {/if}
 
         {#if nextEpisode}
           <button

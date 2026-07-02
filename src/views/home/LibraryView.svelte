@@ -1,11 +1,11 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
-  import { querystring, replace, push } from "svelte-spa-router";
+  import { location, querystring, replace, push } from "svelte-spa-router";
   import { getLibraryItems } from "../../lib/api";
   import { markDegraded } from "../../lib/stores/connectivity.svelte";
   import { pushToast } from "../../lib/stores/toast.svelte";
   import PosterCard from "../../components/media/PosterCard.svelte";
-  import type { MediaItem, UserLibrary } from "../../lib/types";
+  import type { MediaItem } from "../../lib/types";
 
   import { homeDataStore } from "../../lib/stores/homeData.svelte";
 
@@ -93,6 +93,7 @@
   });
 
   $effect(() => {
+    if ($location !== "/library") return;
     if (selectedLibraryId) return;
     if (userLibraries.length === 0) return;
 
@@ -164,7 +165,7 @@
       lastLoadedLibraryId = viewId;
     } catch (error) {
       if (requestId !== libraryRequestId) return;
-      markDegraded(String(error));
+      markDegraded(error);
       libraryError = "Could not load this library. Check your connection and try again.";
       libraryItems = [];
       lastLoadedLibraryId = "";
@@ -200,7 +201,7 @@
       }
     } catch (error) {
       if (requestId !== libraryRequestId) return;
-      markDegraded(String(error));
+      markDegraded(error);
       libraryLoadMoreError = "Could not load more items. Scroll to retry.";
     } finally {
       if (requestId === libraryRequestId) {

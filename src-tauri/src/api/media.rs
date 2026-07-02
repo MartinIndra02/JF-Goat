@@ -1213,26 +1213,116 @@ pub async fn fetch_item_external_urls(
     Ok(data.external_urls)
 }
 
+#[derive(Debug, Deserialize)]
+pub struct JellyfinItemWithChapters {
+    #[serde(alias = "Chapters", default)]
+    pub chapters: Vec<JellyfinChapter>,
+}
+
 /// Fetch chapter markers for a specific item.
 pub async fn fetch_item_chapters(
     client: &JellyfinClient,
+    user_id: &str,
     item_id: &str,
 ) -> Result<Vec<JellyfinChapter>, JfgoatError> {
-    let path = format!("/Items/{}/Chapters", encode(item_id));
+    let path = format!(
+        "/Users/{}/Items/{}?Fields=Chapters",
+        encode(user_id),
+        encode(item_id)
+    );
 
     let resp = client.get(&path).await?;
 
     if !resp.status().is_success() {
         return Err(JfgoatError::Http(format!(
-            "Failed to fetch chapters for {}: status {}",
+            "Failed to fetch item details for chapters: item_id {}, status {}",
             item_id,
             resp.status()
         )));
     }
 
-    let data: Vec<JellyfinChapter> = resp.json().await.map_err(|e| {
-        JfgoatError::Http(format!("Failed to parse chapters response: {}", e))
+    let data: JellyfinItemWithChapters = resp.json().await.map_err(|e| {
+        JfgoatError::Http(format!("Failed to parse item details for chapters: {}", e))
     })?;
 
-    Ok(data)
+    Ok(data.chapters)
 }
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct JellyfinMediaSegment {
+    #[serde(alias = "Start")]
+    pub start: i64,
+    #[serde(alias = "End")]
+    pub end: i64,
+    #[serde(alias = "Type")]
+    pub segment_type: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct JellyfinMediaSegmentsResponse {
+    #[serde(alias = "Items", default)]
+    pub items: Vec<JellyfinMediaSegment>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct JellyfinIntroTimestamps {
+    #[serde(alias = "Valid")]
+    pub valid: bool,
+    #[serde(alias = "IntroStart")]
+    pub intro_start: f64,
+    #[serde(alias = "IntroEnd")]
+    pub intro_end: f64,
+}
+
+/// Fetch media segments for a specific item (Jellyfin 10.10+).
+pub async fn fetch_media_segments(
+    client: &JellyfinClient,
+    item_id: &str,
+) -> Result<Vec<JellyfinMediaSegment>, JfgoatError> {
+    let path = format!("/MediaSegments/{}", encode(item_id));
+
+    let resp = client.get(&path).await?;
+
+    if !resp.status().is_success() {
+        return Err(JfgoatError::Http(format!(
+            "Failed to fetch media segments for {}: status {}",
+            item_id,
+            resp.status()
+        )));
+    }
+
+    let data: JellyfinMediaSegmentsResponse = resp.json().await.map_err(|e| {
+        JfgoatError::Http(format!("Failed to parse media segments response: {}", e))
+    })?;
+
+    Ok(data.items)
+}
+
+/// Fetch intro timestamps from the Intro Skipper plugin (fallback).
+pub async fn fetch_intro_timestamps(
+    client: &JellyfinClient,
+    item_id: &str,
+) -> Result<Option<JellyfinIntroTimestamps>, JfgoatError> {
+    let path = format!("/Episode/{}/IntroTimestamps", encode(item_id));
+
+    let resp = client.get(&path).await?;
+
+    if resp.status().as_u16() == 404 {
+        return Ok(None);
+    }
+
+    if !resp.status().is_success() {
+        return Err(JfgoatError::Http(format!(
+            "Failed to fetch intro timestamps for {}: status {}",
+            item_id,
+            resp.status()
+        )));
+    }
+
+    let data: JellyfinIntroTimestamps = resp.json().await.map_err(|e| {
+        JfgoatError::Http(format!("Failed to parse intro timestamps response: {}", e))
+    })?;
+
+    Ok(Some(data))
+}
+
