@@ -33,6 +33,7 @@
   import PlayerHeader from "./PlayerHeader.svelte";
   import PlayerTimeline from "./PlayerTimeline.svelte";
   import PlayerControls from "./PlayerControls.svelte";
+  import SkipSegmentButton from "./SkipSegmentButton.svelte";
   import { useAutoHide } from "./useAutoHide.svelte";
   import { usePlaybackContext } from "./usePlaybackContext.svelte";
 
@@ -155,6 +156,75 @@
     if (!ctx.nextEpisode || !outroStartSeconds || dur <= 0) return false;
     return pos >= outroStartSeconds && pos < dur;
   });
+
+  const PRE_ROLL_SECS = 5;
+
+  const activeSegment = $derived.by(() => {
+    if (dur <= 0 || !ctx.mediaSegments || ctx.mediaSegments.length === 0) return null;
+    const posSeconds = pos;
+    for (const seg of ctx.mediaSegments) {
+      const startSec = seg.start_ticks / 10_000_000;
+      const endSec = seg.end_ticks / 10_000_000;
+      if (posSeconds >= Math.max(0, startSec - PRE_ROLL_SECS) && posSeconds < endSec) {
+        return seg;
+      }
+    }
+    return null;
+  });
+
+  const showSkipButton = $derived.by(() => {
+    if (!activeSegment) return false;
+    const type = activeSegment.segment_type.toLowerCase();
+    return ["intro", "outro", "recap"].includes(type);
+  });
+
+  const skipButtonLabel = $derived.by(() => {
+    if (!activeSegment) return "";
+    switch (activeSegment.segment_type.toLowerCase()) {
+      case "intro": return "Skip Intro";
+      case "outro": return "Skip Credits";
+      case "recap": return "Skip Recap";
+      default: return "Skip";
+    }
+  });
+
+  function skipSegment() {
+    if (!activeSegment) return;
+    void mpvSeekAbsolute(activeSegment.end_ticks / 10_000_000);
+  }
+
+  const previousChapterTime = $derived.by(() => {
+    const currentSec = pos;
+    const threshold = 2.0;
+    const candidates = ctx.chapters
+      .map((ch) => ch.start_ticks / 10_000_000)
+      .filter((time) => time < currentSec - threshold)
+      .sort((a, b) => b - a);
+    return candidates[0] ?? null;
+  });
+
+  const nextChapterTime = $derived.by(() => {
+    const currentSec = pos;
+    const candidates = ctx.chapters
+      .map((ch) => ch.start_ticks / 10_000_000)
+      .filter((time) => time > currentSec)
+      .sort((a, b) => a - b);
+    return candidates[0] ?? null;
+  });
+
+  function skipToPreviousChapter() {
+    if (previousChapterTime !== null) {
+      void mpvSeekAbsolute(previousChapterTime);
+    } else if (pos > 2.0) {
+      void mpvSeekAbsolute(0);
+    }
+  }
+
+  function skipToNextChapter() {
+    if (nextChapterTime !== null) {
+      void mpvSeekAbsolute(nextChapterTime);
+    }
+  }
 
   // ── Functions ────────────────────────────────────────────────
   function formatTime(seconds: number): string {
@@ -346,6 +416,13 @@
         void mpvSetPlaybackRate(nextRateUp);
         break;
       }
+      case "s":
+      case "S":
+        if (showSkipButton) {
+          e.preventDefault();
+          skipSegment();
+        }
+        break;
     }
 
     autoHide.resetHideTimer();
@@ -555,6 +632,25 @@
   });
 
   $effect(() => {
+    if (!activeSegment || !playerVisible || playerStatus !== "playing") return;
+    
+    // Auto-skip ONLY when we are actually inside the segment (not in pre-roll buffer)
+    const startSec = activeSegment.start_ticks / 10_000_000;
+    if (pos < startSec) return;
+
+    const prefs = getPreferences();
+    const type = activeSegment.segment_type.toLowerCase();
+    const shouldAutoSkip =
+      (type === "intro" && prefs.playback.auto_skip_intro) ||
+      (type === "outro" && prefs.playback.auto_skip_outro) ||
+      (type === "recap" && prefs.playback.auto_skip_recap);
+
+    if (shouldAutoSkip) {
+      void mpvSeekAbsolute(activeSegment.end_ticks / 10_000_000);
+    }
+  });
+
+  $effect(() => {
     if (pendingSeekSeconds === null || isScrubbing) return;
     if (Math.abs(pos - pendingSeekSeconds) <= 0.6) {
       clearPendingSeekPreview();
@@ -609,6 +705,17 @@
       aria-label={isPaused ? "Resume playback" : "Pause playback"}
     ></button>
 
+    {#if showSkipButton}
+      <div class="absolute bottom-[10.5rem] sm:bottom-[11.5rem] left-0 w-full px-3 sm:px-6 pointer-events-none z-[10000]">
+        <div class="mx-auto w-full max-w-6xl flex justify-end">
+          <SkipSegmentButton
+            label={skipButtonLabel}
+            onSkip={skipSegment}
+          />
+        </div>
+      </div>
+    {/if}
+
     <PlayerControls
       {playerTitle}
       selectedQualityLabel={ctx.selectedQualityLabel}
@@ -650,12 +757,18 @@
       {toggleMute}
       muted={muted}
       controlsVisible={autoHide.controlsVisible}
+      hasChapters={ctx.chapters.length > 0}
+      onPrevChapter={skipToPreviousChapter}
+      onNextChapter={skipToNextChapter}
+      prevChapterDisabled={previousChapterTime === null && pos <= 2.0}
+      nextChapterDisabled={nextChapterTime === null}
     >
       <PlayerTimeline
         {effectivePos}
         {dur}
         {progressPercent}
         {chapterMarkers}
+        mediaSegments={ctx.mediaSegments}
         {isScrubbing}
         bind:progressScrubEl
         {beginTimelineScrub}

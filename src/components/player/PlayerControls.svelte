@@ -45,6 +45,11 @@
     toggleMute,
     muted,
     controlsVisible,
+    hasChapters = false,
+    onPrevChapter,
+    onNextChapter,
+    prevChapterDisabled = false,
+    nextChapterDisabled = false,
   }: {
     children?: import('svelte').Snippet;
     playerTitle: string;
@@ -87,6 +92,11 @@
     toggleMute: () => Promise<void>;
     muted: boolean;
     controlsVisible: boolean;
+    hasChapters?: boolean;
+    onPrevChapter?: () => void;
+    onNextChapter?: () => void;
+    prevChapterDisabled?: boolean;
+    nextChapterDisabled?: boolean;
   } = $props();
 
   const playbackSpeeds = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3];
@@ -281,6 +291,19 @@
           </button>
         {/if}
 
+        {#if hasChapters}
+          <button
+            onclick={onPrevChapter}
+            disabled={prevChapterDisabled}
+            aria-label="Previous chapter"
+            class="h-9 w-9 grid place-items-center rounded-lg bg-white/10 border border-white/20 text-white hover:bg-white/18 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M6 6h2v12H6zm3 6l8 6V6z" />
+            </svg>
+          </button>
+        {/if}
+
         <button
           onclick={seekBack10}
           aria-label="Seek back 10 seconds"
@@ -316,6 +339,19 @@
             <path d="M12.08 5.08L20 12l-7.92 6.92L13.5 20.5 23 12l-9.5-8.5z" />
           </svg>
         </button>
+
+        {#if hasChapters}
+          <button
+            onclick={onNextChapter}
+            disabled={nextChapterDisabled}
+            aria-label="Next chapter"
+            class="h-9 w-9 grid place-items-center rounded-lg bg-white/10 border border-white/20 text-white hover:bg-white/18 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M6 18l8-6-8-6zm9-12h2v12h-2z" />
+            </svg>
+          </button>
+        {/if}
 
         {#if nextEpisode}
           <button

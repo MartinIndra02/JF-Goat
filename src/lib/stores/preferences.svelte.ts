@@ -71,6 +71,9 @@ function sanitizePreferences(input: UserPreferences): UserPreferences {
       default_startup_screen: (input.playback.default_startup_screen ?? "/home").trim() || "/home",
       auto_crop_experimental: !!input.playback.auto_crop_experimental,
       auto_crop_mode: input.playback.auto_crop_mode === "dynamic" ? "dynamic" : "static",
+      auto_skip_intro: !!input.playback.auto_skip_intro,
+      auto_skip_outro: !!input.playback.auto_skip_outro,
+      auto_skip_recap: !!input.playback.auto_skip_recap,
     },
     language: {
       preferred_audio_language: (input.language.preferred_audio_language ?? "")

@@ -2,7 +2,9 @@ import { onDestroy } from "svelte";
 import {
   getItemById,
   getItemChapters,
+  getMediaSegments,
   getMediaStreams,
+  logFromFrontend,
   mpvPlay,
   mpvSetAudioTrack,
   mpvSetSubtitleTrack,
@@ -35,16 +37,87 @@ import {
   applyEpisodeCompletionToHomepageCache,
   emitHomepageCacheUpdated,
 } from "../../lib/homepageFreshness";
-import type { MediaItem, MediaStreamInfo, ChapterInfo } from "../../lib/types";
+import type { MediaItem, MediaStreamInfo, ChapterInfo, MediaSegment } from "../../lib/types";
 import { generateQualityOptions } from "../../lib/mediaStreamHelpers";
 
-const PLAYBACK_CONTEXT_DELAY_MS = 2500;
+const PLAYBACK_CONTEXT_DELAY_MS = 200;
 const STREAM_CONTEXT_DELAY_MS = 200;
 const PLAYBACK_PROGRESS_INTERVAL_MS = 15_000;
+
+function matchName(name: string, keywords: string[], patternWords: string[] = []): boolean {
+  for (const kw of keywords) {
+    if (name.includes(kw)) return true;
+  }
+  if (patternWords.length > 0) {
+    const tokens = name.split(/[\s\-_\(\)\[\]\.:]+/);
+    for (const token of tokens) {
+      if (patternWords.includes(token)) return true;
+      if (/^(op|ed)\d+$/i.test(token)) return true;
+    }
+  }
+  return false;
+}
+
+function buildFallbackSegments(chapters: ChapterInfo[], durationTicks: number): MediaSegment[] {
+  const segments: MediaSegment[] = [];
+  const sorted = [...chapters].sort((a, b) => a.start_ticks - b.start_ticks);
+
+  for (let i = 0; i < sorted.length; i++) {
+    const ch = sorted[i];
+    const nextCh = sorted[i + 1];
+    const name = (ch.name ?? "").toLowerCase();
+    const marker = (ch.marker_type ?? "").toLowerCase();
+    const chapterType = (ch.chapter_type ?? "").toLowerCase();
+
+    const isIntro =
+      matchName(name, ["intro", "prologue", "opening", "znělka", "znělky", "úvod", "předehra"], ["op"]) ||
+      marker.includes("intro") ||
+      chapterType.includes("intro");
+
+    const isRecap =
+      matchName(name, ["recap", "previous", "shrnut", "rekapitulace", "minule"]) ||
+      marker.includes("recap") ||
+      chapterType.includes("recap");
+
+    const isOutro =
+      matchName(name, ["outro", "credit", "ending", "titulk", "konec", "závěr"], ["end", "ed"]) ||
+      marker.includes("outro") ||
+      marker.includes("credit") ||
+      chapterType.includes("outro") ||
+      chapterType.includes("credit");
+
+    if (isIntro || isRecap || isOutro) {
+      const start = ch.start_ticks;
+      let end = nextCh ? nextCh.start_ticks : (durationTicks > 0 ? durationTicks : start + 900_000_000);
+      
+      let type = "Intro";
+      if (isRecap) type = "Recap";
+      else if (isOutro) type = "Outro";
+
+      // Sanity check
+      if (type === "Intro" && (end - start) > 300_000_000) {
+        end = start + 900_000_000;
+      }
+      if (type === "Recap" && (end - start) > 180_000_000) {
+        end = start + 450_000_000;
+      }
+
+      segments.push({
+        start_ticks: start,
+        end_ticks: end,
+        segment_type: type,
+      });
+    }
+  }
+
+  return segments;
+}
+
 
 export function usePlaybackContext() {
   let mediaStreams = $state<MediaStreamInfo | null>(null);
   let chapters = $state<ChapterInfo[]>([]);
+  let mediaSegments = $state<MediaSegment[]>([]);
   let previousEpisode = $state<MediaItem | null>(null);
   let nextEpisode = $state<MediaItem | null>(null);
   let autoplayCountdown = $state<number | null>(null);
@@ -77,6 +150,13 @@ export function usePlaybackContext() {
   const selectedSubtitleTrack = $derived.by(() =>
     mediaStreams?.subtitle.find((s) => s.index === selectedSubtitleIndex) ?? null,
   );
+
+  const effectiveSegments = $derived.by(() => {
+    if (mediaSegments.length > 0) return mediaSegments;
+    const durTicks = getDuration() * 10_000_000;
+    return buildFallbackSegments(chapters, durTicks);
+  });
+
 
   function mapAudioIndexToMpvId(streams: MediaStreamInfo, streamIndex: number): number | null {
     let mpvId = 1;
@@ -159,15 +239,29 @@ export function usePlaybackContext() {
   }
 
   async function loadPlaybackContext(id: string) {
-    const [item, chapterList] = await Promise.all([
+    const [item, chapterList, segmentList] = await Promise.all([
       getItemById(id).catch(() => null),
       getItemChapters(id).catch(() => []),
+      getMediaSegments(id).catch(() => []),
     ]);
 
     if (getPlayerItemId() !== id) return;
 
+    console.log("[usePlaybackContext] loadPlaybackContext resolved:", {
+      id,
+      itemTitle: item?.name,
+      chaptersCount: chapterList.length,
+      segmentsCount: segmentList.length,
+      chapterList,
+      segmentList
+    });
+
+    const msg = `[loadPlaybackContext] Resolved. ID: ${id}, Title: ${item?.name}, chaptersCount: ${chapterList.length}, segmentsCount: ${segmentList.length}`;
+    void logFromFrontend(msg);
+
     playbackContextResolvedItemId = id;
     chapters = chapterList;
+    mediaSegments = segmentList;
 
     if (item) {
       const neighbors = await resolveEpisodeNeighbors(item);
@@ -539,6 +633,7 @@ export function usePlaybackContext() {
     }
     mediaStreams = null;
     chapters = [];
+    mediaSegments = [];
     previousEpisode = null;
     nextEpisode = null;
     selectedAudioIndex = null;
@@ -565,6 +660,7 @@ export function usePlaybackContext() {
     get mediaStreams() { return mediaStreams; },
     set mediaStreams(v) { mediaStreams = v; },
     get chapters() { return chapters; },
+    get mediaSegments() { return effectiveSegments; },
     get previousEpisode() { return previousEpisode; },
     get nextEpisode() { return nextEpisode; },
     get autoplayCountdown() { return autoplayCountdown; },

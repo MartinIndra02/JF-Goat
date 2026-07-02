@@ -124,6 +124,9 @@ export interface PlaybackPreferences {
   default_startup_screen: string;
   auto_crop_experimental: boolean;
   auto_crop_mode: "static" | "dynamic";
+  auto_skip_intro: boolean;
+  auto_skip_outro: boolean;
+  auto_skip_recap: boolean;
 }
 
 export interface LanguagePreferences {
@@ -162,6 +165,9 @@ export const DEFAULT_USER_PREFERENCES: UserPreferences = {
     default_startup_screen: "/home",
     auto_crop_experimental: false,
     auto_crop_mode: "static",
+    auto_skip_intro: false,
+    auto_skip_outro: false,
+    auto_skip_recap: false,
   },
   language: {
     preferred_audio_language: "",
@@ -327,3 +333,10 @@ export interface ExternalUrl {
   name: string;
   url: string;
 }
+
+export interface MediaSegment {
+  start_ticks: number;
+  end_ticks: number;
+  segment_type: string; // e.g. "Intro", "Outro", "Recap", "Commercial", "Preview"
+}
+

@@ -6,7 +6,7 @@ use crate::db::media::{
 };
 use crate::error::JfgoatError;
 use crate::state::AppState;
-use super::media_types::{StreamOption, MediaStreamInfo, ExternalUrl, ChapterInfo};
+use super::media_types::{StreamOption, MediaStreamInfo, ExternalUrl, ChapterInfo, MediaSegment};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlaybackLifecycleEvent {
@@ -152,22 +152,29 @@ pub async fn get_item_chapters(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<Vec<ChapterInfo>, JfgoatError> {
-    let (jf_client, _, _) = state.get_jf_client()?;
+    println!("[get_item_chapters] Fetching chapters for item ID: {}", id);
+    let (jf_client, user_id, _) = state.get_jf_client()?;
 
-    let chapters = media_api::fetch_item_chapters(&jf_client, &id).await?;
-
-    let result = chapters
-        .into_iter()
-        .map(|chapter| ChapterInfo {
-            name: chapter.name.unwrap_or_else(|| "Chapter".to_string()),
-            start_ticks: chapter.start_position_ticks.unwrap_or(0),
-            image_tag: chapter.image_tag,
-            marker_type: chapter.marker_type,
-            chapter_type: chapter.chapter_type,
-        })
-        .collect();
-
-    Ok(result)
+    match media_api::fetch_item_chapters(&jf_client, &user_id, &id).await {
+        Ok(chapters) => {
+            println!("[get_item_chapters] Succeeded. Found {} chapters", chapters.len());
+            let result = chapters
+                .into_iter()
+                .map(|chapter| ChapterInfo {
+                    name: chapter.name.unwrap_or_else(|| "Chapter".to_string()),
+                    start_ticks: chapter.start_position_ticks.unwrap_or(0),
+                    image_tag: chapter.image_tag,
+                    marker_type: chapter.marker_type,
+                    chapter_type: chapter.chapter_type,
+                })
+                .collect();
+            Ok(result)
+        }
+        Err(err) => {
+            println!("[get_item_chapters] Failed to fetch chapters: {:?}", err);
+            Err(err)
+        }
+    }
 }
 
 /// Toggle the played/unplayed state for a media item on the Jellyfin server
@@ -360,3 +367,67 @@ fn get_friendly_language_name(code: &str) -> String {
         }
     }
 }
+
+/// Fetch media segments for a given item using Media Segments API or Intro Skipper.
+#[tauri::command]
+pub async fn get_media_segments(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Vec<MediaSegment>, JfgoatError> {
+    println!("[get_media_segments] Fetching media segments for item ID: {}", id);
+    let (jf_client, _, _) = state.get_jf_client()?;
+
+    // Strategy 1: Try Media Segments API (10.10+)
+    match media_api::fetch_media_segments(&jf_client, &id).await {
+        Ok(segments) => {
+            if !segments.is_empty() {
+                println!("[get_media_segments] Strategy 1 (MediaSegments API) succeeded with {} segments", segments.len());
+                return Ok(segments
+                    .into_iter()
+                    .map(|s| MediaSegment {
+                        start_ticks: s.start,
+                        end_ticks: s.end,
+                        segment_type: s.segment_type,
+                    })
+                    .collect());
+            } else {
+                println!("[get_media_segments] Strategy 1 returned empty segments list");
+            }
+        }
+        Err(err) => {
+            println!("[get_media_segments] Strategy 1 failed: {:?}", err);
+        }
+    }
+
+    // Strategy 2: Try Intro Skipper plugin API
+    match media_api::fetch_intro_timestamps(&jf_client, &id).await {
+        Ok(Some(intro)) => {
+            if intro.valid {
+                println!("[get_media_segments] Strategy 2 (Intro Skipper plugin) succeeded: start_sec={}, end_sec={}", intro.intro_start, intro.intro_end);
+                return Ok(vec![MediaSegment {
+                    start_ticks: (intro.intro_start * 10_000_000.0) as i64,
+                    end_ticks: (intro.intro_end * 10_000_000.0) as i64,
+                    segment_type: "Intro".to_string(),
+                }]);
+            } else {
+                println!("[get_media_segments] Strategy 2 returned invalid intro timestamps");
+            }
+        }
+        Ok(None) => {
+            println!("[get_media_segments] Strategy 2 returned None (Intro Skipper not installed/no intro data)");
+        }
+        Err(err) => {
+            println!("[get_media_segments] Strategy 2 failed: {:?}", err);
+        }
+    }
+
+    // Strategy 3: Return empty — frontend falls back to chapter-based detection
+    println!("[get_media_segments] Both strategies returned no segments. Falling back to frontend chapters.");
+    Ok(vec![])
+}
+
+#[tauri::command]
+pub fn log_from_frontend(message: String) {
+    println!("[Frontend] {}", message);
+}
+

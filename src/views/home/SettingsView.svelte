@@ -214,6 +214,34 @@
     });
   }
 
+  function setAutoSkipIntroPreference(event: Event) {
+    const target = event.target as HTMLInputElement;
+    updatePreferences({
+      playback: {
+        auto_skip_intro: target.checked,
+      },
+    });
+  }
+
+  function setAutoSkipOutroPreference(event: Event) {
+    const target = event.target as HTMLInputElement;
+    updatePreferences({
+      playback: {
+        auto_skip_outro: target.checked,
+      },
+    });
+  }
+
+  function setAutoSkipRecapPreference(event: Event) {
+    const target = event.target as HTMLInputElement;
+    updatePreferences({
+      playback: {
+        auto_skip_recap: target.checked,
+      },
+    });
+  }
+
+
   function setPlaybackRatePreference(event: Event) {
     const target = event.target as HTMLInputElement;
     updatePreferences({
@@ -581,7 +609,7 @@
         <div class="glass-panel rounded-2xl p-4">
           <h3 class="text-sm font-semibold mb-3">Video Playback</h3>
           <div class="grid gap-4 md:grid-cols-2">
-            <label class="text-sm text-[var(--text-secondary)] flex items-center gap-2 md:col-span-2">
+            <label class="text-sm text-[var(--text-secondary)] flex items-center gap-2 md:col-span-2 select-none cursor-pointer">
               <input
                 type="checkbox"
                 checked={preferences.playback.autoplay_next_episode}
@@ -589,6 +617,34 @@
               />
               Autoplay next episode
             </label>
+
+            <label class="text-sm text-[var(--text-secondary)] flex items-center gap-2 md:col-span-2 select-none cursor-pointer">
+              <input
+                type="checkbox"
+                checked={preferences.playback.auto_skip_intro}
+                onchange={setAutoSkipIntroPreference}
+              />
+              Auto-skip intro segments
+            </label>
+
+            <label class="text-sm text-[var(--text-secondary)] flex items-center gap-2 md:col-span-2 select-none cursor-pointer">
+              <input
+                type="checkbox"
+                checked={preferences.playback.auto_skip_recap}
+                onchange={setAutoSkipRecapPreference}
+              />
+              Auto-skip recap segments
+            </label>
+
+            <label class="text-sm text-[var(--text-secondary)] flex items-center gap-2 md:col-span-2 select-none cursor-pointer">
+              <input
+                type="checkbox"
+                checked={preferences.playback.auto_skip_outro}
+                onchange={setAutoSkipOutroPreference}
+              />
+              Auto-skip credits/outro segments
+            </label>
+
 
             <label class="text-sm text-[var(--text-secondary)] flex flex-col gap-1">
               Default playback speed

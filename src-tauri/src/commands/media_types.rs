@@ -77,3 +77,12 @@ pub struct ChapterInfo {
     pub marker_type: Option<String>,
     pub chapter_type: Option<String>,
 }
+
+/// A media segment (intro, outro, recap, etc.) with start/end in ticks.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MediaSegment {
+    pub start_ticks: i64,
+    pub end_ticks: i64,
+    pub segment_type: String, // "Intro", "Outro", "Recap", "Commercial", "Preview"
+}
+
