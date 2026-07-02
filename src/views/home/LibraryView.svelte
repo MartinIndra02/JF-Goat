@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
-  import { querystring, replace, push } from "svelte-spa-router";
+  import { location, querystring, replace, push } from "svelte-spa-router";
   import { getLibraryItems } from "../../lib/api";
   import { markDegraded } from "../../lib/stores/connectivity.svelte";
   import { pushToast } from "../../lib/stores/toast.svelte";
@@ -93,6 +93,7 @@
   });
 
   $effect(() => {
+    if ($location !== "/library") return;
     if (selectedLibraryId) return;
     if (userLibraries.length === 0) return;
 

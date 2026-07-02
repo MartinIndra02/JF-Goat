@@ -532,8 +532,14 @@
     const onFullscreenChange = () => syncFullscreenState();
     document.addEventListener("fullscreenchange", onFullscreenChange);
 
+    const handleStopPlayback = () => {
+      void stopPlayer();
+    };
+    window.addEventListener("stop-playback", handleStopPlayback);
+
     return () => {
       document.removeEventListener("fullscreenchange", onFullscreenChange);
+      window.removeEventListener("stop-playback", handleStopPlayback);
     };
   });
 
