@@ -78,7 +78,16 @@ npm run release:tauri
 
 ## 📝 Changelog
 
-### v1.4.2 (Current)
+### v1.5.0 (Current)
+This release includes aspect ratio controls, intro/chapter skipping, async player closing, network resilience improvements, and various navigation and layout fixes:
+
+* **Aspect Ratio Selection**: Added aspect ratio adjustments in the video player.
+* **Skip Intro & Chapters**: Support for skipping intro sequences and navigating/skipping video chapters.
+* **Async Player Closing**: Optimized player teardown to run asynchronously in the background, eliminating delays when exiting the player.
+* **Degraded Network Banner**: Improved UI warnings and handling when network connection is degraded.
+* **Navigation & Layout Fixes**: Fixed player back button behavior, resolved library navigation lock, corrected mouse drag interactions, and fixed two-rows display issues.
+
+### v1.4.2
 This release includes router implementation, Rust refactoring, security improvements, player code cleanup, and UI enhancements:
 
 * **Svelte Router Implementation**: Replaced monolithic home component with a modular routing structure and a centralized home data store.
