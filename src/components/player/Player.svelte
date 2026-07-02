@@ -294,10 +294,21 @@
 
   async function stopPlayer(nextEpisodeHint: MediaItem | null = null) {
     ctx.stopAutoplayCountdown();
-    await ctx.reportCurrentPlaybackStop(nextEpisodeHint);
-    await exitFullscreenIfActive();
-    await mpvStop();
+    
+    // Start reporting and cleanup tasks asynchronously
+    const stopReportPromise = ctx.reportCurrentPlaybackStop(nextEpisodeHint);
+    const exitFullscreenPromise = exitFullscreenIfActive();
+    const mpvStopPromise = mpvStop();
+
+    // Close/reset player UI immediately
     hidePlayer();
+
+    // Await execution of background tasks
+    try {
+      await Promise.all([stopReportPromise, exitFullscreenPromise, mpvStopPromise]);
+    } catch (e) {
+      console.warn("Background stop errors:", e);
+    }
   }
 
   async function toggleFullscreen() {
